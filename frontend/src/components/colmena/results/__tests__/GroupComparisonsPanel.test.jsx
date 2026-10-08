@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 
 import { renderWithQueryClient } from '../../../../test-utils/renderWithQueryClient.jsx';
 import GroupComparisonsPanel from '../GroupComparisonsPanel.jsx';
+import { formatNumber } from '../../../../utils/format.js';
+import { displayLabel } from '../../../../utils/labels.js';
 
 vi.mock('../../../../api/analytics.js', () => ({
   compareConstructGroups: vi.fn(),
@@ -53,8 +55,8 @@ describe('GroupComparisonsPanel — bloque de inferencia (no debe descartar el r
     await compareAndWait();
 
     await waitFor(() => expect(screen.getByText('Mann-Whitney U')).toBeInTheDocument());
-    expect(screen.getByText('2140.00')).toBeInTheDocument();
-    expect(screen.getByText('MODERADA')).toBeInTheDocument();
+    expect(screen.getByText(formatNumber(2140.0, { decimals: 2 }))).toBeInTheDocument();
+    expect(screen.getByText(displayLabel('MODERADA'))).toBeInTheDocument();
     expect(screen.getByText('0.32')).toBeInTheDocument();
   });
 
@@ -78,7 +80,7 @@ describe('GroupComparisonsPanel — bloque de inferencia (no debe descartar el r
 
     await waitFor(() => expect(screen.getByText('Kruskal-Wallis')).toBeInTheDocument());
     expect(screen.getByText('8.71')).toBeInTheDocument();
-    expect(screen.getByText('PEQUEÑA')).toBeInTheDocument();
+    expect(screen.getByText(displayLabel('PEQUEÑA'))).toBeInTheDocument();
   });
 
   it('muestra q (BH) sólo cuando adjusted_p_value existe, sin inventar un placeholder cuando es null', async () => {
