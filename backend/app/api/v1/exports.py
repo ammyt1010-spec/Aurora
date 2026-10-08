@@ -19,6 +19,7 @@ _MEDIA_TYPES = {
     "CSV": "text/csv",
     "XLSX": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "JSON": "application/json",
+    "POWERBI": "application/zip",
 }
 
 

@@ -17,10 +17,9 @@ import { ProjectMissingState } from '../../../components/colmena/ProjectMissingS
 import StudySelector from '../../../components/colmena/StudySelector.jsx';
 import { displayLabel } from '../../../utils/labels.js';
 
-const AVAILABLE_EXPORT_TYPES = ['CSV', 'XLSX', 'JSON'];
+const AVAILABLE_EXPORT_TYPES = ['CSV', 'XLSX', 'JSON', 'POWERBI'];
 const PENDING_EXPORT_TYPES = [
   { type: 'SPSS', label: 'SPSS' },
-  { type: 'POWERBI', label: 'Power BI' },
   { type: 'PARQUET', label: 'Parquet' },
 ];
 const SHAPES = [
@@ -106,7 +105,7 @@ export default function ProjectExportsPage() {
                   type="button"
                   variant="secondary"
                 >
-                  <FileDown size={14} /> Exportar {type}
+                  <FileDown size={14} /> Exportar {type === 'POWERBI' ? 'Power BI (ZIP)' : type}
                 </Button>
               ))}
               {PENDING_EXPORT_TYPES.map(({ type, label }) => (
@@ -177,7 +176,7 @@ export default function ProjectExportsPage() {
                               onClick={async () => {
                                 try {
                                   setDownloadError(null);
-                                  await downloadProtectedFile(getExportDownloadUrl(exp.id), `aurora-export-${exp.id}.${exp.export_type.toLowerCase()}`);
+                                  await downloadProtectedFile(getExportDownloadUrl(exp.id), `aurora-export-${exp.id}.${exp.export_type === 'POWERBI' ? 'zip' : exp.export_type.toLowerCase()}`);
                                 } catch (error) {
                                   setDownloadError(error.message);
                                 }

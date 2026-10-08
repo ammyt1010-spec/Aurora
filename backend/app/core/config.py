@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     max_page_size: int = 200
 
     export_storage_dir: str = "./exports_storage"
+    max_export_rows: int = 200_000
 
     jwt_secret_key: str = "dev-only-insecure-secret-change-me-in-production-please-1234567890"
     jwt_algorithm: str = "HS256"
