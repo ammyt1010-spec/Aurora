@@ -41,16 +41,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Reconcile inherited lockfile and install frontend
+      - name: Install frontend with committed lockfile
         working-directory: frontend
-        run: |
-          npm install --package-lock-only --ignore-scripts
-          npm ci
-      - name: Verify lockfile debt
-        run: |
-          if ! git diff --quiet -- frontend/package-lock.json; then
-            echo "::warning::Existing frontend/package-lock.json is out of sync; commit a regenerated lockfile before production release."
-          fi
+        run: npm ci
       - name: Frontend production build
         working-directory: frontend
         env:
@@ -95,4 +88,4 @@ jobs:
       - name: Verify migration at head and rate limit storage
         working-directory: backend
         run: |
-          poetry run python -c "from sqlalchemy import create_engine,text; from app.core.config import get_settings; e=create_engine(get_settings().database_url_sync); c=e.connect(); print(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one()); assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0015'; assert c.execute(text(\"SELECT to_regclass('colmena.public_rate_limits')\")).scalar_one() is not None; c.close()"
+          poetry run python -c "from sqlalchemy import create_engine,text; from app.core.config import get_settings; e=create_engine(get_settings().database_url_sync); c=e.connect(); print(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one()); assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0016'; assert c.execute(text(\"SELECT to_regclass('colmena.public_rate_limits')\")).scalar_one() is not None; c.close()"
