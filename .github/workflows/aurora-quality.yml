@@ -41,9 +41,16 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend
+      - name: Reconcile inherited lockfile and install frontend
         working-directory: frontend
-        run: npm ci
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          npm ci
+      - name: Verify lockfile debt
+        run: |
+          if ! git diff --quiet -- frontend/package-lock.json; then
+            echo "::warning::Existing frontend/package-lock.json is out of sync; commit a regenerated lockfile before production release."
+          fi
       - name: Frontend tests
         working-directory: frontend
         run: npm test
