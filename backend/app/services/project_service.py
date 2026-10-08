@@ -39,6 +39,9 @@ class ProjectService:
                         payload.new_organization, owner, commit=False
                     )
                     organization_id = organization.id
+                    # OrganizationService adds its OWNER membership after flushing
+                    # the organization; autoflush=False requires an explicit flush.
+                    await self.session.flush()
                 elif organization_id is not None:
                     membership = (
                         await self.session.execute(
