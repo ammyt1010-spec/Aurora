@@ -44,7 +44,8 @@ async def generate_report(
 
 @router.post("/studies/{study_id}/reports/preview", response_model=ReportPreviewRead, status_code=201)
 async def generate_report_preview(
-    study_id: int, payload: ReportRunCreate, session: AsyncSession = Depends(get_db)
+    study_id: int, payload: ReportRunCreate, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = ReportService(session)
     safe = payload.model_copy(update={"requested_by_user_id": current_user.id}) if current_user else payload
