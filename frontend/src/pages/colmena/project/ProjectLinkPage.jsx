@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,6 +31,7 @@ export default function ProjectLinkPage() {
   const { projectId } = useParams();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const qrContainerRef = useRef(null);
   const [invitationCount, setInvitationCount] = useState(10);
   const [issuedTokens, setIssuedTokens] = useState([]);
   useActiveProject(projectId);
@@ -49,6 +51,21 @@ export default function ProjectLinkPage() {
   const activeStudy = studies.find((s) => s.status === 'OPEN') || studies[0];
   const publicId = activeStudy?.public_id || project?.censopas_study?.public_id;
   const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
+
+  const downloadSurveyQr = () => {
+    const svg = qrContainerRef.current?.querySelector('svg');
+    if (!svg) return;
+    const serialized = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = 'aurora-encuesta-qr.svg';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+  };
 
   const handleCopyLink = () => {
     if (!surveyUrl) return;
@@ -187,13 +204,8 @@ export default function ProjectLinkPage() {
             </div>
 
             {surveyUrl ? (
-              <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-border bg-white p-3 shadow-inner">
-                {/* Clean QR code rendering using Google Charts QR API */}
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(surveyUrl)}`}
-                  alt="Código QR de la Encuesta"
-                  className="h-full w-full object-contain"
-                />
+              <div ref={qrContainerRef} className="mx-auto flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-border bg-white p-3 shadow-inner">
+                <QRCodeSVG value={surveyUrl} size={168} level="M" marginSize={1} title="Código QR de la encuesta" />
               </div>
             ) : null}
 
@@ -202,15 +214,13 @@ export default function ProjectLinkPage() {
             </p>
 
             {surveyUrl ? (
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(surveyUrl)}`}
-                target="_blank"
-                download="qr_encuesta_aurora.png"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={downloadSurveyQr}
                 className="inline-block w-full py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark text-xs font-bold transition"
               >
-                Descargar QR Alta Resolución
-              </a>
+                Descargar QR vectorial (SVG)
+              </button>
             ) : null}
           </Card>
         </div>
