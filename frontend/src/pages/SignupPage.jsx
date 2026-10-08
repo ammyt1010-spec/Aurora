@@ -55,8 +55,8 @@ export default function SignupPage() {
       <div className="colmena-card relative z-10 w-full max-w-lg px-6 py-7 sm:px-8 sm:py-8">
         <div className="mx-auto mb-5 flex flex-col items-center gap-2">
           <BrandMark className="h-10 w-10" />
-          <h1 className="text-xl font-bold text-dark">Crea tu cuenta Colmena</h1>
-          <p className="text-center text-sm text-muted">Un solo lugar para tesis, encuestas y análisis estadístico.</p>
+          <h1 className="text-xl font-bold text-dark">Crea tu cuenta en AURORA PRO</h1>
+          <p className="text-center text-sm text-muted">Plataforma Profesional de Evaluación de Riesgos Psicosociales y Salud Ocupacional.</p>
         </div>
 
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>

@@ -14,10 +14,9 @@ import FormField from '../../ui/FormField.jsx';
 import { Modal } from '../../ui/Modal.jsx';
 
 const PROJECT_TYPES = [
-  { value: 'ACADEMIC', label: 'Académico', description: 'Tesis de grado, maestría o doctorado.', icon: GraduationCap },
-  { value: 'CENSO', label: 'CensoPÁS', description: 'Instrumento CENSOPAS y plan analítico Colmena.', icon: Users },
-  { value: 'RESEARCH', label: 'Investigación', description: 'Estudios científicos o institucionales.', icon: Search },
-  { value: 'CUSTOM', label: 'Personalizado', description: 'Una estructura adaptada a tu caso.', icon: SlidersHorizontal },
+  { value: 'CENSO', label: 'CENSOPAS-COPSOQ', description: 'Evaluación psicosocial oficial en versiones Corta (42) y Media (112).', icon: Users },
+  { value: 'RESEARCH', label: 'Salud Ocupacional', description: 'Diagnóstico de salud ocupacional, carga física y ergonomía.', icon: Search },
+  { value: 'CUSTOM', label: 'Clima & Seguridad', description: 'Clima de seguridad y gestión de prevención minera e industrial.', icon: SlidersHorizontal },
 ];
 
 const FALLBACK_INSTRUMENTS = [
@@ -41,7 +40,7 @@ export default function ProjectCreateModal({ ownerUserId, onClose, onCreated }) 
   const formId = useId();
   const queryClient = useQueryClient();
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
-    resolver: zodResolver(schema), defaultValues: { name: '', projectType: 'ACADEMIC', description: '' },
+    resolver: zodResolver(schema), defaultValues: { name: '', projectType: 'CENSO', description: '' },
   });
   const selectedType = watch('projectType');
   const isCenso = selectedType === 'CENSO';
@@ -113,7 +112,7 @@ export default function ProjectCreateModal({ ownerUserId, onClose, onCreated }) 
       {isCenso && step === 2 && <InstrumentStep instruments={instruments} selected={instrumentKind} onSelect={setInstrumentKind} />}
       {isCenso && step === 3 && <PlanStep plans={plans} selected={analyticsPlan} onSelect={setAnalyticsPlan} />}
       {isCenso && step === 4 && <StudyStep register={register} errors={errors} context={studyContext} setContext={setStudyContext} />}
-      {!isCenso && <><FormField label="Nombre del proyecto" placeholder="Ej. Tesis de satisfacción académica" error={errors.name?.message} autoFocus {...register('name')} /><FormField label="Descripción (opcional)" error={errors.description?.message} {...register('description')} /></>}
+      {!isCenso && <><FormField label="Nombre del proyecto" placeholder="Ej. Evaluación de clima y riesgos 2026" error={errors.name?.message} autoFocus {...register('name')} /><FormField label="Descripción (opcional)" error={errors.description?.message} {...register('description')} /></>}
       {mutation.isError ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2.5 text-sm text-danger">{mutation.error?.message || 'No se pudo crear el proyecto.'}</p> : null}
     </form>
   </Modal>;

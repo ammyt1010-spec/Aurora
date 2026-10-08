@@ -1,131 +1,143 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Archive, FolderKanban, Plus, Send } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Activity,
+  Gauge,
+  HeartPulse,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 
-import { useAuth } from '../../auth/AuthContext.jsx';
-import { listProjects } from '../../api/projects.js';
-import { Card } from '../../components/ui/Card.jsx';
-import MetricCard from '../../components/ui/MetricCard.jsx';
-import { PrimaryAction } from '../../components/ui/PrimaryAction.jsx';
-import { LoadingState } from '../../components/ui/LoadingState.jsx';
-import { ErrorState } from '../../components/ui/ErrorState.jsx';
-import ProjectCreateModal from '../../components/colmena/projects/ProjectCreateModal.jsx';
-import { displayLabel } from '../../utils/labels.js';
+import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
 
-const FLOW_STEPS = ['Proyecto', 'Variables y dimensiones', 'Datos exógenos', 'Formulario', 'Link', 'Respuestas'];
+const CATALOG_INSTRUMENTS = [
+  {
+    id: 'censopas_short',
+    title: 'CENSOPAS Corta (42 ítems)',
+    version: 'SHORT',
+    badge: 'Oficial SUNAFIL · PYMEs (<25 trab.)',
+    badgeColor: 'bg-amber/10 text-amber border-amber/20',
+    items: 42,
+    duration: '10 min',
+    description: 'Evaluación oficial de riesgos psicosociales obligatoria para pequeñas empresas y centros de trabajo con menos de 25 trabajadores.',
+    icon: ShieldCheck,
+  },
+  {
+    id: 'censopas_medium',
+    title: 'CENSOPAS Media (112 ítems)',
+    version: 'MEDIUM',
+    badge: 'Oficial SUNAFIL · Minería e Industria (≥25 trab.)',
+    badgeColor: 'bg-turquoise/10 text-turquoise border-turquoise/20',
+    items: 112,
+    duration: '20 min',
+    description: 'Estándar completo para minería, hidrocarburos y gran industria. Evalúa 20 subdimensiones de exigencias, autonomía y apoyo social.',
+    icon: Gauge,
+  },
+  {
+    id: 'safety_climate',
+    title: 'Clima de Seguridad Industrial',
+    version: 'SHORT',
+    badge: 'Prevención Minero-Industrial',
+    badgeColor: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+    items: 35,
+    duration: '8 min',
+    description: 'Medición de la percepción del compromiso de la alta dirección, supervisión de campo y cultura de prevención en operaciones.',
+    icon: Activity,
+  },
+  {
+    id: 'occupational_health',
+    title: 'Salud Ocupacional & Ergonomía',
+    version: 'SHORT',
+    badge: 'Carga Física y Fatiga',
+    badgeColor: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+    items: 28,
+    duration: '6 min',
+    description: 'Tamizaje de sintomatología musculoesquelética (Cuestionario Nórdico adaptado) y fatiga laboral en turnos de minería.',
+    icon: HeartPulse,
+  },
+];
 
 export default function DashboardPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
-  const [showCreateProject, setShowCreateProject] = useState(false);
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['projects', { page: 1 }],
-    queryFn: () => listProjects({ page: 1, pageSize: 10 }),
-  });
-
-  if (isLoading) return <LoadingState label="Cargando tu espacio de trabajo..." />;
-  if (isError) return <ErrorState message={error?.message || 'No pudimos cargar tus proyectos.'} />;
-
-  const projects = data?.items ?? [];
-  const latestProject = projects[0];
-  const displayName = user?.first_name || user?.username || '';
+  const [selectedInstrument, setSelectedInstrument] = useState(null);
 
   return (
-    <div className="colmena-page">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,0.7fr)]">
-        <div className="relative overflow-hidden rounded-2xl border border-border bg-surface bg-hero-glow p-5 sm:p-4 shadow-card">
-          <p className="colmena-label">Hola, {displayName}</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-dark">Bienvenido a tu espacio en Colmena</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-5 text-muted">
-            Diseña variables y dimensiones, construye el formulario, recolecta respuestas y analiza resultados — todo
-            en un solo flujo.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <PrimaryAction onClick={() => setShowCreateProject(true)}>
-              <Plus size={16} className="mr-1" />
-              Crear proyecto
-            </PrimaryAction>
-            {latestProject ? (
-              <Link to={`/colmena/project/${latestProject.id}`}>
-                <button type="button" className="colmena-button-secondary">
-                  Continuar: {latestProject.name}
-                </button>
-              </Link>
-            ) : (
-              <Link to="/colmena/archive/projects">
-                <button type="button" className="colmena-button-secondary">
-                  Ver archivo
-                </button>
-              </Link>
-            )}
+    <div className="colmena-page space-y-4 text-xs">
+      {/* High-Density Header Banner */}
+      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber/10 text-amber text-[11px] font-bold uppercase tracking-wider mb-1">
+              <Sparkles size={12} /> AURORA PRO — Menú de Instrumentos
+            </div>
+            <h1 className="text-lg font-bold tracking-tight text-dark">
+              Catálogo de Instrumentos de Evaluación
+            </h1>
+            <p className="text-xs text-muted">
+              Selecciona el instrumento para tu empresa, confirma la solicitud y genera directamente el enlace o código QR.
+            </p>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
-          <MetricCard icon={FolderKanban} label="Proyectos" value={projects.length} />
-          <Link to="/colmena/archive/projects">
-            <Card className="flex h-full items-center gap-3 px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-glow">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
-                <Archive size={20} />
-              </div>
-              <div>
-                <p className="colmena-label">Archivo</p>
-                <p className="text-sm font-semibold text-dark">Ver todos los proyectos</p>
-              </div>
-            </Card>
-          </Link>
         </div>
       </div>
 
-      <Card>
-        <p className="mb-3 colmena-label">Flujo metodológico</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {FLOW_STEPS.map((step, index) => (
-            <div key={step} className="rounded-xl border border-border bg-surfaceSoft px-3 py-3 text-center">
-              <p className="text-[11px] font-semibold text-amber">{index + 1}</p>
-              <p className="mt-1 text-[13px] font-medium text-dark">{step}</p>
-            </div>
-          ))}
+      {/* Main Instrument Catalog Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted">
+            Catálogo de Instrumentos Disponibles para Solicitar
+          </h2>
+          <span className="text-[11px] text-muted">Selección rápida en 1 clic</span>
         </div>
-      </Card>
 
-      {showCreateProject && user ? (
-        <ProjectCreateModal
-          ownerUserId={user.id}
-          onClose={() => setShowCreateProject(false)}
-          onCreated={(project) => navigate(`/colmena/project/${project.id}`)}
-        />
-      ) : null}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {CATALOG_INSTRUMENTS.map((inst) => {
+            const Icon = inst.icon;
+            return (
+              <div
+                key={inst.id}
+                className="flex flex-col justify-between rounded-xl border border-border bg-surface p-4 space-y-3 hover:border-amber/50 hover:shadow-md transition"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-1.5">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${inst.badgeColor}`}>
+                      {inst.badge}
+                    </span>
+                    <Icon size={18} className="text-muted shrink-0" />
+                  </div>
 
-      {projects.length > 0 ? (
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <p className="colmena-label">Proyectos recientes</p>
-            <Link to="/colmena/archive/projects" className="inline-flex items-center gap-1 text-sm font-medium text-amber hover:underline">
-              Ver todos
-              <Send size={13} />
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {projects.slice(0, 6).map((project) => (
-              <Link key={project.id} to={`/colmena/project/${project.id}`}>
-                <Card className="flex h-full flex-col justify-between gap-3 transition hover:-translate-y-0.5 hover:shadow-glow">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber/10 text-amber">
-                    <FolderKanban size={18} />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-dark">{project.name}</p>
-                    <p className="mt-1 text-xs text-muted">{displayLabel(project.project_type)}</p>
-                  </div>
-                  <span className="inline-flex items-center gap-1 text-sm font-medium text-amber">
-                    Abrir <ArrowRight size={14} />
+                  <h3 className="text-sm font-bold text-dark leading-tight">{inst.title}</h3>
+                  <p className="text-[11px] text-muted leading-relaxed">{inst.description}</p>
+                </div>
+
+                <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold text-muted">
+                    {inst.items} preguntas · ~{inst.duration}
                   </span>
-                </Card>
-              </Link>
-            ))}
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInstrument(inst)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber hover:bg-amber-600 text-dark font-bold text-xs shadow-sm transition transform active:scale-95 shrink-0"
+                  >
+                    ⚡ Solicitar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      {/* Confirmation Modal */}
+      {selectedInstrument ? (
+        <InstrumentConfirmModal
+          instrument={selectedInstrument}
+          isOpen={Boolean(selectedInstrument)}
+          onClose={() => setSelectedInstrument(null)}
+          onCreated={(data) => {
+            setSelectedInstrument(null);
+            navigate(`/colmena/project/${data.project_id}/telemetry`);
+          }}
+        />
       ) : null}
     </div>
   );

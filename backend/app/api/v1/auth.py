@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.core.exceptions import AuthenticationError
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
@@ -23,6 +25,19 @@ async def register(payload: RegisterRequest, session: AsyncSession = Depends(get
 async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db)):
     service = AuthService(session)
     token = await service.login(payload)
+    return TokenResponse(access_token=token)
+
+
+@router.post("/demo-login", response_model=TokenResponse)
+async def demo_login(request: Request, session: AsyncSession = Depends(get_db)):
+    settings = get_settings()
+    client_host = request.client.host if request.client else ""
+    if settings.environment == "production" or not settings.demo_access_enabled:
+        raise AuthenticationError("El acceso demo no está disponible.")
+    if client_host not in {"127.0.0.1", "::1", "localhost"}:
+        raise AuthenticationError("El acceso demo solo está disponible desde el servidor local.")
+    service = AuthService(session)
+    token = await service.demo_login(settings.demo_user_email)
     return TokenResponse(access_token=token)
 
 

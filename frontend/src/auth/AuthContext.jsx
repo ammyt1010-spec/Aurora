@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { fetchCurrentUser, loginUser, registerUser } from '../api/auth.js';
+import { demoLoginUser, fetchCurrentUser, loginUser, registerUser } from '../api/auth.js';
 import { clearStoredToken, getStoredToken, setStoredToken } from '../api/client.js';
 
 const AuthContext = createContext(null);
@@ -11,11 +11,18 @@ export function AuthProvider({ children }) {
   const [status, setStatus] = useState('loading'); // loading | authenticated | anonymous
 
   const loadCurrentUser = useCallback(async () => {
-    const token = getStoredToken();
+    let token = getStoredToken();
     if (!token) {
-      setUser(null);
-      setStatus('anonymous');
-      return;
+      try {
+        const { access_token: demoToken } = await demoLoginUser();
+        setStoredToken(demoToken);
+        token = demoToken;
+      } catch (err) {
+        console.warn('Could not auto-fetch demo token:', err);
+        setUser(null);
+        setStatus('anonymous');
+        return;
+      }
     }
     try {
       const currentUser = await fetchCurrentUser();
@@ -41,6 +48,12 @@ export function AuthProvider({ children }) {
     [loadCurrentUser],
   );
 
+  const demoLogin = useCallback(async () => {
+    const { access_token: token } = await demoLoginUser();
+    setStoredToken(token);
+    await loadCurrentUser();
+  }, [loadCurrentUser]);
+
   const signup = useCallback(async (payload) => {
     await registerUser(payload);
   }, []);
@@ -52,8 +65,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, status, login, signup, logout }),
-    [user, status, login, signup, logout],
+    () => ({ user, status, login, demoLogin, signup, logout }),
+    [user, status, login, demoLogin, signup, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,1 +1,18 @@
+# Local configuration and secrets
+.env
+.env.*
+backend/.env
+frontend/.env*
+backend/poetry.toml
+
+# Runtime data and generated artifacts
+*.db
+*.log
+logs/
+run/
+reports_storage/
+exports_storage/
+backend/reports_storage/
+backend/exports_storage/
+diagnostico-colmena.txt
 .superdesign/tmp/

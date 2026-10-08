@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, FlaskConical, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, FlaskConical, ShieldCheck, PlusCircle, Sparkles } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { useProjectInstruments } from '../../../hooks/useProjectInstruments.js';
@@ -10,11 +11,13 @@ import { getCensopasPlans, getCensopasReadiness } from '../../../api/instruments
 
 import { PageHeader } from '../../../components/layout/PageHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
+import { Button } from '../../../components/ui/Button.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
 import { ErrorState } from '../../../components/ui/ErrorState.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
+import CustomInstrumentModal from '../../../components/colmena/instruments/CustomInstrumentModal.jsx';
 
 const COUNT_BADGES = [
   ['question_count', 'preguntas'],
@@ -93,8 +96,7 @@ function CurrentVersionCard({ versionId, versionCode }) {
           <div>
             <p className="font-semibold text-dark">Versión vinculada a este proyecto</p>
             <p className="mt-1 text-sm text-muted">
-              {versionCode || 'Versión'} · no forma parte del catálogo de planes oficiales publicados
-              (por eso no aparece marcada como &ldquo;Plan actual&rdquo; en la lista de abajo).
+              {versionCode || 'Versión'} · no forma parte del catálogo de planes oficiales publicados.
             </p>
           </div>
         </div>
@@ -122,6 +124,7 @@ function CurrentVersionCard({ versionId, versionCode }) {
 export default function ProjectInstrumentsPage() {
   const { projectId } = useParams();
   useActiveProject(projectId);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { data: project, isLoading: isLoadingProject, error } = useQuery({
     queryKey: ['project', projectId],
@@ -148,19 +151,20 @@ export default function ProjectInstrumentsPage() {
 
   const currentVersionId = Number(project?.metadata?.instrument_version_id || 0);
   const currentVersionInCatalog = plans.some((plan) => plan.instrument_version_id === currentVersionId);
-  // El catálogo oficial (`/censopas/plans`) sólo lista versiones ACTIVE/LOCKED
-  // publicadas — un proyecto puede estar vinculado a otra versión (demo/TEST,
-  // en construcción) que nunca aparecerá ahí. Sin esta tarjeta, la página
-  // mostraba un plan oficial no relacionado marcado como si fuera el actual.
   const showUnlistedCurrentVersion =
     Boolean(currentVersionId) && !currentVersionInCatalog && activeInstrument?.versionId === currentVersionId;
 
   return (
     <div className="colmena-page">
       <PageHeader
-        eyebrow="Instrumentos"
-        title="Plan CensoPÁS aprovisionado"
-        description="El backend vinculó automáticamente el instrumento fijo, sus dimensiones, preguntas, escalas, datos exógenos y el baremo de referencia del proyecto."
+        eyebrow="Instrumentos & Catálogo Metodológico"
+        title="Instrumentos de Medición Precargados"
+        description="Instrumentos estandarizados CENSOPAS-COPSOQ (Versiones corta y media) precargados y listos para la evaluación corporativa. Incluye soporte para nuevos factores extensibles."
+        actions={
+          <Button onClick={() => setIsModalOpen(true)} size="sm" type="button" className="bg-amber hover:bg-amber-dark">
+            <PlusCircle size={15} className="mr-1.5" /> Adaptar / Importar Nuevo Instrumento
+          </Button>
+        }
       />
 
       {showUnlistedCurrentVersion ? (
@@ -187,6 +191,34 @@ export default function ProjectInstrumentsPage() {
           ))}
         </div>
       )}
+
+      {/* Banner de Extensibilidad Corporativa */}
+      <Card className="mt-4 border-dashed border-amber/40 bg-amber/5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber/20 text-amber">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <p className="font-bold text-dark">¿Necesitas medir otros factores de riesgo específicos?</p>
+              <p className="text-xs text-muted">
+                Colmena 2.0 admite la incorporación de Burnout (MBI), Clima Ergonómico, Ciberestrés y escalas personalizadas.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => setIsModalOpen(true)}>
+            Cargar Manifiesto
+          </Button>
+        </div>
+      </Card>
+
+      <CustomInstrumentModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onImportSuccess={(data) => {
+          console.log('Instrumento personalizado importado:', data);
+        }}
+      />
     </div>
   );
 }

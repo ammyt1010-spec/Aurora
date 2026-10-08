@@ -620,12 +620,8 @@ export default function ProjectPlanPage() {
   if (!project) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page">
-      <PageHeader
-        eyebrow="Plan preventivo"
-        title={project.name}
-        description="Prioriza acciones a partir de los hallazgos, asigna responsables y da seguimiento con indicadores."
-      />
+    <div className="colmena-page space-y-6">
+      <ProjectWorkspaceHeader activeTab="plan" />
 
       <Card>
         <StudySelector projectId={projectId} studyId={studyId} onStudyChange={setStudyId} />

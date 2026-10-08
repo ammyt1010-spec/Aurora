@@ -1,5 +1,7 @@
 from httpx import AsyncClient
 
+from app.core.security import create_access_token
+
 
 async def test_project_can_own_and_list_multiple_instruments(
     client: AsyncClient, seed_user, seed_project
@@ -29,6 +31,8 @@ async def test_project_can_own_and_list_multiple_instruments(
 async def test_instrument_from_another_project_cannot_create_survey(
     client: AsyncClient, seed_user, seed_project
 ) -> None:
+    token = create_access_token(seed_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
     other_project = (
         await client.post(
             "/api/v1/projects",
@@ -37,6 +41,7 @@ async def test_instrument_from_another_project_cannot_create_survey(
                 "name": "Otro proyecto",
                 "project_type": "ACADEMIC",
             },
+            headers=headers,
         )
     ).json()
     instrument = (

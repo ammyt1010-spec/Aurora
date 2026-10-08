@@ -7,18 +7,20 @@ export function BrandLogo({ className, compact = false }) {
   }
 
   return (
-    <div className={cn('flex h-[32px] items-center gap-3 overflow-visible', className)}>
-      <BrandMark className="h-[32px] w-[32px] shrink-0" />
+    <div className={cn('flex h-[36px] items-center gap-2.5 overflow-visible', className)}>
+      <BrandMark className="h-[34px] w-[34px] shrink-0" />
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-[2px] text-[15px] font-bold tracking-[0.1em] text-[#111111] leading-none">
-          <span>COLM</span>
-          <span className="flex flex-col gap-[2px] mt-[-1px]">
-            <span className="block h-[3px] w-[12px] rounded-full bg-[#F5B21A]" />
-            <span className="block h-[3px] w-[12px] rounded-full bg-[#FF6A2A]" />
-            <span className="block h-[3px] w-[12px] rounded-full bg-[#11B7B2]" />
+        <div className="flex items-center gap-1.5 leading-none">
+          <span className="text-[17px] font-black tracking-[0.12em] text-slate-900 dark:text-white">
+            AURORA
           </span>
-          <span>NA</span>
+          <span className="rounded-md bg-gradient-to-r from-aurora-500 to-cyan-500 px-1.5 py-0.5 text-[9px] font-black tracking-widest text-white uppercase shadow-sm">
+            PRO
+          </span>
         </div>
+        <span className="mt-0.5 text-[9px] font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+          RIESGOS PSICOSOCIALES
+        </span>
       </div>
     </div>
   );

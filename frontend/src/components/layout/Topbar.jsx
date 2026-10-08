@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { API_ROOT_URL } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
+import ThemeToggle from '../ui/ThemeToggle.jsx';
 
 async function fetchHealth() {
   const response = await fetch(`${API_ROOT_URL}/health`);
@@ -68,6 +69,8 @@ export function Topbar() {
           >
             <RefreshCcw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </button>
+
+          <ThemeToggle />
 
           <button
             aria-label="Notificaciones"

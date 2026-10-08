@@ -1,10 +1,23 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
-  darkMode: "media",
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
+        aurora: {
+          50: '#f0f4ff', 
+          100: '#e0e9ff', 
+          200: '#c7d6fe', 
+          300: '#a4b8fc', 
+          400: '#818cf8', 
+          500: '#6366f1', 
+          600: '#4f46e5', 
+          700: '#4338ca', 
+          800: '#3730a3', 
+          900: '#312e81', 
+          950: '#1e1b4b',
+        },
         background: "#F8F9FB",
         surface: "#FFFFFF",
         surfaceSoft: "#FFFCF5",
@@ -54,6 +67,28 @@ export default {
       },
       animation: {
         "fade-in": "colmena-fade-in 0.35s ease-out",
+        'counter-up': 'counter-up 1s ease-out',
+        'slide-up': 'slide-up 0.5s ease-out',
+        'slide-down': 'slide-down 0.5s ease-out',
+        'glow-pulse': 'glow-pulse 2s infinite',
+      },
+      keyframes: {
+        'counter-up': {
+          '0%': { transform: 'translateY(10px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        'slide-up': {
+          '0%': { transform: 'translateY(20px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        'slide-down': {
+          '0%': { transform: 'translateY(-20px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        'glow-pulse': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.5' },
+        },
       },
     },
   },

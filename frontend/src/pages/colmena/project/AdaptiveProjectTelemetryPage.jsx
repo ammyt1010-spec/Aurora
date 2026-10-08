@@ -35,8 +35,9 @@ function usePageVisibility() {
  * dimensión. La analítica avanzada (riesgo, segmentación, relaciones)
  * vive en Resultados, no aquí.
  */
-export default function AdaptiveProjectTelemetryPage() {
-  const { projectId } = useParams();
+export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
+  const params = useParams();
+  const projectId = overrideProjectId || params.projectId;
   useActiveProject(projectId);
   const [studyId, setStudyId] = useState(null);
   const [paused, setPaused] = useState(false);
@@ -91,11 +92,9 @@ export default function AdaptiveProjectTelemetryPage() {
   if (!projectQuery.data) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page">
-      <PageHeader
-        eyebrow="Telemetría"
-        title={projectQuery.data.name}
-        description="Participación y calidad de captura: cómo avanza la recolección y qué tan confiables son los datos que llegan."
+    <div className="colmena-page space-y-6">
+      <ProjectWorkspaceHeader
+        activeTab="telemetry"
         actions={(
           <>
             <Button onClick={() => setPaused((value) => !value)} size="sm" type="button" variant="secondary">

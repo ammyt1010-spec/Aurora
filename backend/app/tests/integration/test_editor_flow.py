@@ -2,12 +2,17 @@
 
 from httpx import AsyncClient
 
+from app.core.security import create_access_token
+
 
 async def test_full_editor_flow(client: AsyncClient, seed_user) -> None:
+    token = create_access_token(seed_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
     project = (
         await client.post(
             "/api/v1/projects",
             json={"owner_user_id": seed_user.id, "name": "Tesis de satisfacción académica", "project_type": "ACADEMIC"},
+            headers=headers,
         )
     ).json()
     instrument = (

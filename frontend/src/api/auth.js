@@ -22,6 +22,13 @@ export function loginUser({ email, password }) {
   });
 }
 
+export function demoLoginUser() {
+  return apiRequest('/auth/demo-login', {
+    method: 'POST',
+    skipAuth: true,
+  });
+}
+
 export function fetchCurrentUser() {
   return apiRequest('/auth/me');
 }

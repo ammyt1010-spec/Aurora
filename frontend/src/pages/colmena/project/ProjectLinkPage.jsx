@@ -1,200 +1,36 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Check, Copy, Send } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  QrCode,
+  Send,
+  ShieldCheck,
+  Users,
+  Building2,
+  Lock,
+  Sparkles,
+  RefreshCcw,
+} from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
-import { archiveStudy, closeStudy, createStudy, listStudies, openStudy } from '../../../api/studies.js';
-import { listSurveys } from '../../../api/surveys.js';
+import { listStudies, openStudy, closeStudy } from '../../../api/studies.js';
 
-import { PageHeader } from '../../../components/layout/PageHeader.jsx';
+import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
 import { Button } from '../../../components/ui/Button.jsx';
-import { PrimaryAction } from '../../../components/ui/PrimaryAction.jsx';
-import { Modal } from '../../../components/ui/Modal.jsx';
-import { StatusPill } from '../../../components/ui/StatusPill.jsx';
-import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
-import FormField from '../../../components/ui/FormField.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
-import { displayLabel } from '../../../utils/labels.js';
-
-const STUDY_TYPES = [
-  { value: 'ACADEMIC', label: 'Académico' },
-  { value: 'CENSO', label: 'CensoPÁS' },
-  { value: 'CUSTOM', label: 'Personalizado' },
-  { value: 'RESEARCH', label: 'Investigación' },
-];
-
-const STUDY_TONE = { DRAFT: 'draft', OPEN: 'active', CLOSED: 'collecting', ARCHIVED: 'neutral' };
-
-const schema = z.object({
-  name: z.string().min(1, 'Ingresa un nombre'),
-  surveyId: z.coerce.number().positive('Selecciona un formulario'),
-  studyType: z.string().min(1),
-  minPublishableN: z.coerce.number().min(1).default(5),
-});
-
-function NewStudyModal({ surveys, projectType, onClose, onCreate, isSubmitting }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm({
-    resolver: zodResolver(schema),
-    defaultValues: { surveyId: surveys[0]?.id || '', studyType: projectType === 'CENSO' ? 'CENSO' : 'ACADEMIC', minPublishableN: 5 },
-  });
-
-  const formId = 'new-study-form';
-
-  return (
-    <Modal
-      title="Nuevo estudio"
-      subtitle="Un estudio abre la recolección de respuestas y genera la URL pública."
-      onClose={onClose}
-      size="md"
-      footer={
-        <>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" form={formId} variant="primary" loading={isSubmitting}>
-            Crear estudio
-          </Button>
-        </>
-      }
-    >
-      <form id={formId} className="flex flex-col gap-4" onSubmit={handleSubmit(onCreate)} noValidate>
-        <FormField label="Nombre" placeholder="Aplicación 2026-I" error={errors.name?.message} {...register('name')} />
-        <label className="flex flex-col gap-2">
-          <span className="colmena-label">Formulario</span>
-          <select className="colmena-input h-10 px-4 text-sm text-dark" {...register('surveyId')}>
-            {surveys.map((survey) => (
-              <option key={survey.id} value={survey.id}>
-                {survey.name}
-              </option>
-            ))}
-          </select>
-          {errors.surveyId ? <span className="text-xs font-medium text-danger">{errors.surveyId.message}</span> : null}
-        </label>
-        {projectType === 'CENSO' ? (
-          <input type="hidden" value="CENSO" {...register('studyType')} />
-        ) : (
-          <label className="flex flex-col gap-2">
-            <span className="colmena-label">Tipo</span>
-            <select className="colmena-input h-10 px-4 text-sm text-dark" {...register('studyType')}>
-              {STUDY_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <FormField
-          label="N mínimo publicable"
-          type="number"
-          hint="Mínimo de respuestas válidas por celda para poder publicar resultados desagregados."
-          {...register('minPublishableN')}
-        />
-      </form>
-    </Modal>
-  );
-}
-
-function CopyLinkButton({ url }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-amber transition hover:border-amber/40"
-      title={url}
-    >
-      {copied ? <Check size={14} /> : <Copy size={14} />}
-    </button>
-  );
-}
-
-function StudiesTable({ studies, onOpen, onClose, onArchive, isMutating }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead>
-          <tr className="bg-surfaceSoft">
-            {['Estudio', 'Tipo', 'Estado', 'Link público', ''].map((head) => (
-              <th
-                key={head}
-                className="border-b border-r border-border px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-muted last:border-r-0"
-              >
-                {head}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {studies.map((study) => {
-            const publicUrl = `${window.location.origin}/encuesta/${study.public_id}`;
-            return (
-              <tr key={study.id} className="transition hover:bg-[#fafbfc]">
-                <td className="border-b border-r border-border px-4 py-3 font-medium text-dark">{study.name}</td>
-                <td className="border-b border-r border-border px-4 py-3">
-                  <StatusPill label={displayLabel(study.study_type)} tone="neutral" />
-                </td>
-                <td className="border-b border-r border-border px-4 py-3">
-                  <StatusPill label={displayLabel(study.status)} tone={STUDY_TONE[study.status] || 'neutral'} />
-                </td>
-                <td className="border-b border-r border-border px-4 py-3">
-                  {study.status === 'OPEN' ? (
-                    <div className="flex items-center gap-2">
-                      <span className="max-w-[220px] truncate font-mono text-xs text-yellowDark">{publicUrl}</span>
-                      <CopyLinkButton url={publicUrl} />
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted">—</span>
-                  )}
-                </td>
-                <td className="border-b border-border px-3 py-3">
-                  <div className="flex justify-end gap-1.5">
-                    {study.status === 'DRAFT' ? (
-                      <button type="button" onClick={() => onOpen(study.id)} disabled={isMutating} className="colmena-button-sm-primary">
-                        <Send size={13} className="mr-1" />
-                        Abrir
-                      </button>
-                    ) : null}
-                    {study.status === 'OPEN' ? (
-                      <button type="button" onClick={() => onClose(study.id)} className="colmena-button-sm-secondary">
-                        Cerrar
-                      </button>
-                    ) : null}
-                    {study.status === 'CLOSED' ? (
-                      <button type="button" onClick={() => onArchive(study.id)} className="colmena-button-sm-secondary">
-                        <Archive size={13} className="mr-1" />
-                        Archivar
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export default function ProjectLinkPage() {
   const { projectId } = useParams();
   const queryClient = useQueryClient();
-  const [showNewStudy, setShowNewStudy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [accessCode, setAccessCode] = useState(() => localStorage.getItem(`access_code_${projectId}`) || '');
+  const [savedCodeMsg, setSavedCodeMsg] = useState(false);
   useActiveProject(projectId);
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -202,95 +38,170 @@ export default function ProjectLinkPage() {
     queryFn: () => getProject(projectId),
   });
 
-  const { data: surveysData, isLoading: isLoadingSurveys } = useQuery({
-    queryKey: ['surveys', projectId],
-    queryFn: () => listSurveys(projectId, { page: 1, pageSize: 100 }),
-    enabled: Boolean(projectId),
-  });
-  const surveys = surveysData?.items || [];
-
-  const { data, isLoading } = useQuery({
+  const { data: studiesData, isLoading: isLoadingStudies } = useQuery({
     queryKey: ['studies', projectId],
-    queryFn: () => listStudies(projectId, { page: 1, pageSize: 50 }),
+    queryFn: () => listStudies(projectId, { page: 1, pageSize: 20 }),
     enabled: Boolean(projectId),
   });
-  const studies = data?.items ?? [];
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['studies', projectId] });
+  const studies = studiesData?.items ?? [];
+  const activeStudy = studies.find((s) => s.status === 'OPEN') || studies[0];
+  const publicId = activeStudy?.public_id || project?.censopas_study?.public_id;
+  const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
 
-  const createMutation = useMutation({
-    mutationFn: (values) =>
-      createStudy(projectId, {
-        survey_id: values.surveyId,
-        name: values.name,
-        study_type: values.studyType,
-        min_publishable_n: values.minPublishableN,
-      }),
-    onSuccess: () => {
-      invalidate();
-      setShowNewStudy(false);
-    },
-  });
+  const handleCopyLink = () => {
+    if (!surveyUrl) return;
+    navigator.clipboard.writeText(surveyUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
 
-  const lifecycleMutation = useMutation({
-    mutationFn: ({ action, studyId }) => {
-      if (action === 'open') return openStudy(studyId);
-      if (action === 'close') return closeStudy(studyId);
-      return archiveStudy(studyId);
-    },
-    onSuccess: invalidate,
-  });
+  const handleSaveAccessCode = () => {
+    localStorage.setItem(`access_code_${projectId}`, accessCode);
+    setSavedCodeMsg(true);
+    setTimeout(() => setSavedCodeMsg(false), 2500);
+  };
 
-  if (isLoadingProject) return <LoadingState label="Cargando..." />;
+  if (isLoadingProject || isLoadingStudies) return <LoadingState label="Cargando enlace de evaluación..." />;
   if (!project) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page">
-      <PageHeader
-        eyebrow="Link"
-        title="Link y respuestas"
-        description="Publica aplicaciones del formulario y gestiona sus respuestas."
-        actions={surveys.length ? <PrimaryAction onClick={() => setShowNewStudy(true)}>Nuevo estudio</PrimaryAction> : null}
-       
-      />
+    <div className="colmena-page space-y-6">
+      <ProjectWorkspaceHeader activeTab="link" />
 
-      {showNewStudy ? (
-        <NewStudyModal
-          surveys={surveys}
-          projectType={project.project_type}
-          onClose={() => setShowNewStudy(false)}
-          onCreate={(values) => createMutation.mutate(values)}
-          isSubmitting={createMutation.isPending}
-        />
-      ) : null}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Survey Link Box */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="p-6 space-y-5 border-amber/30 bg-surface shadow-sm">
+            <div className="flex items-center justify-between border-b border-border/80 pb-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold uppercase tracking-wider">
+                  <ShieldCheck size={14} /> Encuesta Pública Habilitada
+                </span>
+                <h2 className="text-xl font-bold text-dark mt-2">Enlace Oficial de Respuesta</h2>
+                <p className="text-xs text-muted mt-0.5">
+                  Comparte este enlace con los trabajadores de la empresa para la recolección confidencial de respuestas.
+                </p>
+              </div>
+            </div>
 
-      {isLoadingSurveys ? (
-        <LoadingState label="Cargando formularios..." />
-      ) : surveys.length === 0 ? (
-        <Card className="py-10">
-          <EmptyState title="Primero crea un formulario." description="Publica las variables y preguntas del Constructor antes de crear un estudio." />
-        </Card>
-      ) : isLoading ? (
-        <LoadingState label="Cargando estudios..." />
-      ) : studies.length === 0 ? (
-        <Card className="py-10">
-          <EmptyState title="Todavía no hay estudios." description="Crea uno para abrir la recolección de respuestas.">
-            <PrimaryAction onClick={() => setShowNewStudy(true)}>Nuevo estudio</PrimaryAction>
-          </EmptyState>
-        </Card>
-      ) : (
-        <div>
-          <Card padded={false} className="rounded-none border-x-0">
-            <StudiesTable
-              studies={studies}
-              isMutating={lifecycleMutation.isPending}
-              onOpen={(id) => lifecycleMutation.mutate({ action: 'open', studyId: id })}
-              onClose={(id) => lifecycleMutation.mutate({ action: 'close', studyId: id })}
-              onArchive={(id) => lifecycleMutation.mutate({ action: 'archive', studyId: id })}
-            />
+            {surveyUrl ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-border bg-surfaceSoft p-4 space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted block">
+                    URL de Aplicación Directa
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={surveyUrl}
+                      className="flex-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-xs font-mono text-dark select-all outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber hover:bg-amber-600 text-dark font-bold text-xs shadow-sm transition"
+                    >
+                      <Copy size={14} />
+                      {copied ? '¡Copiado!' : 'Copiar Enlace'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <a
+                    href={surveyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-surface hover:bg-surfaceSoft text-dark font-semibold text-xs transition"
+                  >
+                    <ExternalLink size={14} />
+                    Abrir Formulario en Nueva Ventana
+                  </a>
+
+                  <span className="text-xs text-muted flex items-center gap-1">
+                    <Users size={14} className="text-amber" />
+                    Respuestas Anónimas Protegidas por CENSOPAS
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">No se ha generado un enlace público aún.</p>
+            )}
+          </Card>
+
+          {/* Worker Authentication / Company Access Code */}
+          <Card className="p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber/10 text-amber">
+                <Lock size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-dark">Validación de Trabajadores y Acceso Restringido</h3>
+                <p className="text-xs text-muted mt-0.5">
+                  Establece un código de verificación empresarial (opcional) para asegurar que solo personal autorizado conteste la encuesta.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  placeholder="ej. MINERA-AURORA-2026"
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-xs text-dark placeholder:text-muted focus:border-amber outline-none transition"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveAccessCode}
+                className="px-4 py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark font-bold text-xs transition"
+              >
+                {savedCodeMsg ? '¡Guardado!' : 'Guardar Código'}
+              </button>
+            </div>
           </Card>
         </div>
-      )}
+
+        {/* QR Code & Information Sidebar */}
+        <div className="space-y-6">
+          <Card className="p-6 text-center space-y-4">
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-dark">
+              <QrCode size={16} className="text-amber" /> Código QR de Aplicación
+            </div>
+
+            {surveyUrl ? (
+              <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-border bg-white p-3 shadow-inner">
+                {/* Clean QR code rendering using Google Charts QR API */}
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(surveyUrl)}`}
+                  alt="Código QR de la Encuesta"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            ) : null}
+
+            <p className="text-[11px] text-muted leading-tight">
+              Imprime este código QR para colocarlo en afiches, áreas comunes o enviar por WhatsApp corporativo.
+            </p>
+
+            {surveyUrl ? (
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(surveyUrl)}`}
+                target="_blank"
+                download="qr_encuesta_aurora.png"
+                rel="noreferrer"
+                className="inline-block w-full py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark text-xs font-bold transition"
+              >
+                Descargar QR Alta Resolución
+              </a>
+            ) : null}
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

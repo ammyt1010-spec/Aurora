@@ -192,7 +192,7 @@ export default function BaremBuilder({ versionId, projectId }) {
               className="colmena-input h-10 px-3 text-sm"
               value={form.source}
               onChange={(event) => setForm({ ...form, source: event.target.value })}
-              placeholder="Tesis, manual o estudio piloto"
+              placeholder="Manual técnico CENSOPAS o norma sectorial"
             />
           </label>
           <label className="flex flex-col gap-2">

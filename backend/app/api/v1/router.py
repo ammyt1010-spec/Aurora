@@ -17,6 +17,7 @@ from app.api.v1 import (
     surveys,
     telemetry,
     variables,
+    quick_eval,
 )
 
 api_router = APIRouter()
@@ -36,3 +37,4 @@ api_router.include_router(bsc.router)
 api_router.include_router(reports.router)
 api_router.include_router(public.router)
 api_router.include_router(telemetry.router)
+api_router.include_router(quick_eval.router)

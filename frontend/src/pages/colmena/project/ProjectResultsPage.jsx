@@ -333,8 +333,8 @@ export default function ProjectResultsPage() {
   if (!project) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page">
-      <PageHeader eyebrow="Resultados" title={project.name} description="Compara variables y profundiza en sus dimensiones dentro de cada aplicación." />
+    <div className="colmena-page space-y-6">
+      <ProjectWorkspaceHeader activeTab="results" />
 
       <Card>
         <StudySelector projectId={projectId} studyId={studyId} onStudyChange={setStudyId} />

@@ -3,42 +3,42 @@ import { cn } from '../utils/cn.js';
 export function BrandMark({ className }) {
   return (
     <svg
-      aria-label="Colmena"
-      className={cn('h-10 w-10 shrink-0', className)}
-      viewBox="260 15 380 380"
+      aria-label="Aurora Pro"
+      className={cn('shrink-0', className)}
+      viewBox="0 0 100 100"
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id="bm-y-top" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFD500"/><stop offset="100%" stopColor="#FFC000"/></linearGradient>
-        <linearGradient id="bm-y-right" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stopColor="#E6A800"/><stop offset="100%" stopColor="#CC9600"/></linearGradient>
-        <linearGradient id="bm-y-left" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFB300"/><stop offset="100%" stopColor="#E69500"/></linearGradient>
-        <linearGradient id="bm-o-top" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FF7B00"/><stop offset="100%" stopColor="#FF6200"/></linearGradient>
-        <linearGradient id="bm-o-right" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stopColor="#E64A00"/><stop offset="100%" stopColor="#CC3F00"/></linearGradient>
-        <linearGradient id="bm-o-left" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FF5500"/><stop offset="100%" stopColor="#D94000"/></linearGradient>
-        <linearGradient id="bm-t-top" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#00D2D6"/><stop offset="100%" stopColor="#00BCC0"/></linearGradient>
-        <linearGradient id="bm-t-right" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stopColor="#009EA3"/><stop offset="100%" stopColor="#00858A"/></linearGradient>
-        <linearGradient id="bm-t-left" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#00B5B8"/><stop offset="100%" stopColor="#009194"/></linearGradient>
+        <linearGradient id="aurora-shield-grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#818cf8" />
+          <stop offset="50%" stopColor="#4f46e5" />
+          <stop offset="100%" stopColor="#06b6d4" />
+        </linearGradient>
+        <linearGradient id="aurora-shield-grad2" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#6366f1" />
+          <stop offset="100%" stopColor="#2dd4bf" />
+        </linearGradient>
+        <filter id="aurora-shield-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
       </defs>
-      <g transform="translate(450, 235)">
-        <g transform="translate(0, -114)">
-          <polygon points="0,-92 80,-46 80,46 0,92 -80,46 -80,-46" fill="url(#bm-y-right)"/>
-          <polygon points="0,-92 -80,-46 -80,46 0,0" fill="url(#bm-y-left)"/>
-          <polygon points="0,-92 80,-46 0,0" fill="url(#bm-y-top)"/>
-          <polygon points="0,-64 55,-32 55,32 0,64 -55,32 -55,-32" fill="#FFFFFF"/>
-        </g>
-        <g transform="translate(-97, 54)">
-          <polygon points="0,-92 80,-46 80,46 0,92 -80,46 -80,-46" fill="url(#bm-o-right)"/>
-          <polygon points="0,-92 -80,-46 -80,46 0,0" fill="url(#bm-o-left)"/>
-          <polygon points="0,-92 80,-46 0,0" fill="url(#bm-o-top)"/>
-          <polygon points="0,-64 55,-32 55,32 0,64 -55,32 -55,-32" fill="#FFFFFF"/>
-        </g>
-        <g transform="translate(97, 54)">
-          <polygon points="0,-92 80,-46 80,46 0,92 -80,46 -80,-46" fill="url(#bm-t-right)"/>
-          <polygon points="0,-92 -80,-46 -80,46 0,0" fill="url(#bm-t-left)"/>
-          <polygon points="0,-92 80,-46 0,0" fill="url(#bm-t-top)"/>
-          <polygon points="0,-64 55,-32 55,32 0,64 -55,32 -55,-32" fill="#FFFFFF"/>
-        </g>
-      </g>
+      
+      <polygon
+        points="50,5 90,25 90,75 50,95 10,75 10,25"
+        fill="url(#aurora-shield-grad1)"
+        rx="8"
+        filter="url(#aurora-shield-glow)"
+      />
+      
+      <polygon points="50,14 82,30 82,70 50,86 18,70 18,30" fill="#1e1b4b" />
+      
+      <path
+        d="M 30,65 C 40,45 60,75 70,35 C 70,55 55,75 30,65 Z"
+        fill="url(#aurora-shield-grad2)"
+        opacity="0.95"
+      />
+      <circle cx="50" cy="50" r="8" fill="#a4b8fc" />
     </svg>
   );
 }
