@@ -5,6 +5,7 @@ import {
   Home,
   LayoutDashboard,
   Sparkles,
+  Settings2,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -48,9 +49,15 @@ export function Sidebar({ collapsed = false, onToggle }) {
     },
     {
       to: '/colmena/reports',
-      label: 'Reporte PDF SUNAFIL',
+      label: 'Informes profesionales',
       icon: FileBarChart2,
       active: (p) => p.includes('/reports'),
+    },
+    {
+      to: '/colmena/settings',
+      label: 'Administración y tarifas',
+      icon: Settings2,
+      active: (p) => p.startsWith('/colmena/settings'),
     },
   ];
 
@@ -77,7 +84,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
             />
           </div>
           <p className="mt-1 text-[11px] font-semibold text-amber tracking-wide">
-            Instrumentos Psicosociales
+            Evaluaciones empresariales
           </p>
         </div>
 
@@ -116,7 +123,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
           <p className="font-bold text-dark flex items-center gap-1">
             <Sparkles size={12} className="text-amber" /> AURORA PRO v3.0
           </p>
-          <p className="text-[10px]">Ley 29783 · R.M. 375-2008-TR</p>
+          <p className="text-[10px]">Plataforma web privada · Multidisciplinaria</p>
         </div>
       </div>
     </aside>

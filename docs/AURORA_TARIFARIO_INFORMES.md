@@ -54,3 +54,45 @@ Confirmar por escrito los tramos y montos, definir registro fiscal,
 conciliación bancaria, tratamiento de reembolsos y cancelación, impuestos,
 comprobantes electrónicos, antifraude y responsabilidades del operador.
 La autorización por pago debe validarse bajo concurrencia PostgreSQL.
+
+
+## Tarifario web propuesto: 20 % inferior al documento de referencia
+
+| Trabajadores | SUSESO/ISTAS21 breve | CENSOPAS corta | CENSOPAS media |
+|---|---:|---:|---:|
+| 1–100 | S/ 160 | S/ 400 | S/ 560 |
+| 101–300 | S/ 240 | S/ 600 | S/ 920 |
+| 301–500 | S/ 320 | S/ 720 | S/ 1200 |
+| 501–999 | S/ 400 | S/ 1000 | S/ 1560 |
+| 1000–1999 | S/ 560 | Cotizar | Cotizar |
+| 2000+ | Cotizar | Cotizar | Cotizar |
+
+Base: columnas «Plataforma Web» de las imágenes aportadas por el propietario,
+reducidas exactamente al 80 % de los importes de referencia. No se han
+tomado las columnas de encuesta en físico.
+
+Los tramos `Cotizar` requieren precio explícito por el operador.
+El tarifario se importa una sola vez **mediante acción confirmada del
+administrador central**. La migración de datos no sobreescribe precios.
+
+### Extras de la referencia (comparación; no se facturan automáticamente)
+
+- SUSESO, explicación de metodología S/170 → propuesta S/136.
+- SUSESO, explicación de resultados S/170 → propuesta S/136.
+- CENSOPAS corta, explicación de resultados S/200 → propuesta S/160.
+- CENSOPAS media, explicación de resultados S/250 → propuesta S/200.
+- Día adicional tras la fecha máxima de respuesta S/15 → referencia
+  reducida S/12, **no activada**.
+- Uso de plataforma por evaluación abandonada S/100 → referencia
+  reducida S/80, **no activada**.
+
+Estos componentes opcionales NO están incluidos en la orden estándar.
+Necesitan aprobación comercial específica para incorporarse al sistema.
+
+### Precisión tributaria y metodología
+
+El documento de referencia declara «No incluye IGV». El tratamiento
+tributario de las tarifas de AURORA está pendiente de confirmación;
+**no afirmamos que los importes sean finales con IGV incluido**.
+La existencia de una tarifa no equivale a la autorización, licencia
+o validación oficial del cuestionario empleado.
