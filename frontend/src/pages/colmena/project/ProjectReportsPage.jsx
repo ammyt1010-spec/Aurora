@@ -255,7 +255,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             )}
           </Card>
 
-          {isPaymentRequired && <ReportBillingPanel studyId={studyId} selectedOrderId={selectedOrderId}
+          {isPaymentRequired && <ReportBillingPanel studyId={studyId} study={study} selectedOrderId={selectedOrderId}
             onSelectOrder={(id) => { setSelectedOrderId(id); resetPreview(); }} />}
           {previousReports.some((run) => run.status === 'COMPLETED') && (
             <Card className="p-4 space-y-3">

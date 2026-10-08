@@ -1,22 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, Users } from 'lucide-react';
 
-import { getOrders, requestQuote } from '../../../api/billing.js';
+import { BILLING_METHODS, getOrders, requestQuote } from '../../../api/billing.js';
 import { Card } from '../../ui/Card.jsx';
 
 const currency = (value, code = 'PEN') => new Intl.NumberFormat('es-PE', {
   style: 'currency', currency: code,
 }).format(Number(value));
 
-export default function ReportBillingPanel({ studyId, selectedOrderId, onSelectOrder }) {
+function guessMethod(study) {
+  const name = (study?.instrument_name || '').toUpperCase();
+  const version = (study?.instrument_version_code || '').toUpperCase();
+  if (name.includes('CENSOPAS') || name.includes('COPSOQ')) {
+    return ['MEDIUM', 'MEDIA'].includes(version) ? 'CENSOPAS_MEDIA' : 'CENSOPAS_CORTA';
+  }
+  return 'SUSESO_ISTAS21_BREVE';
+}
+
+export default function ReportBillingPanel({ studyId, study, selectedOrderId, onSelectOrder }) {
   const qc = useQueryClient();
   const [workers, setWorkers] = useState('');
+  const [methodCode, setMethodCode] = useState(() => guessMethod(study));
+  useEffect(() => setMethodCode(guessMethod(study)), [studyId, study?.instrument_name, study?.instrument_version_code]);
   const { data: orders = [] } = useQuery({
     queryKey: ['report-orders', studyId], queryFn: () => getOrders(studyId), enabled: Boolean(studyId),
   });
   const quote = useMutation({
-    mutationFn: () => requestQuote(studyId, workers),
+    mutationFn: () => requestQuote(studyId, workers, methodCode),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['report-orders', studyId] }); setWorkers(''); },
   });
   const ready = orders.filter((order) => order.status === 'PAID');
@@ -28,6 +39,10 @@ export default function ReportBillingPanel({ studyId, selectedOrderId, onSelectO
       </div>
       <p className="text-xs text-muted">Cada informe requiere una cotización según los trabajadores de la empresa. No se cobra una suscripción.</p>
       <form onSubmit={(event) => { event.preventDefault(); quote.mutate(); }} className="space-y-2">
+        <label className="text-xs font-semibold text-dark" htmlFor="billing-method">Metodología de evaluación</label>
+        <select id="billing-method" className="colmena-input w-full" value={methodCode} onChange={(e) => setMethodCode(e.target.value)}>
+          {BILLING_METHODS.map((method) => <option key={method.code} value={method.code}>{method.label}</option>)}
+        </select>
         <label htmlFor="billing-workers" className="text-xs font-semibold text-dark">Número de trabajadores</label>
         <div className="flex gap-2">
           <input id="billing-workers" aria-label="Número de trabajadores" type="number" min="1" max="10000000"
@@ -44,9 +59,10 @@ export default function ReportBillingPanel({ studyId, selectedOrderId, onSelectO
         {orders.map((order) => (
           <div key={order.id} className="flex flex-wrap justify-between items-center gap-2 rounded-lg bg-surfaceSoft border border-border p-2">
             <div className="text-xs">
-              <p className="font-bold text-dark">Orden #{order.id} · {currency(order.amount, order.currency)}</p>
+              <p className="font-bold text-dark">Orden #{order.id} · {order.amount == null ? 'Cotizar' : currency(order.amount, order.currency)}</p>
+              <p className="text-muted">{BILLING_METHODS.find((method) => method.code === order.method_code)?.label || order.method_code}</p>
               <p className="text-muted flex items-center gap-1"><Users size={12} /> {order.workers} trabajadores · {
-                order.status === 'PAID' ? 'Pago confirmado' : order.status === 'CONSUMED' ? 'Informe emitido' : 'Pendiente de confirmación'
+                order.status === 'PAID' ? 'Pago confirmado' : order.status === 'CONSUMED' ? 'Informe emitido' : order.status === 'AWAITING_QUOTE' ? 'Pendiente de precio personalizado' : 'Pendiente de confirmación'
               }</p>
             </div>
             {order.status === 'PAID' && (
