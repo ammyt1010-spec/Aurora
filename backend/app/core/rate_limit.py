@@ -22,18 +22,18 @@ from app.core.exceptions import RateLimitExceededError
 _buckets: dict[str, deque[float]] = defaultdict(deque)
 
 
-def _client_key(request: Request) -> str:
+def _client_key(request: Request, purpose: str = 'public') -> str:
     host = request.client.host if request.client else "unknown"
     secret = get_settings().jwt_secret_key.encode("utf-8")
-    return hmac.new(secret, host.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(secret, f"{purpose}:{host}".encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-async def enforce_public_session_rate_limit(
-    request: Request,
-    session: AsyncSession = Depends(get_db),
+async def _enforce_shared_limit(
+    request: Request, session: AsyncSession, *,
+    purpose: str, max_requests: int, window_seconds: int,
 ) -> None:
     settings = get_settings()
-    key = _client_key(request)
+    key = _client_key(request, purpose)
     dialect = session.bind.dialect.name if session.bind is not None else ""
     if dialect == "postgresql":
         result = await session.execute(
@@ -51,16 +51,16 @@ async def enforce_public_session_rate_limit(
                     THEN CURRENT_TIMESTAMP ELSE colmena.public_rate_limits.window_start END
                 RETURNING counter
             """),
-            {"key": key, "window_seconds": settings.public_session_rate_limit_window_seconds},
+            {"key": key, "window_seconds": window_seconds},
         )
         counter = result.scalar_one()
         # Commit the quota even for rejected requests. This is independent of
         # the transaction that subsequently creates the response session.
         await session.commit()
-        if counter > settings.public_session_rate_limit_max:
+        if counter > max_requests:
             raise RateLimitExceededError(
                 "Demasiadas solicitudes; intenta nuevamente más tarde.",
-                retry_after_seconds=settings.public_session_rate_limit_window_seconds,
+                retry_after_seconds=window_seconds,
             )
         return
 
@@ -69,11 +69,44 @@ async def enforce_public_session_rate_limit(
 
     now = time.monotonic()
     bucket = _buckets[key]
-    while bucket and now - bucket[0] > settings.public_session_rate_limit_window_seconds:
+    while bucket and now - bucket[0] > window_seconds:
         bucket.popleft()
-    if len(bucket) >= settings.public_session_rate_limit_max:
+    if len(bucket) >= max_requests:
         raise RateLimitExceededError(
             "Demasiadas solicitudes; intenta nuevamente más tarde.",
-            retry_after_seconds=settings.public_session_rate_limit_window_seconds,
+            retry_after_seconds=window_seconds,
         )
     bucket.append(now)
+
+
+async def enforce_public_session_rate_limit(
+    request: Request, session: AsyncSession = Depends(get_db),
+) -> None:
+    settings = get_settings()
+    await _enforce_shared_limit(
+        request, session, purpose="public-survey",
+        max_requests=settings.public_session_rate_limit_max,
+        window_seconds=settings.public_session_rate_limit_window_seconds,
+    )
+
+
+async def enforce_login_rate_limit(
+    request: Request, session: AsyncSession = Depends(get_db),
+) -> None:
+    settings = get_settings()
+    await _enforce_shared_limit(
+        request, session, purpose="login",
+        max_requests=settings.login_rate_limit_max,
+        window_seconds=settings.login_rate_limit_window_seconds,
+    )
+
+
+async def enforce_registration_rate_limit(
+    request: Request, session: AsyncSession = Depends(get_db),
+) -> None:
+    settings = get_settings()
+    await _enforce_shared_limit(
+        request, session, purpose="registration",
+        max_requests=settings.register_rate_limit_max,
+        window_seconds=settings.register_rate_limit_window_seconds,
+    )

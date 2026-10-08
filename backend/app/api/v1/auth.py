@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.rate_limit import enforce_login_rate_limit, enforce_registration_rate_limit
 from app.core.auth_cookie import add_session_cookies, clear_session_cookies
 from app.core.exceptions import AuthenticationError
 from app.core.database import get_db
@@ -15,14 +16,16 @@ from app.services.auth_service import AuthService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserRead, status_code=201)
+@router.post("/register", response_model=UserRead, status_code=201,
+    dependencies=[Depends(enforce_registration_rate_limit)])
 async def register(payload: RegisterRequest, session: AsyncSession = Depends(get_db)):
     service = AuthService(session)
     user = await service.register(payload)
     return UserRead.model_validate(user)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse,
+    dependencies=[Depends(enforce_login_rate_limit)])
 async def login(payload: LoginRequest, response: Response, session: AsyncSession = Depends(get_db)):
     service = AuthService(session)
     token = await service.login(payload)

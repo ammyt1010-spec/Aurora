@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # E-17: protección anti-abuso mínima del formulario público (sin Redis —
     # limitación conocida en despliegues multi-worker, documentada en
     # app/core/rate_limit.py).
+    login_rate_limit_max: int = 20
+    login_rate_limit_window_seconds: int = 900
+    register_rate_limit_max: int = 5
+    register_rate_limit_window_seconds: int = 3600
     public_session_rate_limit_max: int = 10
     public_session_rate_limit_window_seconds: int = 60
 
