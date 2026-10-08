@@ -9,11 +9,12 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.auth_cookie import SESSION_COOKIE, validate_cookie_csrf
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
 from app.models.user import User
@@ -37,6 +38,7 @@ def create_access_token(user_id: int) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
+        "scope": "user:access",
         "iat": now,
         "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
     }
@@ -50,6 +52,8 @@ def decode_access_token(token: str) -> int:
     except jwt.PyJWTError as exc:
         raise AuthenticationError("Token inválido o expirado.") from exc
 
+    if payload.get("scope") != "user:access":
+        raise AuthenticationError("Token no autorizado para acceso a cuentas.")
     try:
         return int(payload["sub"])
     except (KeyError, ValueError) as exc:
@@ -57,17 +61,28 @@ def decode_access_token(token: str) -> int:
 
 
 async def get_optional_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     session: AsyncSession = Depends(get_db),
 ) -> User | None:
-    """Variante que no exige autenticación (E-09): usada por endpoints donde
-    sólo *algunas* opciones del payload requieren un usuario identificado."""
-    if credentials is None:
+    """Accept explicit Bearer (API) or HttpOnly session cookie (browser).
+
+    Respondents with X-Response-Token always use their anonymous capability,
+    even when an unrelated admin is logged in on the same browser.
+    """
+    if request.headers.get("X-Response-Token"):
         return None
-    user_id = decode_access_token(credentials.credentials)
+    if credentials is not None:
+        user_id = decode_access_token(credentials.credentials)
+    else:
+        browser_token = request.cookies.get(SESSION_COOKIE)
+        if not browser_token:
+            return None
+        validate_cookie_csrf(request)
+        user_id = decode_access_token(browser_token)
     user = await session.get(User, user_id)
-    if user is None:
-        raise AuthenticationError("El usuario del token ya no existe.")
+    if user is None or user.status != "ACTIVE":
+        raise AuthenticationError("La cuenta no existe o no está activa.")
     return user
 
 

@@ -212,10 +212,12 @@ async def construct_compare_groups(
 
 @router.post("/studies/{study_id}/analysis-runs", response_model=AnalysisRunRead, status_code=201)
 async def create_analysis_run(
-    study_id: int, payload: AnalysisRunCreate, session: AsyncSession = Depends(get_db)
+    study_id: int, payload: AnalysisRunCreate, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = AnalysisService(session)
-    run = await service.run_generic(study_id, payload)
+    safe = payload.model_copy(update={"requested_by_user_id": current_user.id}) if current_user else payload
+    run = await service.run_generic(study_id, safe)
     return AnalysisRunRead.model_validate(run)
 
 

@@ -44,7 +44,13 @@ def derive_item_values(
     if mapped is None:
         return None
     value = float(mapped)
-    if 1.0 <= value <= 5.0:
+    # A legacy 0..100 map may legitimately include an interior value 5:
+    # interpreting that single response as ordinal category R=5 would
+    # incorrectly turn a low score into the maximum risk.
+    legacy_100 = any(float(candidate) > 5.0 for candidate in option_map.values())
+    if legacy_100 and 0.0 <= value <= 100.0:
+        risk_value = 1.0 + value / 25.0
+    elif 1.0 <= value <= 5.0:
         risk_value = value
     elif 0.0 <= value <= 100.0:
         risk_value = 1.0 + value / 25.0

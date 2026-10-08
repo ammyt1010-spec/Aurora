@@ -12,7 +12,9 @@ silenciosamente.
 from __future__ import annotations
 
 import csv
+import io
 import json
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,9 +32,25 @@ from app.services.dataset_service import DatasetService
 
 _UNIMPLEMENTED_TYPES = {
     "SPSS": "requiere pyreadstat",
-    "POWERBI": "requiere un dataset/vista específica (harness §38), no implementado",
     "PARQUET": "requiere polars/pyarrow",
 }
+
+
+def spreadsheet_safe(value):
+    """Neutralize spreadsheet formulas without changing JSON/raw database values."""
+    if not isinstance(value, str):
+        return value
+    candidate = value.lstrip(" \\t\\r\\n")
+    if candidate and candidate[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def spreadsheet_rows(rows: list[dict], columns: list[str]) -> list[dict]:
+    return [
+        {column: spreadsheet_safe(row.get(column)) for column in columns}
+        for row in rows
+    ]
 
 
 class ExportService:
@@ -75,6 +93,8 @@ class ExportService:
             rows, columns = await self._load_rows(study_id, payload.dataset_shape)
             if payload.filters:
                 rows = DatasetService.apply_filters(rows, payload.filters)
+            if len(rows) > get_settings().max_export_rows:
+                raise ValidationDomainError("La exportación supera el límite de filas configurado. Filtra o divide el dataset.")
             path = self._write_file(str(export.public_id), payload.export_type, rows, columns)
 
             export.storage_path = str(path)
@@ -122,7 +142,7 @@ class ExportService:
             with path.open("w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=columns)
                 writer.writeheader()
-                writer.writerows(rows)
+                writer.writerows(spreadsheet_rows(rows, columns))
             return path
 
         if export_type == "XLSX":
@@ -131,8 +151,36 @@ class ExportService:
             sheet = workbook.active
             sheet.append(columns)
             for row in rows:
-                sheet.append([row.get(column) for column in columns])
+                sheet.append([spreadsheet_safe(row.get(column)) for column in columns])
             workbook.save(path)
+            return path
+
+        if export_type == "POWERBI":
+            # Portable import bundle, not a proprietary .pbix report.
+            path = storage_dir / f"{public_id}.zip"
+            stream = io.StringIO(newline="")
+            writer = csv.DictWriter(stream, fieldnames=columns)
+            writer.writeheader()
+            writer.writerows(spreadsheet_rows(rows, columns))
+            dictionary = {
+                "format": "AURORA_POWERBI_CSV_IMPORT_V1",
+                "rows": len(rows),
+                "columns": [{"name": name} for name in columns],
+                "encoding": "UTF-8",
+                "delimiter": ",",
+                "contains_identifiers": False,
+            }
+            with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+                bundle.writestr("dataset.csv", stream.getvalue().encode("utf-8-sig"))
+                bundle.writestr("data_dictionary.json", json.dumps(dictionary, ensure_ascii=False, indent=2))
+                bundle.writestr(
+                    "LEEME.txt",
+                    "AURORA Professional - Paquete de importación Power BI\\n"
+                    "Este ZIP no es un archivo PBIX. En Power BI Desktop selecciona "
+                    "Obtener datos > Texto/CSV e importa dataset.csv como UTF-8.\\n"
+                    "Los valores de texto con prefijos de fórmula se neutralizan "
+                    "para evitar ejecución al abrirlos en hojas de cálculo.\\n",
+                )
             return path
 
         if export_type == "JSON":

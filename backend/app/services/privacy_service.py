@@ -42,4 +42,14 @@ class PrivacyService:
             for col in suppressed_cols:
                 row_entry["cells"][col] = None
             row_entry["suppressed_columns"] = sorted(suppressed_cols)
+        # Fail-safe: do not publish marginal totals if they could reconstruct
+        # a suppressed cell, including through column-wise subtraction.
+        if any(entry.get("suppressed_columns") for entry in result["table"]):
+            for entry in result["table"]:
+                for key in ("row_total", "total", "n"):
+                    if key in entry:
+                        entry[key] = None
+            for key in ("column_totals", "row_totals", "grand_total", "total"):
+                if key in result:
+                    result[key] = None
         return result

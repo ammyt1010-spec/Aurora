@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
+import { apiRequest } from '../../../api/client.js';
 import { getProject } from '../../../api/projects.js';
 import { listStudies, openStudy, closeStudy } from '../../../api/studies.js';
 
@@ -29,8 +31,9 @@ export default function ProjectLinkPage() {
   const { projectId } = useParams();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const [accessCode, setAccessCode] = useState(() => localStorage.getItem(`access_code_${projectId}`) || '');
-  const [savedCodeMsg, setSavedCodeMsg] = useState(false);
+  const qrContainerRef = useRef(null);
+  const [invitationCount, setInvitationCount] = useState(10);
+  const [issuedTokens, setIssuedTokens] = useState([]);
   useActiveProject(projectId);
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -49,6 +52,21 @@ export default function ProjectLinkPage() {
   const publicId = activeStudy?.public_id || project?.censopas_study?.public_id;
   const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
 
+  const downloadSurveyQr = () => {
+    const svg = qrContainerRef.current?.querySelector('svg');
+    if (!svg) return;
+    const serialized = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = 'aurora-encuesta-qr.svg';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+  };
+
   const handleCopyLink = () => {
     if (!surveyUrl) return;
     navigator.clipboard.writeText(surveyUrl);
@@ -56,11 +74,13 @@ export default function ProjectLinkPage() {
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const handleSaveAccessCode = () => {
-    localStorage.setItem(`access_code_${projectId}`, accessCode);
-    setSavedCodeMsg(true);
-    setTimeout(() => setSavedCodeMsg(false), 2500);
-  };
+  const issueInvitations = useMutation({
+    mutationFn: async () => apiRequest(`/studies/${activeStudy.id}/invitations`, {
+      method: 'POST',
+      body: { count: Number(invitationCount) },
+    }),
+    onSuccess: (data) => setIssuedTokens(data.tokens || []),
+  });
 
   if (isLoadingProject || isLoadingStudies) return <LoadingState label="Cargando enlace de evaluación..." />;
   if (!project) return <ProjectMissingState />;
@@ -131,38 +151,48 @@ export default function ProjectLinkPage() {
             )}
           </Card>
 
-          {/* Worker Authentication / Company Access Code */}
+          {/* Real, server-validated invitation codes (no localStorage security theater). */}
           <Card className="p-6 space-y-4">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber/10 text-amber">
-                <Lock size={20} />
-              </div>
+              <Lock size={20} className="text-amber" />
               <div>
-                <h3 className="text-base font-bold text-dark">Validación de Trabajadores y Acceso Restringido</h3>
-                <p className="text-xs text-muted mt-0.5">
-                  Establece un código de verificación empresarial (opcional) para asegurar que solo personal autorizado conteste la encuesta.
+                <h3 className="text-base font-bold text-dark">Acceso de trabajadores</h3>
+                <p className="text-xs text-muted mt-1">
+                  {activeStudy?.requires_invitation
+                    ? 'Este estudio exige códigos personales de un solo uso, validados en el servidor.'
+                    : 'El estudio acepta respuestas con su enlace público. Para restringirlo, activa «Requiere invitación» antes de abrir el estudio.'}
                 </p>
               </div>
             </div>
-
-            <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2">
+            {activeStudy?.requires_invitation ? (
+              <>
+                <label className="text-xs font-semibold" htmlFor="invitation-count">Cantidad de códigos</label>
                 <input
-                  type="text"
-                  placeholder="ej. MINERA-AURORA-2026"
-                  value={accessCode}
-                  onChange={(e) => setAccessCode(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-xs text-dark placeholder:text-muted focus:border-amber outline-none transition"
+                  id="invitation-count"
+                  type="number" min="1" max="1000"
+                  value={invitationCount}
+                  onChange={(event) => setInvitationCount(event.target.value)}
+                  className="colmena-input w-36"
                 />
-              </div>
-              <button
-                type="button"
-                onClick={handleSaveAccessCode}
-                className="px-4 py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark font-bold text-xs transition"
-              >
-                {savedCodeMsg ? '¡Guardado!' : 'Guardar Código'}
-              </button>
-            </div>
+                <button type="button" onClick={() => issueInvitations.mutate()}
+                  disabled={issueInvitations.isPending || Number(invitationCount) < 1 || Number(invitationCount) > 1000}
+                  className="px-4 py-2 rounded-lg bg-amber text-dark font-bold text-xs">
+                  {issueInvitations.isPending ? 'Generando…' : 'Emitir invitaciones'}
+                </button>
+                {issueInvitations.isError && (
+                  <p role="alert" className="text-xs text-danger">{issueInvitations.error?.message}</p>
+                )}
+                {issuedTokens.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted">Copia los códigos ahora: por seguridad no podrán recuperarse de la API después.</p>
+                    <textarea readOnly className="colmena-input w-full font-mono text-xs" rows="5" value={issuedTokens.join('\n')} />
+                    <button type="button" className="text-xs font-semibold underline" onClick={() => navigator.clipboard.writeText(issuedTokens.join('\n'))}>
+                      Copiar todos los códigos
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : null}
           </Card>
         </div>
 
@@ -174,13 +204,8 @@ export default function ProjectLinkPage() {
             </div>
 
             {surveyUrl ? (
-              <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-border bg-white p-3 shadow-inner">
-                {/* Clean QR code rendering using Google Charts QR API */}
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(surveyUrl)}`}
-                  alt="Código QR de la Encuesta"
-                  className="h-full w-full object-contain"
-                />
+              <div ref={qrContainerRef} className="mx-auto flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-border bg-white p-3 shadow-inner">
+                <QRCodeSVG value={surveyUrl} size={168} level="M" marginSize={1} title="Código QR de la encuesta" />
               </div>
             ) : null}
 
@@ -189,15 +214,13 @@ export default function ProjectLinkPage() {
             </p>
 
             {surveyUrl ? (
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(surveyUrl)}`}
-                target="_blank"
-                download="qr_encuesta_aurora.png"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={downloadSurveyQr}
                 className="inline-block w-full py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark text-xs font-bold transition"
               >
-                Descargar QR Alta Resolución
-              </a>
+                Descargar QR vectorial (SVG)
+              </button>
             ) : null}
           </Card>
         </div>

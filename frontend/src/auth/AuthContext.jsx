@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { demoLoginUser, fetchCurrentUser, loginUser, registerUser } from '../api/auth.js';
-import { clearStoredToken, getStoredToken, setStoredToken } from '../api/client.js';
+import { demoLoginUser, fetchCurrentUser, loginUser, logoutUser, registerUser } from '../api/auth.js';
+import { clearStoredToken } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
@@ -11,19 +11,6 @@ export function AuthProvider({ children }) {
   const [status, setStatus] = useState('loading'); // loading | authenticated | anonymous
 
   const loadCurrentUser = useCallback(async () => {
-    let token = getStoredToken();
-    if (!token) {
-      try {
-        const { access_token: demoToken } = await demoLoginUser();
-        setStoredToken(demoToken);
-        token = demoToken;
-      } catch (err) {
-        console.warn('Could not auto-fetch demo token:', err);
-        setUser(null);
-        setStatus('anonymous');
-        return;
-      }
-    }
     try {
       const currentUser = await fetchCurrentUser();
       setUser(currentUser);
@@ -41,16 +28,16 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(
     async ({ email, password }) => {
-      const { access_token: token } = await loginUser({ email, password });
-      setStoredToken(token);
+      await loginUser({ email, password });
+      clearStoredToken();
       await loadCurrentUser();
     },
     [loadCurrentUser],
   );
 
   const demoLogin = useCallback(async () => {
-    const { access_token: token } = await demoLoginUser();
-    setStoredToken(token);
+    await demoLoginUser();
+    clearStoredToken();
     await loadCurrentUser();
   }, [loadCurrentUser]);
 
@@ -59,6 +46,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    logoutUser().catch(() => {});
     clearStoredToken();
     setUser(null);
     setStatus('anonymous');

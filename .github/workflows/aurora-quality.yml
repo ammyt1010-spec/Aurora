@@ -1,0 +1,91 @@
+name: AURORA Quality Gate
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install LibreOffice for faithful PDF conversion
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libreoffice-writer
+      - name: Install backend
+        working-directory: backend
+        run: poetry install --no-interaction
+      - name: Python syntax
+        working-directory: backend
+        run: poetry run python -m compileall -q app
+      - name: Security unit tests
+        working-directory: backend
+        env:
+          ENVIRONMENT: test
+        run: poetry run pytest -q app/tests/unit/test_aurora_access.py
+      - name: Full backend regression suite
+        working-directory: backend
+        env:
+          ENVIRONMENT: test
+        run: poetry run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend with committed lockfile
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend production build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: /api/v1
+        run: npm run build
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
+
+  postgres-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aurora_ci
+          POSTGRES_PASSWORD: local-test-password
+          POSTGRES_DB: aurora_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aurora_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://aurora_ci:local-test-password@127.0.0.1:5432/aurora_ci
+      DATABASE_URL_SYNC: postgresql+psycopg://aurora_ci:local-test-password@127.0.0.1:5432/aurora_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install poetry
+      - name: Install dependencies
+        working-directory: backend
+        run: poetry install --no-interaction
+      - name: Apply migrations to PostgreSQL 16
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Verify migration at head and rate limit storage
+        working-directory: backend
+        run: |
+          poetry run python -c "from sqlalchemy import create_engine,text; from app.core.config import get_settings; e=create_engine(get_settings().database_url_sync); c=e.connect(); print(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one()); assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0018'; assert c.execute(text(\"SELECT to_regclass('colmena.public_rate_limits')\")).scalar_one() is not None; c.close()"

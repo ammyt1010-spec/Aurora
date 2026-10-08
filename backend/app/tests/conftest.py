@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import get_db
+from app.core.business_access import require_business_access, require_response_access
 from app.main import app
 from app.models import Base
 from app.models.instrument import Instrument, InstrumentVersion
@@ -55,6 +56,11 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
             yield s
 
     app.dependency_overrides[get_db] = _override_get_db
+    # Existing domain regression tests predate HTTP authentication. They
+    # exercise business behavior with an explicitly trusted test client;
+    # dedicated security tests execute the guards WITHOUT these overrides.
+    app.dependency_overrides[require_business_access] = lambda: None
+    app.dependency_overrides[require_response_access] = lambda: None
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

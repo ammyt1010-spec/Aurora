@@ -24,7 +24,7 @@ class ExportRead(BaseModel):
     export_type: str
     dataset_shape: str
     status: str
-    storage_path: str | None
+    storage_path: str | None = Field(default=None, exclude=True)
     row_count: int | None
     generated_at: datetime | None
     error_message: str | None

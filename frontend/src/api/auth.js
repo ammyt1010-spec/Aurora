@@ -32,3 +32,7 @@ export function demoLoginUser() {
 export function fetchCurrentUser() {
   return apiRequest('/auth/me');
 }
+
+export function logoutUser() {
+  return apiRequest('/auth/logout', { method: 'POST' });
+}
