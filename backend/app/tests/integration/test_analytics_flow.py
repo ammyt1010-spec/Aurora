@@ -225,7 +225,8 @@ async def test_crosstab_between_two_categorical_variables(
     )
     assert resp.status_code == 200, resp.text
     result = resp.json()["results"][0]
-    assert result["result_data"]["grand_total"] == 3
+    # The grand total is hidden to prevent reconstruction of censored cells.
+    assert result["result_data"]["grand_total"] is None
     # E-05: min_publishable_n por defecto (5) supera los 3 respondentes del
     # fixture -> ninguna celda es publicable, todas quedan suprimidas.
     assert "raw_counts" not in result["result_data"]
