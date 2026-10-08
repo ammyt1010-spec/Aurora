@@ -1,7 +1,5 @@
 name: AURORA Quality Gate
 on:
-  push:
-    branches: ['hardening/**']
   pull_request:
     branches: [main]
 
@@ -15,6 +13,8 @@ jobs:
           python-version: '3.12'
       - name: Install Poetry
         run: pip install poetry
+      - name: Install LibreOffice for faithful PDF conversion
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libreoffice-writer
       - name: Install backend
         working-directory: backend
         run: poetry install --no-interaction
@@ -51,11 +51,11 @@ jobs:
           if ! git diff --quiet -- frontend/package-lock.json; then
             echo "::warning::Existing frontend/package-lock.json is out of sync; commit a regenerated lockfile before production release."
           fi
-      - name: Frontend tests
-        working-directory: frontend
-        run: npm test
       - name: Frontend production build
         working-directory: frontend
         env:
           VITE_API_BASE_URL: /api/v1
         run: npm run build
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
