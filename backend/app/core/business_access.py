@@ -74,6 +74,143 @@ async def _version(db: AsyncSession, version_id: int, user: User, write: bool) -
     await _instrument(db, version.instrument_id, user, write)
 
 
+# Identificadores en payloads: todo objeto que se vincule a un estudio o
+# proyecto debe pertenecer a esa misma frontera, aunque el autor tenga acceso
+# a otras organizaciones.
+_REFERENCE_MODEL = {
+    "survey_id": Survey,
+    "study_id": Study,
+    "instrument_version_id": InstrumentVersion,
+    "question_id": Question,
+    "construct_id": Construct,
+    "barem_id": Barem,
+    "analysis_run_id": AnalysisRun,
+    "variable_id": Variable,
+    "action_plan_item_id": ActionPlanItem,
+    "kpi_id": Kpi,
+}
+_REFERENCE_COLLECTION = {
+    "variable_ids": "variable_id",
+    "predictor_variable_ids": "variable_id",
+    "construct_ids": "construct_id",
+    "question_ids": "question_id",
+}
+
+
+async def validate_payload_references(
+    db: AsyncSession,
+    user: User,
+    path_params: dict,
+    payload: dict,
+    *,
+    url_path: str = "",
+) -> None:
+    """Prevent cross-tenant IDOR through IDs in JSON request bodies.
+
+    This intentionally checks the full body, including batch operations. It
+    is independent of the regular path-resource authorization.
+    """
+    scope_study = None
+    scope_project = None
+    if "study_id" in path_params:
+        scope_study = await _get(db, Study, int(path_params["study_id"]))
+        scope_project = scope_study.project_id
+    elif "project_id" in path_params:
+        scope_project = int(path_params["project_id"])
+    elif "action_plan_id" in path_params:
+        plan = await _get(db, ActionPlan, int(path_params["action_plan_id"]))
+        scope_study = await _get(db, Study, plan.study_id)
+        scope_project = scope_study.project_id
+    elif "kpi_id" in path_params:
+        kpi = await _get(db, Kpi, int(path_params["kpi_id"]))
+        scope_study = await _get(db, Study, kpi.study_id)
+        scope_project = scope_study.project_id
+
+    async def check_ref(field: str, value: int) -> None:
+        item = await _get(db, _REFERENCE_MODEL[field], value)
+        target_project = None
+        target_study = None
+        target_version = None
+        if field == "study_id":
+            target_project, target_study = item.project_id, item.id
+        elif field == "survey_id":
+            target_project = item.project_id
+        elif field == "instrument_version_id":
+            target_version = item.id
+            instrument = await _get(db, Instrument, item.instrument_id)
+            target_project = instrument.project_id
+            await _instrument(db, instrument.id, user, write=False)
+        elif field == "question_id":
+            target_version = item.instrument_version_id
+            if target_version is not None:
+                v = await _get(db, InstrumentVersion, target_version)
+                instr = await _get(db, Instrument, v.instrument_id)
+                target_project = instr.project_id
+                await _instrument(db, instr.id, user, write=False)
+            elif item.created_by_user_id != user.id:
+                raise AuthorizationError("Pregunta de otro usuario.")
+        elif field == "construct_id":
+            target_version = item.instrument_version_id
+            v = await _get(db, InstrumentVersion, target_version)
+            instr = await _get(db, Instrument, v.instrument_id)
+            target_project = instr.project_id
+            await _instrument(db, instr.id, user, write=False)
+        elif field == "barem_id":
+            target_version = item.instrument_version_id
+            v = await _get(db, InstrumentVersion, target_version)
+            instr = await _get(db, Instrument, v.instrument_id)
+            target_project = instr.project_id
+            await _instrument(db, instr.id, user, write=False)
+        elif field == "variable_id":
+            target_project, target_study = item.project_id, item.study_id
+        elif field == "analysis_run_id":
+            target_study = item.study_id
+            study = await _get(db, Study, target_study)
+            target_project = study.project_id
+        elif field == "action_plan_item_id":
+            plan = await _get(db, ActionPlan, item.action_plan_id)
+            target_study = plan.study_id
+            study = await _get(db, Study, plan.study_id)
+            target_project = study.project_id
+        elif field == "kpi_id":
+            target_study = item.study_id
+            study = await _get(db, Study, target_study)
+            target_project = study.project_id
+
+        if scope_project is not None and target_project is not None and target_project != scope_project:
+            raise AuthorizationError("La referencia pertenece a otro proyecto.")
+        if scope_study is not None:
+            if target_study is not None and target_study != scope_study.id:
+                raise AuthorizationError("La referencia pertenece a otro estudio.")
+            if target_version is not None and scope_study.instrument_version_id is not None:
+                if target_version != scope_study.instrument_version_id:
+                    raise AuthorizationError("La versión referenciada no pertenece a este estudio.")
+        if target_project is not None:
+            await _project(db, target_project, user, write=False)
+        elif target_study is not None:
+            await _study(db, target_study, user, write=False)
+
+    async def walk(data: dict) -> None:
+        for field, value in data.items():
+            if value is None:
+                continue
+            if field in {"owner_user_id", "created_by_user_id", "requested_by_user_id"}:
+                if int(value) != user.id:
+                    raise AuthorizationError("No puedes asignar otro usuario como autor.")
+            elif field in _REFERENCE_MODEL:
+                await check_ref(field, int(value))
+            elif field in _REFERENCE_COLLECTION and isinstance(value, list):
+                for object_id in value:
+                    await check_ref(_REFERENCE_COLLECTION[field], int(object_id))
+            elif field == "items" and url_path.endswith("/variables/batch") and isinstance(value, list):
+                for entry in value:
+                    variable = await _get(db, Variable, int(entry["id"]))
+                    if variable.project_id != scope_project:
+                        raise AuthorizationError("Una variable del lote pertenece a otro proyecto.")
+            # Campos JSON libres (settings, metadata, parameters) no son
+            # relaciones arbitrarias: no deducir referencias por coincidencia.
+    await walk(payload)
+
 async def require_business_access(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -127,6 +264,14 @@ async def require_business_access(
             raise AuthorizationError("No tienes acceso a esta pregunta.")
     elif p:
         raise AuthorizationError("No hay política de acceso para este recurso.")
+
+    if request.method.upper() in {"POST", "PUT", "PATCH"}:
+        if "application/json" in request.headers.get("content-type", ""):
+            payload = await request.json()
+            if isinstance(payload, dict):
+                await validate_payload_references(
+                    db, user, p, payload, url_path=request.url.path
+                )
 
 
 async def require_response_access(
