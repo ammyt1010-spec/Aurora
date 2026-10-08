@@ -380,7 +380,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 } catch (error) {
                   setDownloadError(error.message);
                 }
-              }
+              }}
               className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber hover:bg-amber-600 text-dark font-bold text-xs transition ${
                 canExport ? '' : 'pointer-events-none opacity-50'
               }`}
