@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.billing import OrderRead, PaymentConfirmation, QuoteCreate, TariffInput, TariffRead
+from app.schemas.billing import OrderRead, PaymentConfirmation, QuoteCreate, TariffInput, TariffRead, ManualQuotePrice
 from app.services.billing_service import BillingService, is_platform_operator, require_operator
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -41,7 +41,7 @@ async def create_quote(
     study_id: int, payload: QuoteCreate, db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return await BillingService(db).create_quote(study_id, payload.workers, user)
+    return await BillingService(db).create_quote(study_id, payload.workers, user, method_code=payload.method_code)
 
 
 @router.get("/studies/{study_id}/orders", response_model=list[OrderRead])
@@ -74,3 +74,17 @@ async def billing_policy(_user: User = Depends(get_current_user)):
         "currency": "PEN",
         "payment_confirmation": "MANUAL_OPERATOR",
     }
+
+
+@router.post("/tariffs/load-reference", response_model=list[TariffRead])
+async def load_reference_rates(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Explicitly apply the screenshot-based web tariff; only platform operator."""
+    return await BillingService(db).load_reference_tariffs(user)
+
+
+@router.post("/orders/{order_id}/set-manual-price", response_model=OrderRead)
+async def set_manual_quote(
+    order_id: int, payload: ManualQuotePrice, db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await BillingService(db).set_manual_quote_price(order_id, payload.amount, user)
