@@ -27,3 +27,19 @@ export function getProject(projectId) {
 export function updateProject(projectId, payload) {
   return apiRequest(`/projects/${projectId}`, { method: 'PATCH', body: payload });
 }
+
+
+export function listProjectMembers(projectId) {
+  return apiRequest(`/projects/${projectId}/members`);
+}
+
+export function addProjectMemberByEmail(projectId, email, roleCode) {
+  return apiRequest(`/projects/${projectId}/members/by-email`, {
+    method: 'POST',
+    body: { email, role_code: roleCode },
+  });
+}
+
+export function removeProjectMember(projectId, userId) {
+  return apiRequest(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' });
+}

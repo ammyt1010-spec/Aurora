@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,3 +125,29 @@ async def remove_project_member(
     service = ProjectService(session)
     project = await service.get(project_id, current_user)
     await service.remove_member(project, current_user, user_id)
+
+
+class ProjectMemberByEmail(BaseModel):
+    email: EmailStr
+    role_code: Literal["ADMIN", "EDITOR", "VIEWER"]
+
+
+@router.post("/projects/{project_id}/members/by-email", response_model=ProjectMemberRead)
+async def add_project_member_by_email(
+    project_id: int,
+    payload: ProjectMemberByEmail,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.core.exceptions import NotFoundError
+    service = ProjectService(session)
+    project = await service.get(project_id, current_user)
+    # Check administration rights before looking up the address.
+    await service.ensure_membership_admin(project, current_user)
+    target = (
+        await session.execute(select(User).where(User.email == str(payload.email)))
+    ).scalar_one_or_none()
+    if target is None or target.status != "ACTIVE":
+        raise NotFoundError("La cuenta aún no está registrada o no está disponible.")
+    member = await service.add_member(project, current_user, target.id, payload.role_code)
+    return ProjectMemberRead(**member)

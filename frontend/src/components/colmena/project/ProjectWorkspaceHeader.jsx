@@ -13,6 +13,7 @@ import {
   QrCode,
   ShieldCheck,
   Sparkles,
+  Users,
 } from 'lucide-react';
 
 import { getProject } from '../../../api/projects.js';
@@ -54,9 +55,15 @@ export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
     },
     {
       id: 'reports',
-      label: '3. Reporte PDF SUNAFIL',
+      label: '3. Informes profesionales',
       icon: FileBarChart2,
       path: `/colmena/project/${projectId}/reports`,
+    },
+    {
+      id: 'team',
+      label: '4. Colaboradores',
+      icon: Users,
+      path: `/colmena/project/${projectId}/team`,
     },
   ];
 

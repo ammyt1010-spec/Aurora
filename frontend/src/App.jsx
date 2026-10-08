@@ -18,6 +18,7 @@ const ProjectConstructorPage = lazy(() => import('./pages/colmena/project/Projec
 const ProjectInstrumentsPage = lazy(() => import('./pages/colmena/project/ProjectInstrumentsPage.jsx'));
 const ProjectFormPage = lazy(() => import('./pages/colmena/project/ProjectFormPage.jsx'));
 const ProjectLinkPage = lazy(() => import('./pages/colmena/project/ProjectLinkPage.jsx'));
+const ProjectMembersPage = lazy(() => import('./pages/colmena/project/ProjectMembersPage.jsx'));
 const ProjectTelemetryPage = lazy(() => import('./pages/colmena/project/AdaptiveProjectTelemetryPage.jsx'));
 const ProjectResultsPage = lazy(() => import('./pages/colmena/project/ProjectResultsPage.jsx'));
 const ProjectReportsPage = lazy(() => import('./pages/colmena/project/ProjectReportsPage.jsx'));
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="project/:projectId/instruments" element={<ProjectInstrumentsPage />} />
         <Route path="project/:projectId/form" element={<ProjectFormPage />} />
         <Route path="project/:projectId/link" element={<ProjectLinkPage />} />
+        <Route path="project/:projectId/team" element={<ProjectMembersPage />} />
         <Route path="project/:projectId/telemetry" element={<ProjectTelemetryPage />} />
         <Route path="project/:projectId/results" element={<ProjectResultsPage />} />
         <Route path="project/:projectId/premium" element={<ProjectPremiumDashboardPage />} />
