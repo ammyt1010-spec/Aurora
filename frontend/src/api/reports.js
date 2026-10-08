@@ -23,3 +23,7 @@ export function getReportDownloadUrl(reportId) {
 export function getReportPreviewPdfUrl(reportId) {
   return `${API_BASE_URL}/reports/${reportId}/preview.pdf`;
 }
+
+export function listStudyReports(studyId) {
+  return apiRequest(`/studies/${studyId}/reports`);
+}
