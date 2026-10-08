@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.action_plan_status import compute_effective_status
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError
+from app.services.billing_service import BillingService
 from app.models.analysis import AnalysisResult, AnalysisRun
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi
 from app.models.censopas import Barem
@@ -90,12 +91,18 @@ class ReportService:
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
 
+        # In production a report, including its preview, consumes exactly
+        # one paid company order. No tariff is pre-filled before approval.
+        billing = BillingService(self.session)
+        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id)
+
         if payload.analysis_run_id is not None:
             analysis = await self.session.get(AnalysisRun, payload.analysis_run_id)
             if analysis is None or analysis.study_id != study_id:
                 raise NotFoundError("El análisis seleccionado no pertenece a este estudio")
 
         report_run = ReportRun(
+            billing_order_id=paid_order.id if paid_order else None,
             study_id=study_id,
             report_template_id=payload.report_template_id,
             analysis_run_id=payload.analysis_run_id,
@@ -149,6 +156,7 @@ class ReportService:
             report_run.data_hash = data_hash
             report_run.status = "COMPLETED"
             report_run.generated_at = datetime.now(UTC)
+            await billing.consume_order(paid_order, report_run.id)
         except Exception as exc:
             report_run.status = "FAILED"
             report_run.error_message = str(exc)

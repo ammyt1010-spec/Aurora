@@ -34,6 +34,7 @@ class ReportRun(Base):
     public_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4
     )
+    billing_order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("report_orders.id"), unique=True)
     study_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("studies.id", ondelete="CASCADE"), nullable=False
     )

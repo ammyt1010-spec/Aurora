@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import get_settings
+from app.core.exceptions import ConflictError
 from app.services.download_audit import record_file_access
 from app.core.security import get_optional_current_user
 from app.models.user import User
@@ -71,6 +73,8 @@ async def download_report_preview(report_id: int, session: AsyncSession = Depend
     current_user: User | None = Depends(get_optional_current_user)):
     service = ReportService(session)
     report = await service.get_run(report_id)
+    if get_settings().environment.lower() == "production" and report.billing_order_id is None:
+        raise ConflictError("Informe anterior sin autorización de entrega. Contacta al administrador.")
     if report.status != "COMPLETED" or not report.storage_path or not report.storage_path.endswith(".docx"):
         raise NotFoundError(f"Reporte {report_id} no tiene una vista previa disponible todavía")
 

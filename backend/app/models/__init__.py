@@ -13,6 +13,7 @@ from app.models.analytics_plan import (
     StatisticalTool,
 )
 from app.models.audit import AuditLog
+from app.models.billing import ReportTariff, ReportOrder
 from app.models.base import Base
 from app.models.censopas import Barem, BaremBand, BaremCutoff, ConstructResult, ConstructScore, ResponseScore
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi, KpiMeasurement
@@ -48,6 +49,8 @@ __all__ = [
     "ScoringRule",
     "Variable",
     "AuditLog",
+    "ReportTariff",
+    "ReportOrder",
     "Survey",
     "SurveySection",
     "SurveyQuestion",
