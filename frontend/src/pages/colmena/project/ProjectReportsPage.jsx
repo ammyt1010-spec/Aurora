@@ -10,6 +10,7 @@ import { fetchProtectedBlob, downloadProtectedFile } from '../../../api/protecte
 import { getCensopasReadiness } from '../../../api/instruments.js';
 import {
   createReportPreview,
+  listStudyReports,
   getReportDownloadUrl,
   getReportPreviewPdfUrl,
 } from '../../../api/reports.js';
@@ -77,6 +78,11 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   const studies = studiesData?.items || [];
   const { data: billingPolicy } = useQuery({ queryKey: ['billing-policy'], queryFn: getBillingPolicy });
   const isPaymentRequired = billingPolicy?.enforced !== false;
+  const { data: previousReports = [] } = useQuery({
+    queryKey: ['reports', studyId],
+    queryFn: () => listStudyReports(studyId),
+    enabled: Boolean(studyId),
+  });
   const { data: billingOrders = [] } = useQuery({ queryKey: ['report-orders', studyId], queryFn: () => getOrders(studyId), enabled: Boolean(studyId) });
   const usableOrder = billingOrders.some((order) => order.status === 'PAID' && order.id === Number(selectedOrderId));
   const canGenerateReport = Boolean(studyId && (!isPaymentRequired || usableOrder));
@@ -251,6 +257,25 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
           {isPaymentRequired && <ReportBillingPanel studyId={studyId} selectedOrderId={selectedOrderId}
             onSelectOrder={(id) => { setSelectedOrderId(id); resetPreview(); }} />}
+          {previousReports.some((run) => run.status === 'COMPLETED') && (
+            <Card className="p-4 space-y-3">
+              <h3 className="text-sm font-bold text-dark">Informes anteriores</h3>
+              <p className="text-xs text-muted">La descarga de un informe ya emitido no genera un nuevo cobro.</p>
+              {previousReports.filter((run) => run.status === 'COMPLETED').map((run) => (
+                <div key={run.id} className="flex flex-wrap gap-2 justify-between items-center rounded-lg bg-surfaceSoft p-2 text-xs">
+                  <span>Informe #{run.id} · {new Date(run.created_at).toLocaleDateString('es-PE')}</span>
+                  <button type="button" className="text-amber font-bold underline"
+                    onClick={async () => {
+                      try {
+                        setDownloadError(null);
+                        await downloadProtectedFile(getReportDownloadUrl(run.id),
+                          `aurora-informe-${run.id}.${run.output_format === 'DOCX' ? 'docx' : run.output_format === 'PDF' ? 'pdf' : 'json'}`);
+                      } catch (e) { setDownloadError(e.message); }
+                    }}>Volver a descargar</button>
+                </div>
+              ))}
+            </Card>
+          )}
           {/* Report Config Card */}
           <Card className="flex flex-col gap-5 p-4">
             <div className="flex flex-col gap-3">

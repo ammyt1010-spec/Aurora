@@ -161,6 +161,9 @@ class ReportService:
             # A failed render must not consume the paid authorization. Keep
             # the audit record of failure but release the single-use link.
             report_run.billing_order_id = None
+            if paid_order is not None:
+                paid_order.status = "PAID"
+                paid_order.consumed_at = None
             report_run.status = "FAILED"
             report_run.error_message = str(exc)
             await self.session.commit()
@@ -187,10 +190,23 @@ class ReportService:
         report_run = await self.generate(study_id, forced_payload)
 
         docx_path = Path(report_run.storage_path)
-        pdf_bytes = await docx_to_pdf(docx_path.read_bytes())
-        pdf_path = docx_path.with_suffix(".pdf")
-        pdf_path.write_bytes(pdf_bytes)
-
+        try:
+            pdf_bytes = await docx_to_pdf(docx_path.read_bytes())
+            pdf_path = docx_path.with_suffix(".pdf")
+            pdf_path.write_bytes(pdf_bytes)
+        except Exception as exc:
+            # A failed preview does not consume a paid report: restore credit.
+            from app.models.billing import ReportOrder
+            if report_run.billing_order_id is not None:
+                order = await self.session.get(ReportOrder, report_run.billing_order_id)
+                if order is not None:
+                    order.status = "PAID"
+                    order.consumed_at = None
+                report_run.billing_order_id = None
+            report_run.status = "FAILED"
+            report_run.error_message = f"Falló la conversión de vista previa: {exc}"
+            await self.session.commit()
+            raise
         return report_run, count_pdf_pages(pdf_bytes)
 
     async def _build_bundle(
