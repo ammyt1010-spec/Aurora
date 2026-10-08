@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.services.download_audit import record_file_access
 from app.core.security import get_optional_current_user
 from app.models.user import User
 from app.core.exceptions import NotFoundError
@@ -66,7 +67,8 @@ async def get_report(report_id: int, session: AsyncSession = Depends(get_db)):
 
 
 @router.get("/reports/{report_id}/preview.pdf")
-async def download_report_preview(report_id: int, session: AsyncSession = Depends(get_db)):
+async def download_report_preview(report_id: int, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user)):
     service = ReportService(session)
     report = await service.get_run(report_id)
     if report.status != "COMPLETED" or not report.storage_path or not report.storage_path.endswith(".docx"):
@@ -75,6 +77,10 @@ async def download_report_preview(report_id: int, session: AsyncSession = Depend
     pdf_path = Path(report.storage_path).with_suffix(".pdf")
     if not pdf_path.exists():
         raise NotFoundError(f"Vista previa del reporte {report_id} no encontrada en almacenamiento")
+
+    await record_file_access(session, action="REPORT_PREVIEW_OPENED", entity_type="report",
+        entity_id=report_id, study_id=report.study_id,
+        user_id=current_user.id if current_user else None)
 
     # `filename=` hace que FileResponse mande Content-Disposition: attachment
     # por defecto — eso fuerza una descarga y deja el <iframe> del preview en
@@ -88,7 +94,8 @@ async def download_report_preview(report_id: int, session: AsyncSession = Depend
 
 
 @router.get("/reports/{report_id}/download")
-async def download_report(report_id: int, session: AsyncSession = Depends(get_db)):
+async def download_report(report_id: int, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user)):
     service = ReportService(session)
     report = await service.get_run(report_id)
     if report.status != "COMPLETED" or not report.storage_path:
@@ -105,4 +112,7 @@ async def download_report(report_id: int, session: AsyncSession = Depends(get_db
         if path.suffix == ".pdf"
         else "application/json"
     )
+    await record_file_access(session, action="REPORT_DOWNLOADED", entity_type="report",
+        entity_id=report_id, study_id=report.study_id,
+        user_id=current_user.id if current_user else None)
     return FileResponse(path=path, media_type=media_type, filename=path.name)
