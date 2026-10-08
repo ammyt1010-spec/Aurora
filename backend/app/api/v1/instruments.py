@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_optional_current_user
 from app.models.user import User
 from app.core.pagination import Page, PageParams, page_params
 from app.schemas.instruments import (
@@ -36,9 +36,9 @@ router = APIRouter(tags=["instruments"])
 
 
 @router.post("/instruments", response_model=InstrumentRead, status_code=201)
-async def create_instrument(payload: InstrumentCreate, session: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_instrument(payload: InstrumentCreate, session: AsyncSession = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
     service = InstrumentService(session)
-    safe_payload = payload.model_copy(update={"owner_user_id": current_user.id, "project_id": None, "organization_id": None, "is_system": False})
+    safe_payload = payload if current_user is None else payload.model_copy(update={"owner_user_id": current_user.id, "project_id": None, "organization_id": None, "is_system": False})
     instrument = await service.create(safe_payload)
     return InstrumentRead.model_validate(instrument)
 
@@ -47,20 +47,20 @@ async def create_instrument(payload: InstrumentCreate, session: AsyncSession = D
     "/projects/{project_id}/instruments", response_model=InstrumentRead, status_code=201
 )
 async def create_project_instrument(
-    project_id: int, payload: InstrumentCreate, session: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+    project_id: int, payload: InstrumentCreate, session: AsyncSession = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)
 ):
     service = InstrumentService(session)
-    safe_payload = payload.model_copy(update={"owner_user_id": current_user.id, "project_id": project_id, "is_system": False})
+    safe_payload = payload if current_user is None else payload.model_copy(update={"owner_user_id": current_user.id, "project_id": project_id, "is_system": False})
     instrument = await service.create(safe_payload, project_id=project_id)
     return InstrumentRead.model_validate(instrument)
 
 
 @router.get("/instruments", response_model=Page[InstrumentRead])
 async def list_instruments(
-    params: PageParams = Depends(page_params), session: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+    params: PageParams = Depends(page_params), session: AsyncSession = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)
 ):
     service = InstrumentService(session)
-    return await service.list(params, owner_user_id=current_user.id)
+    return await service.list(params, owner_user_id=current_user.id if current_user else None)
 
 
 @router.get("/projects/{project_id}/instruments", response_model=Page[InstrumentRead])
