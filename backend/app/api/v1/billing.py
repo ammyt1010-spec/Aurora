@@ -62,3 +62,15 @@ async def confirm_payment(
     user: User = Depends(get_current_user),
 ):
     return await BillingService(db).confirm_payment(order_id, payload.payment_reference, user)
+
+
+@router.get("/policy")
+async def billing_policy(_user: User = Depends(get_current_user)):
+    from app.core.config import get_settings
+    return {
+        "enforced": get_settings().environment.lower() == "production",
+        "model": "PAY_PER_REPORT",
+        "basis": "WORKER_COUNT",
+        "currency": "PEN",
+        "payment_confirmation": "MANUAL_OPERATOR",
+    }

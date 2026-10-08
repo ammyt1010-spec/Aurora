@@ -38,6 +38,7 @@ def create_access_token(user_id: int) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
+        "scope": "user:access",
         "iat": now,
         "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
     }
@@ -51,6 +52,8 @@ def decode_access_token(token: str) -> int:
     except jwt.PyJWTError as exc:
         raise AuthenticationError("Token inválido o expirado.") from exc
 
+    if payload.get("scope") != "user:access":
+        raise AuthenticationError("Token no autorizado para acceso a cuentas.")
     try:
         return int(payload["sub"])
     except (KeyError, ValueError) as exc:

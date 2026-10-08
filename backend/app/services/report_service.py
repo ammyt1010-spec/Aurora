@@ -158,6 +158,9 @@ class ReportService:
             report_run.generated_at = datetime.now(UTC)
             await billing.consume_order(paid_order, report_run.id)
         except Exception as exc:
+            # A failed render must not consume the paid authorization. Keep
+            # the audit record of failure but release the single-use link.
+            report_run.billing_order_id = None
             report_run.status = "FAILED"
             report_run.error_message = str(exc)
             await self.session.commit()

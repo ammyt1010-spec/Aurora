@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     max_export_rows: int = 200_000
 
     jwt_secret_key: str = "dev-only-insecure-secret-change-me-in-production-please-1234567890"
-    billing_operator_email: str = ""  # Cuenta central que aprueba pagos y administra precios.
+    billing_operator_user_id: int | None = None  # Establece este ID después de un alta segura del operador.
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7
 

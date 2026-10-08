@@ -26,8 +26,8 @@ def _utc(value: datetime) -> datetime:
 
 
 def is_platform_operator(user: User) -> bool:
-    email = (get_settings().billing_operator_email or "").strip().casefold()
-    return bool(email) and bool(user.email) and user.email.casefold() == email and user.status == "ACTIVE"
+    operator_id = get_settings().billing_operator_user_id
+    return operator_id is not None and user.id == operator_id and user.status == "ACTIVE"
 
 
 def require_operator(user: User) -> None:

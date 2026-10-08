@@ -3,20 +3,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TariffInput(BaseModel):
     min_workers: int = Field(ge=1, le=10_000_000)
     max_workers: int | None = Field(default=None, ge=1, le=10_000_000)
-    price: Decimal = Field(ge=0, decimal_places=2, max_digits=14)
+    price: Decimal = Field(gt=0, decimal_places=2, max_digits=14)
     currency: Literal["PEN"] = "PEN"
     active: bool = True
-
-    @field_validator("max_workers")
-    @classmethod
-    def max_valid(cls, value):
-        return value
 
 
 class TariffRead(TariffInput):

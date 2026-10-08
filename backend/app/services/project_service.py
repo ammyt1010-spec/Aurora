@@ -56,6 +56,23 @@ class ProjectService:
                     raise ValidationDomainError(
                         "Un proyecto CENSOPAS requiere una organización."
                     )
+            # Production is exclusively enterprise-based. A registered
+            # company with an OWNER/ADMIN must back every new project.
+            from app.core.config import get_settings
+            if get_settings().environment.lower() == "production":
+                if organization_id is None:
+                    raise ValidationDomainError("Registra o selecciona una empresa antes de crear un proyecto.")
+                membership = await self.session.get(
+                    OrganizationMembership, (organization_id, payload.owner_user_id)
+                )
+                if membership is None or membership.role_code not in {"OWNER", "ADMIN"}:
+                    raise AuthorizationError("Sólo el administrador empresarial puede crear proyectos.")
+            elif organization_id is not None:
+                membership = await self.session.get(
+                    OrganizationMembership, (organization_id, payload.owner_user_id)
+                )
+                if membership is None:
+                    raise AuthorizationError("No puedes asociar proyectos a otra empresa.")
             project_metadata = dict(payload.metadata or {})
             if payload.project_type == "CENSO" and payload.censopas_study is not None:
                 project_metadata["requested_version_kind"] = payload.censopas_study.instrument_version
