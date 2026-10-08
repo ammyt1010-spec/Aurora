@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_optional_current_user
+from app.models.user import User
 from app.core.exceptions import NotFoundError
 from app.schemas.reports import (
     ReportPreviewRead,
@@ -31,10 +33,12 @@ async def create_report_template(
 
 @router.post("/studies/{study_id}/reports", response_model=ReportRunRead, status_code=201)
 async def generate_report(
-    study_id: int, payload: ReportRunCreate, session: AsyncSession = Depends(get_db)
+    study_id: int, payload: ReportRunCreate, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = ReportService(session)
-    report = await service.generate(study_id, payload)
+    safe = payload.model_copy(update={"requested_by_user_id": current_user.id}) if current_user else payload
+    report = await service.generate(study_id, safe)
     return ReportRunRead.model_validate(report)
 
 
@@ -43,7 +47,8 @@ async def generate_report_preview(
     study_id: int, payload: ReportRunCreate, session: AsyncSession = Depends(get_db)
 ):
     service = ReportService(session)
-    report_run, pages = await service.generate_preview(study_id, payload)
+    safe = payload.model_copy(update={"requested_by_user_id": current_user.id}) if current_user else payload
+    report_run, pages = await service.generate_preview(study_id, safe)
     return ReportPreviewRead(
         preview_id=report_run.id,
         status=report_run.status,

@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_optional_current_user
+from app.models.user import User
 from app.core.exceptions import NotFoundError
 from app.schemas.exports import ExportCreate, ExportRead
 from app.services.export_service import ExportService
@@ -22,10 +24,12 @@ _MEDIA_TYPES = {
 
 @router.post("/studies/{study_id}/exports", response_model=ExportRead, status_code=201)
 async def create_export(
-    study_id: int, payload: ExportCreate, session: AsyncSession = Depends(get_db)
+    study_id: int, payload: ExportCreate, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = ExportService(session)
-    export = await service.create_export(study_id, payload)
+    safe = payload.model_copy(update={"requested_by_user_id": current_user.id}) if current_user else payload
+    export = await service.create_export(study_id, safe)
     return ExportRead.model_validate(export)
 
 

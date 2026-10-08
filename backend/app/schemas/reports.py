@@ -55,7 +55,7 @@ class ReportRunRead(BaseModel):
     analysis_run_id: int | None
     status: str
     output_format: str
-    storage_path: str | None
+    storage_path: str | None = Field(default=None, exclude=True)
     data_hash: str | None
     generated_at: datetime | None
     error_message: str | None
