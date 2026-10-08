@@ -1,0 +1,21 @@
+# Build the React app first: (cd frontend && npm run build)
+# Run Caddy from the repository root. Terminate TLS at an approved reverse proxy.
+:8080 {
+    root * ./frontend/dist
+    encode zstd gzip
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8001
+    }
+    handle /health {
+        reverse_proxy 127.0.0.1:8001
+    }
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options SAMEORIGIN
+    }
+}
