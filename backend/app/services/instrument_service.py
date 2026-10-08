@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -74,13 +74,14 @@ class InstrumentService:
         return instrument
 
     async def list(
-        self, params: PageParams, *, project_id: int | None = None
+        self, params: PageParams, *, project_id: int | None = None, owner_user_id: int | None = None
     ) -> Page[InstrumentRead]:
         if project_id is not None and await self.session.get(Project, project_id) is None:
             raise NotFoundError(f"Proyecto {project_id} no encontrado")
-        items, total = await paginate(
-            self.session, self.repo.list_stmt(project_id=project_id), params
-        )
+        stmt = self.repo.list_stmt(project_id=project_id)
+        if project_id is None and owner_user_id is not None:
+            stmt = stmt.where(or_(Instrument.is_system.is_(True), Instrument.owner_user_id == owner_user_id))
+        items, total = await paginate(self.session, stmt, params)
         return Page[InstrumentRead](
             items=[InstrumentRead.model_validate(item) for item in items],
             page=params.page,

@@ -6,6 +6,7 @@ import { Download, FileDown, ShieldCheck } from 'lucide-react';
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
 import { createExport, getExportDownloadUrl, listExports } from '../../../api/exports.js';
+import { downloadProtectedFile } from '../../../api/protectedFiles.js';
 
 import { PageHeader } from '../../../components/layout/PageHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
@@ -31,6 +32,7 @@ export default function ProjectExportsPage() {
   const { projectId } = useParams();
   const [studyId, setStudyId] = useState(null);
   const [shape, setShape] = useState('WIDE');
+  const [downloadError, setDownloadError] = useState(null);
   const queryClient = useQueryClient();
   useActiveProject(projectId);
 
@@ -124,6 +126,7 @@ export default function ProjectExportsPage() {
             <div className="border-b border-border px-4 py-3">
               <p className="text-sm font-semibold text-dark">Historial de exportaciones</p>
             </div>
+            {downloadError ? <p role="alert" className="p-4 text-xs text-danger">{downloadError}</p> : null}
             {isLoadingExports ? (
               <div className="p-4">
                 <LoadingState label="Cargando exportaciones..." />
@@ -169,12 +172,20 @@ export default function ProjectExportsPage() {
                         </td>
                         <td className="px-4 py-3">
                           {exp.status === 'COMPLETED' ? (
-                            <a
-                              href={getExportDownloadUrl(exp.id)}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  setDownloadError(null);
+                                  await downloadProtectedFile(getExportDownloadUrl(exp.id), `aurora-export-${exp.id}.${exp.export_type.toLowerCase()}`);
+                                } catch (error) {
+                                  setDownloadError(error.message);
+                                }
+                              }}
                               className="colmena-badge inline-flex items-center gap-1 bg-amber/10 text-yellowDark hover:bg-amber/20"
                             >
                               <Download size={12} /> Descargar
-                            </a>
+                            </button>
                           ) : exp.status === 'FAILED' ? (
                             <span className="text-xs text-danger" title={exp.error_message || ''}>
                               Error

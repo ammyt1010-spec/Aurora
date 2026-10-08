@@ -90,6 +90,11 @@ class ReportService:
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
 
+        if payload.analysis_run_id is not None:
+            analysis = await self.session.get(AnalysisRun, payload.analysis_run_id)
+            if analysis is None or analysis.study_id != study_id:
+                raise NotFoundError("El análisis seleccionado no pertenece a este estudio")
+
         report_run = ReportRun(
             study_id=study_id,
             report_template_id=payload.report_template_id,

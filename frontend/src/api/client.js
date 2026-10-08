@@ -17,7 +17,7 @@ function pointsToLocalhost(value) {
 export const API_BASE_URL = (
   !isLocalBrowser && pointsToLocalhost(configuredApiBaseUrl)
     ? '/api/v1'
-    : configuredApiBaseUrl || (isLocalBrowser ? 'http://localhost:8000/api/v1' : '/api/v1')
+    : configuredApiBaseUrl || '/api/v1'
 ).replace(/\/$/, '');
 const TOKEN_STORAGE_KEY = 'colmena_token';
 
