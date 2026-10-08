@@ -388,7 +388,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               <Download size={16} />
               Descargar {outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
             </button>
-            {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p>}
+            {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p> : null}
           </div>
         </Card>
       </div>
