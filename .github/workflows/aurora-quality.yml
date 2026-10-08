@@ -59,3 +59,40 @@ jobs:
       - name: Frontend tests
         working-directory: frontend
         run: npm test
+
+  postgres-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aurora_ci
+          POSTGRES_PASSWORD: local-test-password
+          POSTGRES_DB: aurora_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aurora_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://aurora_ci:local-test-password@127.0.0.1:5432/aurora_ci
+      DATABASE_URL_SYNC: postgresql+psycopg://aurora_ci:local-test-password@127.0.0.1:5432/aurora_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install poetry
+      - name: Install dependencies
+        working-directory: backend
+        run: poetry install --no-interaction
+      - name: Apply migrations to PostgreSQL 16
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Verify migration at head and rate limit storage
+        working-directory: backend
+        run: |
+          poetry run python -c "from sqlalchemy import create_engine,text; from app.core.config import get_settings; e=create_engine(get_settings().database_url_sync); c=e.connect(); print(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one()); assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0015'; assert c.execute(text(\"SELECT to_regclass('colmena.public_rate_limits')\")).scalar_one() is not None; c.close()"

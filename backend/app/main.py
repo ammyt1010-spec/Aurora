@@ -1,4 +1,7 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from app.core.database import engine
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
@@ -11,7 +14,7 @@ settings = get_settings()
 configure_logging()
 
 app = FastAPI(
-    title="Colmena Backend",
+    title="AURORA Professional API",
     description=(
         "Backend unificado de Colmena (proyectos académicos, CENSOPAS-COPSOQ, "
         "surveys, motor estadístico, autenticación). Fases 1-9 implementadas."
@@ -35,3 +38,14 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"], include_in_schema=False)
+async def readiness():
+    """Readiness is only successful when the database responds."""
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ready"}
