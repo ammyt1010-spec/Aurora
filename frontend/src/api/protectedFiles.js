@@ -3,9 +3,10 @@ import { getStoredToken } from './client.js';
 // Always fetch private files with Authorization. Never place JWTs in URLs.
 export async function fetchProtectedBlob(url) {
   const token = getStoredToken();
-  if (!token) throw new Error('Inicia sesión para descargar este archivo.');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers,
+    credentials: 'include',
     cache: 'no-store',
   });
   if (!response.ok) throw new Error(`No se pudo obtener el archivo (HTTP ${response.status}).`);

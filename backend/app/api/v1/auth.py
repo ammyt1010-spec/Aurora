@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.auth_cookie import add_session_cookies, clear_session_cookies
 from app.core.exceptions import AuthenticationError
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -22,14 +23,15 @@ async def register(payload: RegisterRequest, session: AsyncSession = Depends(get
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, response: Response, session: AsyncSession = Depends(get_db)):
     service = AuthService(session)
     token = await service.login(payload)
+    add_session_cookies(response, token)
     return TokenResponse(access_token=token)
 
 
 @router.post("/demo-login", response_model=TokenResponse)
-async def demo_login(request: Request, session: AsyncSession = Depends(get_db)):
+async def demo_login(request: Request, response: Response, session: AsyncSession = Depends(get_db)):
     settings = get_settings()
     client_host = request.client.host if request.client else ""
     if settings.environment == "production" or not settings.demo_access_enabled:
@@ -38,9 +40,16 @@ async def demo_login(request: Request, session: AsyncSession = Depends(get_db)):
         raise AuthenticationError("El acceso demo solo está disponible desde el servidor local.")
     service = AuthService(session)
     token = await service.demo_login(settings.demo_user_email)
+    add_session_cookies(response, token)
     return TokenResponse(access_token=token)
 
 
 @router.get("/me", response_model=UserRead)
 async def me(current_user: User = Depends(get_current_user)):
     return UserRead.model_validate(current_user)
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response, _user: User = Depends(get_current_user)):
+    """Revoke the browser cookie in this client (bearer tokens expire naturally)."""
+    clear_session_cookies(response)
+    return None

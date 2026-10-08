@@ -70,14 +70,14 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <Button 
-          type="button" 
-          variant="primary" 
+        {['localhost', '127.0.0.1'].includes(window.location.hostname) && <Button
+          type="button"
+          variant="primary"
           onClick={handleDemoClick} 
           className="w-full bg-gradient-to-r from-aurora-500 to-aurora-600 hover:from-aurora-600 hover:to-aurora-700 shadow-aurora-500/25 border-none text-white transition-all transform hover:-translate-y-0.5 hover:shadow-lg dark:from-aurora-600 dark:to-aurora-700"
         >
-          Acceder al Sistema
-        </Button>
+          Acceder en modo demostración
+        </Button>}
 
         <div className="my-6 flex items-center">
           <div className="flex-1 border-t border-slate-200 dark:border-slate-700"></div>
