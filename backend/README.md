@@ -1,3 +1,10 @@
+> **AURORA Professional:** la documentación histórica de Colmena puede
+> describir autenticación o PDF anteriores. Para la versión actualizada,
+> consulta [estado profesional](../docs/AURORA_PROFESSIONAL_STATUS.md),
+> [validación metodológica](../docs/VALIDACION_METODOLOGICA.md) y
+> [operación](../deploy/OPERATIONS.md). El despliegue con datos reales
+> requiere el control de calidad descrito en esos archivos.
+
 # Colmena Backend
 
 Backend unificado de Colmena (proyectos académicos + CENSOPAS-COPSOQ + surveys + motor estadístico).

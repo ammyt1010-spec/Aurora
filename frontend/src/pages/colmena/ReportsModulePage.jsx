@@ -30,7 +30,7 @@ export default function ReportsModulePage() {
           </div>
           <h2 className="text-base font-bold text-dark">No hay informes emitidos aún</h2>
           <p className="text-xs text-muted leading-relaxed">
-            Para generar y exportar reportes oficiales SUNAFIL, solicita un instrumento desde el Catálogo de Instrumentos.
+            Para generar un informe profesional, configura el instrumento del estudio y solicita la cotización correspondiente.
           </p>
           <button
             type="button"

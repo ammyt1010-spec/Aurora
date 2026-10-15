@@ -1,0 +1,33 @@
+name: Synchronize frontend lockfile
+on:
+  push:
+    branches:
+      - hardening/aurora-professional-v1
+    paths:
+      - frontend/package.json
+      - .github/workflows/sync-frontend-lock.yml
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Regenerate lockfile deterministically
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Commit dependency lock for reproducible installations
+        run: |
+          if ! git diff --quiet -- frontend/package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add frontend/package-lock.json
+            git commit -m "chore: synchronize frontend dependency lockfile"
+            git push origin HEAD:hardening/aurora-professional-v1
+          fi

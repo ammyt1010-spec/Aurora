@@ -17,7 +17,7 @@ function pointsToLocalhost(value) {
 export const API_BASE_URL = (
   !isLocalBrowser && pointsToLocalhost(configuredApiBaseUrl)
     ? '/api/v1'
-    : configuredApiBaseUrl || (isLocalBrowser ? 'http://localhost:8000/api/v1' : '/api/v1')
+    : configuredApiBaseUrl || '/api/v1'
 ).replace(/\/$/, '');
 const TOKEN_STORAGE_KEY = 'colmena_token';
 
@@ -31,6 +31,11 @@ export function getStoredToken() {
 
 export function setStoredToken(token) {
   localStorage.setItem(TOKEN_STORAGE_KEY, token);
+}
+
+export function getCsrfToken() {
+  const pair = document.cookie.split('; ').find((entry) => entry.startsWith('aurora_csrf='));
+  return pair ? decodeURIComponent(pair.substring('aurora_csrf='.length)) : null;
 }
 
 export function clearStoredToken() {
@@ -58,6 +63,10 @@ export async function apiRequest(path, { method = 'GET', body, headers, skipAuth
   };
 
   if (!skipAuth) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) {
+      finalHeaders['X-CSRF-Token'] = csrfToken;
+    }
     const token = getStoredToken();
     if (token) {
       finalHeaders.Authorization = `Bearer ${token}`;
@@ -66,6 +75,7 @@ export async function apiRequest(path, { method = 'GET', body, headers, skipAuth
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
+    credentials: 'include',
     headers: finalHeaders,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });

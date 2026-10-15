@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.participant_tokens import create_participant_token
 from app.core.rate_limit import enforce_public_session_rate_limit
 from app.schemas.public import (
     PublicResponseSessionCreate,
@@ -37,4 +38,6 @@ async def create_public_response_session(
     service = PublicSurveyService(session)
     invitation_token = payload.invitation_token if payload else None
     response_session = await service.create_session_for_public_study(public_id, invitation_token)
-    return PublicResponseSessionRead.model_validate(response_session)
+    return PublicResponseSessionRead.model_validate(response_session).model_copy(
+        update={"access_token": create_participant_token(response_session.id)}
+    )

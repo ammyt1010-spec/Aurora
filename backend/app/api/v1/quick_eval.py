@@ -81,7 +81,7 @@ async def create_quick_eval(
     study_service = StudyService(session)
     study = await study_service.open(study_id)
 
-    survey_url = f"/s/{study.public_id}"
+    survey_url = f"/encuesta/{study.public_id}"
 
     return QuickEvalResponse(
         project_id=project.id,

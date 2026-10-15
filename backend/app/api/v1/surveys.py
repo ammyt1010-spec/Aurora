@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_optional_current_user
+from app.models.user import User
 from app.core.pagination import Page, PageParams, page_params
 from app.schemas.surveys import (
     SurveyCreate,
@@ -18,10 +20,12 @@ router = APIRouter(tags=["surveys"])
 
 @router.post("/projects/{project_id}/surveys", response_model=SurveyRead, status_code=201)
 async def create_survey(
-    project_id: int, payload: SurveyCreate, session: AsyncSession = Depends(get_db)
+    project_id: int, payload: SurveyCreate, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = SurveyService(session)
-    survey = await service.create(project_id, payload)
+    safe = payload.model_copy(update={"created_by_user_id": current_user.id}) if current_user else payload
+    survey = await service.create(project_id, safe)
     return SurveyRead.model_validate(survey)
 
 
@@ -31,10 +35,12 @@ async def create_survey(
     status_code=201,
 )
 async def create_survey_from_instrument(
-    project_id: int, payload: SurveyFromInstrumentCreate, session: AsyncSession = Depends(get_db)
+    project_id: int, payload: SurveyFromInstrumentCreate, session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = SurveyService(session)
-    survey = await service.create_from_instrument(project_id, payload)
+    safe = payload.model_copy(update={"created_by_user_id": current_user.id}) if current_user else payload
+    survey = await service.create_from_instrument(project_id, safe)
     return SurveyRead.model_validate(survey)
 
 

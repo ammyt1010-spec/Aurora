@@ -46,6 +46,7 @@ export default function PublicSurveyPage() {
   const [answers, setAnswers] = useState({});
   const [index, setIndex] = useState(0);
   const [completed, setCompleted] = useState(false);
+  const [invitationToken, setInvitationToken] = useState('');
 
   const {
     data: bundle,
@@ -58,12 +59,12 @@ export default function PublicSurveyPage() {
   });
 
   const createSessionMutation = useMutation({
-    mutationFn: () => createPublicResponseSession(publicId),
+    mutationFn: (token) => createPublicResponseSession(publicId, token),
     onSuccess: (data) => setSession(data),
   });
 
   useEffect(() => {
-    if (bundle && !sessionCreatedRef.current) {
+    if (bundle && !bundle.requires_invitation && !sessionCreatedRef.current) {
       sessionCreatedRef.current = true;
       createSessionMutation.mutate();
     }
@@ -71,11 +72,11 @@ export default function PublicSurveyPage() {
   }, [bundle]);
 
   const answerMutation = useMutation({
-    mutationFn: ({ questionId, payload }) => upsertResponse(session.id, questionId, payload),
+    mutationFn: ({ questionId, payload }) => upsertResponse(session.id, questionId, payload, session.access_token),
   });
 
   const completeMutation = useMutation({
-    mutationFn: () => completeResponseSession(session.id),
+    mutationFn: () => completeResponseSession(session.id, {}, session.access_token),
     onSuccess: () => setCompleted(true),
   });
 
@@ -98,6 +99,28 @@ export default function PublicSurveyPage() {
           </p>
         </div>
       </div>
+    );
+  }
+
+  if (bundle.requires_invitation && !session) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-hero-glow px-4">
+        <form className="colmena-card w-full max-w-md space-y-4 p-8" onSubmit={(event) => {
+          event.preventDefault();
+          createSessionMutation.mutate(invitationToken.trim());
+        }}>
+          <h1 className="text-lg font-bold text-dark">Acceso privado a la evaluación</h1>
+          <p className="text-sm text-muted">Introduce el código de invitación proporcionado por el responsable del estudio.</p>
+          <input className="colmena-input w-full" type="password" autoComplete="off"
+            value={invitationToken} onChange={(event) => setInvitationToken(event.target.value)}
+            placeholder="Código de invitación" required />
+          {createSessionMutation.isError ? <p className="text-sm text-danger">Código inválido, vencido o ya utilizado.</p> : null}
+          <button className="survey-btn survey-btn-primary" type="submit"
+            disabled={!invitationToken.trim() || createSessionMutation.isPending}>
+            {createSessionMutation.isPending ? 'Verificando...' : 'Ingresar a la encuesta'}
+          </button>
+        </form>
+      </main>
     );
   }
 

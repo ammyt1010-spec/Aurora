@@ -68,4 +68,5 @@ def compute_reliability(item_matrix: list[list[float]]) -> dict:
         "n_respondents": n_respondents,
         "cronbach_alpha": compute_cronbach_alpha(item_matrix),
         "mcdonald_omega": compute_mcdonald_omega(item_matrix),
+        "omega_method": "PCA_UNIFACTORIAL_APPROXIMATION",
     }

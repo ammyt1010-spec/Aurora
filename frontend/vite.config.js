@@ -4,17 +4,16 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '0.0.0.0',
+    host: '127.0.0.1',
     port: 5174,
     strictPort: true,
-    allowedHosts: ['.trycloudflare.com', 'micelio-server.tail2b4243.ts.net'],
     proxy: {
       '/api/v1': {
-        target: 'http://127.0.0.1:8002',
+        target: 'http://127.0.0.1:8001',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://127.0.0.1:8002',
+        target: 'http://127.0.0.1:8001',
         changeOrigin: true,
       },
     },

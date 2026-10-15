@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -16,7 +17,6 @@ import {
 import { apiRequest } from '../../../api/client.js';
 import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
-import FormField from '../../ui/FormField.jsx';
 
 export default function InstrumentConfirmModal({ instrument, isOpen, onClose, onCreated }) {
   const navigate = useNavigate();
@@ -40,7 +40,7 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     onSuccess: (data) => {
       setResult(data);
       setStep(2);
-      if (onCreated) onCreated(data);
+      // Allow the user to copy the actual survey URL and QR before navigating.
     },
     onError: (err) => {
       setErrorMsg(err?.message || 'Error al generar el instrumento.');
@@ -71,7 +71,8 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     });
   };
 
-  const surveyUrl = result ? `${window.location.origin}/encuesta/${result.public_id}` : '';
+  const surveyUrl = result?.public_id
+    ? `${window.location.origin}/encuesta/${result.public_id}` : '';
 
   const handleCopyLink = () => {
     if (!surveyUrl) return;
@@ -82,7 +83,8 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
 
   const handleGoToTelemetry = () => {
     if (result?.project_id) {
-      navigate(`/colmena/project/${result.project_id}/telemetry`);
+      if (onCreated) onCreated(result);
+      else navigate(`/colmena/project/${result.project_id}/telemetry`);
       if (onClose) onClose();
     }
   };
@@ -96,7 +98,7 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
           <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-dark space-y-1">
             <div className="flex items-center justify-between">
               <span className="font-bold text-amber text-xs flex items-center gap-1.5">
-                <ShieldCheck size={14} /> {instrument.badge || 'Oficial SUNAFIL'}
+                <ShieldCheck size={14} /> {instrument.badge || 'Instrumento configurado'}
               </span>
               <span className="text-[10px] font-semibold text-muted bg-surface px-2 py-0.5 rounded-full border border-border">
                 {instrument.items} ítems · ~{instrument.duration}
@@ -112,62 +114,44 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
           ) : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Razón Social / Empresa *" id="company_name">
+            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="company_name">
+              Razón Social / Empresa *
               <input
-                id="company_name"
-                name="company_name"
-                type="text"
-                placeholder="ej. Compañía Minera Yauricocha S.A.C."
-                value={formData.company_name}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-dark placeholder:text-muted focus:border-amber outline-none"
-                required
+                id="company_name" name="company_name" type="text" required
+                placeholder="Ej. Empresa ABC S.A.C."
+                value={formData.company_name} onChange={handleChange}
+                className="colmena-input"
               />
-            </FormField>
-
-            <FormField label="RUC / ID Tributario *" id="company_ruc">
+            </label>
+            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="company_ruc">
+              RUC / ID Tributario *
               <input
-                id="company_ruc"
-                name="company_ruc"
-                type="text"
-                placeholder="ej. 20123456789"
-                value={formData.company_ruc}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-dark placeholder:text-muted focus:border-amber outline-none"
-                required
+                id="company_ruc" name="company_ruc" type="text" required
+                placeholder="Ej. 20123456789"
+                value={formData.company_ruc} onChange={handleChange}
+                className="colmena-input"
               />
-            </FormField>
+            </label>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Sector Económico" id="company_sector">
-              <select
-                id="company_sector"
-                name="company_sector"
-                value={formData.company_sector}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-dark focus:border-amber outline-none"
-              >
+            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="company_sector">
+              Sector Económico
+              <select id="company_sector" name="company_sector" value={formData.company_sector}
+                onChange={handleChange} className="colmena-input">
                 <option value="MINING">Minería e Hidrocarburos</option>
                 <option value="INDUSTRIAL">Industria y Manufactura</option>
                 <option value="CONSTRUCTION">Construcción y Energía</option>
                 <option value="HEALTH">Salud y Servicios Médicos</option>
                 <option value="SERVICES">Servicios y Comercio</option>
               </select>
-            </FormField>
-
-            <FormField label="Población Trabajadores" id="population_invited">
-              <input
-                id="population_invited"
-                name="population_invited"
-                type="number"
-                min="1"
-                max="10000"
-                value={formData.population_invited}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-dark focus:border-amber outline-none"
-              />
-            </FormField>
+            </label>
+            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="population_invited">
+              Población de trabajadores
+              <input id="population_invited" name="population_invited" type="number"
+                min="1" max="10000" required value={formData.population_invited}
+                onChange={handleChange} className="colmena-input" />
+            </label>
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
@@ -223,15 +207,11 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
                 </span>
                 <span className="text-[11px] text-muted block">Escaneo directo desde celular</span>
               </div>
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(surveyUrl)}`}
-                target="_blank"
-                download="qr_encuesta.png"
-                rel="noreferrer"
-                className="px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surfaceSoft text-dark text-xs font-semibold transition"
-              >
-                Descargar QR
-              </a>
+              {surveyUrl ? (
+                <div className="rounded-lg border border-border bg-white p-2" aria-label="QR local de encuesta">
+                  <QRCodeSVG value={surveyUrl} size={108} marginSize={1} />
+                </div>
+              ) : null}
             </div>
           </div>
 

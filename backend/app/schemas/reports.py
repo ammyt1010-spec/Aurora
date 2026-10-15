@@ -32,6 +32,7 @@ class ReportTemplateRead(BaseModel):
 
 
 class ReportRunCreate(BaseModel):
+    billing_order_id: int | None = Field(default=None, gt=0)
     report_template_id: int | None = None
     analysis_run_id: int | None = None
     output_format: OutputFormat = "DOCX"
@@ -48,6 +49,7 @@ class ReportPreviewRead(BaseModel):
 
 
 class ReportRunRead(BaseModel):
+    billing_order_id: int | None = None
     id: int
     public_id: uuid.UUID
     study_id: int
@@ -55,7 +57,7 @@ class ReportRunRead(BaseModel):
     analysis_run_id: int | None
     status: str
     output_format: str
-    storage_path: str | None
+    storage_path: str | None = Field(default=None, exclude=True)
     data_hash: str | None
     generated_at: datetime | None
     error_message: str | None

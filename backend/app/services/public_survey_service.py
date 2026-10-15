@@ -52,6 +52,9 @@ class PublicSurveyService:
             StudyInvitation.access_token_hash == hash_invitation_token(token),
             StudyInvitation.status.in_(("PENDING", "SENT")),
         )
+        # PostgreSQL row lock prevents double-use when two workers redeem the same code.
+        if self.session.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update()
         invitation = (await self.session.execute(stmt)).scalar_one_or_none()
         if invitation is None:
             return None
@@ -157,6 +160,7 @@ class PublicSurveyService:
 
         return PublicSurveyBundle(
             study_public_id=study.public_id,
+            requires_invitation=study.requires_invitation,
             study_name=study.name,
             survey_name=survey.name,
             survey_description=survey.description,

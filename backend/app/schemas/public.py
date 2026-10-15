@@ -46,6 +46,7 @@ class PublicSurveyBundle(BaseModel):
     devuelve el backend)."""
 
     study_public_id: uuid.UUID
+    requires_invitation: bool = False
     study_name: str
     survey_name: str
     survey_description: str | None
@@ -74,5 +75,6 @@ class PublicResponseSessionRead(BaseModel):
     public_id: uuid.UUID
     status: str
     completion_pct: float | None
+    access_token: str = ""
 
     model_config = ConfigDict(from_attributes=True)
