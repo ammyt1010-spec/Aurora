@@ -16,6 +16,10 @@ export class AppErrorBoundary extends Component {
 
   render() {
     if (!this.state.error) return this.props.children;
+    // Vite DEV can be reachable through a public tunnel; never expose
+    // internal exception details to non-local visitors.
+    const showLocalDiagnostics = import.meta.env.DEV
+      && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
     return (
       <main className="flex min-h-screen items-center justify-center bg-hero-glow p-4">
@@ -27,7 +31,7 @@ export class AppErrorBoundary extends Component {
           <p className="mt-1 text-sm leading-5 text-muted">
             Recarga la aplicación. Si el problema continúa, revisa el detalle técnico en la consola.
           </p>
-          {import.meta.env.DEV && (
+          {showLocalDiagnostics && (
             <div className="mt-4 text-left">
               <button type="button" className="text-sm font-medium text-amber underline"
                 onClick={() => this.setState((prev) => ({ showDetails: !prev.showDetails }))}>
