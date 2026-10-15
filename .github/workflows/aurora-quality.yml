@@ -44,6 +44,16 @@ jobs:
       - name: Install frontend with committed lockfile
         working-directory: frontend
         run: npm ci
+      - name: Detect undefined variables in project routes
+        working-directory: frontend
+        run: >-
+          npx eslint
+          src/pages/colmena/project/AdaptiveProjectTelemetryPage.jsx
+          src/pages/colmena/project/ProjectPlanPage.jsx
+          src/pages/colmena/project/ProjectResultsPage.jsx
+          --rule 'no-undef: error'
+          --rule 'no-unused-vars: off'
+          --rule 'react-hooks/exhaustive-deps: off'
       - name: Frontend production build
         working-directory: frontend
         env:
