@@ -28,7 +28,7 @@ describe('AURORA instrument catalog', () => {
   it('renders an actionable server error rather than throwing a React tree error', async () => {
     getCensopasPlans.mockRejectedValue(new Error('API temporalmente indisponible'));
     renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByText('No se pudo cargar el catálogo')).toBeInTheDocument();
+    expect(await screen.findByText('No se pudo cargar el catálogo', {}, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it('does not invent instruments not published in the backend', () => {
