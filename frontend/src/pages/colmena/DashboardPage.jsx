@@ -1,144 +1,126 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Activity,
-  Gauge,
-  HeartPulse,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { BookOpen, ClipboardCheck, ShieldCheck, RefreshCcw } from 'lucide-react';
 
+import { getCensopasPlans } from '../../api/instruments.js';
 import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
+import { LoadingState } from '../../components/ui/LoadingState.jsx';
+import { ErrorState } from '../../components/ui/ErrorState.jsx';
+import { EmptyState } from '../../components/ui/EmptyState.jsx';
 
-const CATALOG_INSTRUMENTS = [
-  {
-    id: 'censopas_short',
-    title: 'CENSOPAS Corta (42 ítems)',
-    version: 'SHORT',
-    badge: 'Oficial SUNAFIL · PYMEs (<25 trab.)',
-    badgeColor: 'bg-amber/10 text-amber border-amber/20',
-    items: 42,
-    duration: '10 min',
-    description: 'Evaluación oficial de riesgos psicosociales obligatoria para pequeñas empresas y centros de trabajo con menos de 25 trabajadores.',
-    icon: ShieldCheck,
-  },
-  {
-    id: 'censopas_medium',
-    title: 'CENSOPAS Media (112 ítems)',
-    version: 'MEDIUM',
-    badge: 'Oficial SUNAFIL · Minería e Industria (≥25 trab.)',
-    badgeColor: 'bg-turquoise/10 text-turquoise border-turquoise/20',
-    items: 112,
-    duration: '20 min',
-    description: 'Estándar completo para minería, hidrocarburos y gran industria. Evalúa 20 subdimensiones de exigencias, autonomía y apoyo social.',
-    icon: Gauge,
-  },
-  {
-    id: 'safety_climate',
-    title: 'Clima de Seguridad Industrial',
-    version: 'SHORT',
-    badge: 'Prevención Minero-Industrial',
-    badgeColor: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-    items: 35,
-    duration: '8 min',
-    description: 'Medición de la percepción del compromiso de la alta dirección, supervisión de campo y cultura de prevención en operaciones.',
-    icon: Activity,
-  },
-  {
-    id: 'occupational_health',
-    title: 'Salud Ocupacional & Ergonomía',
-    version: 'SHORT',
-    badge: 'Carga Física y Fatiga',
-    badgeColor: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-    items: 28,
-    duration: '6 min',
-    description: 'Tamizaje de sintomatología musculoesquelética (Cuestionario Nórdico adaptado) y fatiga laboral en turnos de minería.',
-    icon: HeartPulse,
-  },
-];
+const VERSION_LABELS = {
+  SHORT: 'CENSOPAS-COPSOQ, versión corta',
+  MEDIUM: 'CENSOPAS-COPSOQ, versión media',
+};
+
+export function availableInstrumentCards(response) {
+  const plans = Array.isArray(response?.plans) ? response.plans : [];
+  const byKind = new Map();
+  for (const plan of plans) {
+    const kind = plan?.version_kind;
+    if (!VERSION_LABELS[kind]) continue;
+    // Only catalog items published in the database are selectable.
+    // The backend reports readiness separately from version status.
+    if (!byKind.has(kind) || (plan.ready_for_scoring && !byKind.get(kind).ready_for_scoring)) {
+      byKind.set(kind, plan);
+    }
+  }
+  return [...byKind.values()].sort((a, b) => a.version_kind.localeCompare(b.version_kind));
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [selectedInstrument, setSelectedInstrument] = useState(null);
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['censopas-plans'],
+    queryFn: getCensopasPlans,
+    retry: 1,
+    staleTime: 60_000,
+  });
+  const cards = availableInstrumentCards(data);
 
   return (
-    <div className="colmena-page space-y-4 text-xs">
-      {/* High-Density Header Banner */}
-      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="colmena-page space-y-5">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber/10 text-amber text-[11px] font-bold uppercase tracking-wider mb-1">
-              <Sparkles size={12} /> AURORA PRO — Menú de Instrumentos
-            </div>
-            <h1 className="text-lg font-bold tracking-tight text-dark">
-              Catálogo de Instrumentos de Evaluación
-            </h1>
-            <p className="text-xs text-muted">
-              Selecciona el instrumento para tu empresa, confirma la solicitud y genera directamente el enlace o código QR.
+            <p className="text-[11px] font-bold uppercase tracking-wider text-amber">AURORA Professional · Instrumentos</p>
+            <h1 className="mt-1 text-xl font-bold text-dark">Catálogo de instrumentos</h1>
+            <p className="mt-1 text-sm text-muted">
+              Solo aparecen versiones registradas y publicadas en el servidor.
+              Las evaluaciones de otros métodos requieren su propio instrumento configurado.
             </p>
           </div>
+          <button type="button" onClick={() => refetch()} disabled={isFetching}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-dark disabled:opacity-50">
+            <RefreshCcw size={15} className={isFetching ? 'animate-spin' : ''} /> Actualizar catálogo
+          </button>
         </div>
       </div>
-
-      {/* Main Instrument Catalog Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted">
-            Catálogo de Instrumentos Disponibles para Solicitar
-          </h2>
-          <span className="text-[11px] text-muted">Selección rápida en 1 clic</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {CATALOG_INSTRUMENTS.map((inst) => {
-            const Icon = inst.icon;
-            return (
-              <div
-                key={inst.id}
-                className="flex flex-col justify-between rounded-xl border border-border bg-surface p-4 space-y-3 hover:border-amber/50 hover:shadow-md transition"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-1.5">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${inst.badgeColor}`}>
-                      {inst.badge}
-                    </span>
-                    <Icon size={18} className="text-muted shrink-0" />
-                  </div>
-
-                  <h3 className="text-sm font-bold text-dark leading-tight">{inst.title}</h3>
-                  <p className="text-[11px] text-muted leading-relaxed">{inst.description}</p>
-                </div>
-
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold text-muted">
-                    {inst.items} preguntas · ~{inst.duration}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedInstrument(inst)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber hover:bg-amber-600 text-dark font-bold text-xs shadow-sm transition transform active:scale-95 shrink-0"
-                  >
-                    ⚡ Solicitar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Confirmation Modal */}
-      {selectedInstrument ? (
-        <InstrumentConfirmModal
-          instrument={selectedInstrument}
-          isOpen={Boolean(selectedInstrument)}
-          onClose={() => setSelectedInstrument(null)}
-          onCreated={(data) => {
-            setSelectedInstrument(null);
-            navigate(`/colmena/project/${data.project_id}/telemetry`);
-          }}
+      {isLoading ? <LoadingState label="Consultando instrumentos del servidor..." /> : null}
+      {isError ? <ErrorState
+        title="No se pudo cargar el catálogo"
+        message={error?.message || 'Comprueba la conexión con el backend de AURORA.'}
+      /> : null}
+      {!isLoading && !isError && cards.length === 0 ? (
+        <EmptyState
+          title="No hay instrumentos publicados"
+          description="El administrador debe verificar las versiones y ejecutar el proceso de publicación autorizado. No se mostrarán instrumentos ficticios."
         />
       ) : null}
+      {!isLoading && !isError && cards.length > 0 ? (
+        <section aria-label="Instrumentos publicados" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {cards.map((plan) => {
+            const ready = plan.ready_for_scoring === true;
+            const title = VERSION_LABELS[plan.version_kind];
+            return (
+              <article key={plan.instrument_version_id} className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-surface p-5 shadow-sm">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="rounded-md border border-amber/20 bg-amber/10 px-2 py-1 text-xs font-semibold text-dark">
+                      {ready ? 'Versión publicada' : 'Requiere validación'}
+                    </span>
+                    <ShieldCheck size={20} className="text-amber" />
+                  </div>
+                  <h2 className="text-base font-bold text-dark">{title}</h2>
+                  <p className="text-sm text-muted">
+                    {plan.question_count} preguntas, {plan.scored_item_count} ítems puntuables,
+                    {' '}{plan.dimension_count} dimensiones y {plan.subdimension_count} subdimensiones.
+                  </p>
+                  <p className="text-xs text-muted">Versión: {plan.version_code}. La publicación no constituye acreditación de SUNAFIL.</p>
+                </div>
+                <button type="button" disabled={!ready} onClick={() => setSelectedInstrument({
+                  id: plan.instrument_version_id,
+                  title, version: plan.version_kind, items: plan.question_count,
+                  duration: 'según el participante',
+                  badge: 'Versión configurada en AURORA',
+                  description: plan.plan_description || 'Evaluación empresarial basada en una versión del instrumento.',
+                })}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber px-4 py-2.5 text-sm font-bold text-dark disabled:cursor-not-allowed disabled:opacity-40">
+                  <ClipboardCheck size={16} /> {ready ? 'Solicitar evaluación' : 'No disponible'}
+                </button>
+              </article>
+            );
+          })}
+        </section>
+      ) : null}
+      <div className="rounded-xl border border-dashed border-border bg-surfaceSoft p-4 text-sm text-muted">
+        <div className="flex items-start gap-3">
+          <BookOpen size={20} className="mt-0.5 shrink-0 text-amber" />
+          <p>Para otras evaluaciones multidisciplinarias, crea y valida primero el instrumento dentro del expediente empresarial.
+            No se generarán encuestas CENSOPAS bajo el nombre de un método diferente.</p>
+        </div>
+      </div>
+      {selectedInstrument && (
+        <InstrumentConfirmModal instrument={selectedInstrument} isOpen
+          onClose={() => setSelectedInstrument(null)}
+          onCreated={(result) => {
+            setSelectedInstrument(null);
+            navigate(`/colmena/project/${result.project_id}/telemetry`);
+          }}
+        />
+      )}
     </div>
   );
 }
