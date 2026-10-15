@@ -266,12 +266,21 @@ async def require_business_access(
         raise AuthorizationError("No hay política de acceso para este recurso.")
 
     if request.method.upper() in {"POST", "PUT", "PATCH"}:
-        if "application/json" in request.headers.get("content-type", ""):
-            payload = await request.json()
-            if isinstance(payload, dict):
-                await validate_payload_references(
-                    db, user, p, payload, url_path=request.url.path
-                )
+        if "application/json" in request.headers.get("content-type", "").lower():
+            # Empty POST is legal for commands such as /scoring.  Do not
+            # swallow non-empty malformed JSON: the body may contain
+            # authorization-sensitive IDs and must be validated.
+            body = await request.body()
+            if body.strip():
+                try:
+                    payload = await request.json()
+                except (ValueError, UnicodeDecodeError) as exc:
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=422, detail="JSON inválido.") from exc
+                if isinstance(payload, dict):
+                    await validate_payload_references(
+                        db, user, p, payload, url_path=request.url.path
+                    )
 
 
 async def require_response_access(

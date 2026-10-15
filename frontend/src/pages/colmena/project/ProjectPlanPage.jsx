@@ -19,6 +19,7 @@ import {
 } from '../../../api/bsc.js';
 
 import { PageHeader } from '../../../components/layout/PageHeader.jsx';
+import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
 import { Button } from '../../../components/ui/Button.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
