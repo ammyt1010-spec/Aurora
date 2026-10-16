@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.billing import OrderRead, PaymentConfirmation, QuoteCreate, TariffInput, TariffRead, ManualQuotePrice
+from app.schemas.billing import EnterpriseBillingSummary, ManualQuotePrice, OrderRead, PaymentConfirmation, QuoteCreate, TariffInput, TariffRead
 from app.services.billing_service import BillingService, is_platform_operator, require_operator
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -41,7 +41,11 @@ async def create_quote(
     study_id: int, payload: QuoteCreate, db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return await BillingService(db).create_quote(study_id, payload.workers, user, method_code=payload.method_code)
+    return await BillingService(db).create_quote(
+        study_id, payload.workers, user,
+        method_code=payload.method_code,
+        headcount_source=payload.headcount_source,
+    )
 
 
 @router.get("/studies/{study_id}/orders", response_model=list[OrderRead])
@@ -88,3 +92,21 @@ async def set_manual_quote(
     user: User = Depends(get_current_user),
 ):
     return await BillingService(db).set_manual_quote_price(order_id, payload.amount, user)
+
+
+@router.get("/organizations/{organization_id}/summary", response_model=EnterpriseBillingSummary)
+async def organization_billing_summary(
+    organization_id: int, db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await BillingService(db).get_organization_billing_summary(organization_id, user)
+
+
+@router.get("/organizations/{organization_id}/orders", response_model=list[OrderRead])
+async def organization_orders(
+    organization_id: int, db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    summary = await BillingService(db).get_organization_billing_summary(organization_id, user)
+    return summary["orders"]
+

@@ -84,7 +84,7 @@ class ReportService:
             raise NotFoundError(f"Reporte {run_id} no encontrado")
         return run
 
-    async def generate(self, study_id: int, payload: ReportRunCreate):
+    async def generate(self, study_id: int, payload: ReportRunCreate, *, request=None):
         from app.models.report import ReportRun
 
         study = await self.study_repo.get(study_id)
@@ -94,7 +94,7 @@ class ReportService:
         # In production a report, including its preview, consumes exactly
         # one paid company order. No tariff is pre-filled before approval.
         billing = BillingService(self.session)
-        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id)
+        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id, request=request)
 
         if payload.analysis_run_id is not None:
             analysis = await self.session.get(AnalysisRun, payload.analysis_run_id)
@@ -162,8 +162,7 @@ class ReportService:
             # the audit record of failure but release the single-use link.
             report_run.billing_order_id = None
             if paid_order is not None:
-                paid_order.status = "PAID"
-                paid_order.consumed_at = None
+                await billing.release_reservation(paid_order)
             report_run.status = "FAILED"
             report_run.error_message = str(exc)
             await self.session.commit()
@@ -173,7 +172,7 @@ class ReportService:
         await self.session.refresh(report_run)
         return report_run
 
-    async def generate_preview(self, study_id: int, payload: ReportRunCreate) -> tuple:
+    async def generate_preview(self, study_id: int, payload: ReportRunCreate, *, request=None) -> tuple:
         """Genera el DOCX canónico (siempre, sin importar `output_format`
         pedido) y deriva su PDF de preview convirtiéndolo con LibreOffice.
 
@@ -187,7 +186,7 @@ class ReportService:
         from app.services.report_pdf_convert import count_pdf_pages, docx_to_pdf
 
         forced_payload = payload.model_copy(update={"output_format": "DOCX"})
-        report_run = await self.generate(study_id, forced_payload)
+        report_run = await self.generate(study_id, forced_payload, request=request)
 
         docx_path = Path(report_run.storage_path)
         try:
@@ -197,11 +196,11 @@ class ReportService:
         except Exception as exc:
             # A failed preview does not consume a paid report: restore credit.
             from app.models.billing import ReportOrder
+            billing = BillingService(self.session)
             if report_run.billing_order_id is not None:
                 order = await self.session.get(ReportOrder, report_run.billing_order_id)
                 if order is not None:
-                    order.status = "PAID"
-                    order.consumed_at = None
+                    await billing.release_reservation(order)
                 report_run.billing_order_id = None
             report_run.status = "FAILED"
             report_run.error_message = f"Falló la conversión de vista previa: {exc}"

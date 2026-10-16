@@ -38,6 +38,7 @@ class TariffRead(TariffInput):
 class QuoteCreate(BaseModel):
     workers: int = Field(ge=1, le=10_000_000)
     method_code: MethodCode = "SUSESO_ISTAS21_BREVE"
+    headcount_source: str | None = Field(default=None, max_length=60)
 
 
 class OrderRead(BaseModel):
@@ -45,6 +46,8 @@ class OrderRead(BaseModel):
     study_id: int
     organization_id: int
     workers: int
+    headcount_source: str = "ESTUDIO_DECLARADO"
+    snapshot_data: dict | None = None
     method_code: MethodCode
     pricing_mode: Literal["FIXED", "QUOTE"]
     tariff_min_workers: int
@@ -66,3 +69,14 @@ class PaymentConfirmation(BaseModel):
 
 class ManualQuotePrice(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+
+
+class EnterpriseBillingSummary(BaseModel):
+    organization_id: int
+    organization_name: str
+    total_orders: int
+    available_licenses: int
+    consumed_licenses: int
+    pending_payment: int
+    awaiting_quote: int
+    orders: list[OrderRead]

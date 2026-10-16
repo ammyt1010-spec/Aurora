@@ -4,6 +4,7 @@ A quote is immutable once issued. Company admins can request quotes, but
 only the configured AURORA platform operator may edit tariffs or confirm payment.
 No online payment integration or prices are assumed.
 """
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -18,7 +19,7 @@ from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
 from app.models.report import ReportRun
 from app.models.study import Study
-from app.models.user import OrganizationMembership, User
+from app.models.user import Organization, OrganizationMembership, User
 from app.schemas.billing import TariffInput
 from app.services.audit_service import AuditService
 
@@ -97,10 +98,11 @@ class BillingService:
         project = await self.db.get(Project, study.project_id)
         if project is None or project.organization_id is None:
             raise ValidationDomainError("El estudio debe pertenecer a una empresa registrada.")
+        org = await self.db.get(Organization, project.organization_id)
         member = await self.db.get(OrganizationMembership, (project.organization_id, user.id))
         if member is None or member.role_code not in {"OWNER", "ADMIN"}:
             raise AuthorizationError("Sólo un administrador de la empresa puede solicitar o revisar el informe.")
-        return study, project
+        return study, project, org
 
     async def _validate_method_for_study(self, study: Study, method_code: str) -> None:
         """Prevent buying a cheaper method than the version actually evaluated."""
@@ -159,6 +161,8 @@ class BillingService:
         order.amount = amount
         order.status = "PENDING_PAYMENT"
         order.expires_at = datetime.now(UTC) + timedelta(days=7)
+        if order.snapshot_data:
+            order.snapshot_data["amount"] = str(amount)
         await AuditService(self.db).log(
             action="REPORT_MANUAL_QUOTE_PRICED", entity_type="report_order",
             entity_id=order.id, user_id=user.id,
@@ -168,23 +172,88 @@ class BillingService:
         await self.db.refresh(order)
         return order
 
-    async def create_quote(self, study_id: int, workers: int, user: User, *,
-                           method_code: str = "SUSESO_ISTAS21_BREVE") -> ReportOrder:
+    async def create_quote(
+        self, study_id: int, workers: int, user: User, *,
+        method_code: str = "SUSESO_ISTAS21_BREVE",
+        headcount_source: str | None = None,
+    ) -> ReportOrder:
         if method_code not in METHOD_LABELS:
             raise ValidationDomainError("Metodología de informe desconocida.")
         if workers < 1:
             raise ValidationDomainError("La cantidad de trabajadores debe ser positiva.")
-        study, project = await self._organization_admin(study_id, user)
+        study, project, org = await self._organization_admin(study_id, user)
         await self._validate_method_for_study(study, method_code)
+
+        # 1. Definir fuente empresarial verificable y evitar reducciones unilaterales (Req 2 y 3)
+        resolved_source = headcount_source or "ESTUDIO_DECLARADO"
+        if org and org.metadata_:
+            verified_hc = org.metadata_.get("headcount") or org.metadata_.get("verified_workers")
+            if verified_hc is not None and workers < int(verified_hc):
+                raise ValidationDomainError(
+                    f"La cantidad de trabajadores ({workers}) no puede ser menor a la dotación oficial "
+                    f"registrada de la empresa ({verified_hc})."
+                )
+            if verified_hc is not None and not headcount_source:
+                resolved_source = "PLANILLA_OFICIAL_EMPRESA"
+
+        study_settings = dict(study.settings or {})
+        study_hc = study_settings.get("headcount") or study_settings.get("declared_workers")
+        if study_hc is not None and workers < int(study_hc):
+            raise ValidationDomainError(
+                f"La cantidad de trabajadores ({workers}) no puede ser menor a la dotación "
+                f"declarada previamente para este estudio ({study_hc})."
+            )
+
+        if "headcount" not in study_settings:
+            study_settings["headcount"] = workers
+            study_settings["headcount_source"] = resolved_source
+            study_settings["headcount_version"] = 1
+            study.settings = study_settings
+            await self.db.flush()
+
         tariffs = [t for t in await self.list_tariffs()
                    if t.method_code == method_code and t.min_workers <= workers and (t.max_workers is None or workers <= t.max_workers)]
         if len(tariffs) != 1:
             raise ValidationDomainError("No existe un tramo tarifario válido para esta cantidad de trabajadores.")
         tariff = tariffs[0]
+
+        # 2. Fotografía inmutable de tarifa, metodología, empresa, estudio, trabajadores e importe (Req 4)
+        snapshot = {
+            "version": 1,
+            "tariff": {
+                "id": tariff.id,
+                "method_code": tariff.method_code,
+                "pricing_mode": tariff.pricing_mode,
+                "min_workers": tariff.min_workers,
+                "max_workers": tariff.max_workers,
+                "price": str(tariff.price) if tariff.price is not None else None,
+                "currency": tariff.currency,
+            },
+            "method": {
+                "code": method_code,
+                "label": METHOD_LABELS.get(method_code, method_code),
+            },
+            "organization": {
+                "id": project.organization_id,
+                "name": org.name if org else None,
+                "tax_id": org.tax_id if org else None,
+            },
+            "study": {
+                "id": study.id,
+                "name": study.name,
+            },
+            "workers": workers,
+            "headcount_source": resolved_source,
+            "amount": str(tariff.price) if tariff.price is not None else None,
+            "currency": tariff.currency,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
         order = ReportOrder(
             study_id=study_id, organization_id=project.organization_id,
             tariff_id=tariff.id, requested_by_user_id=user.id,
             method_code=method_code, pricing_mode=tariff.pricing_mode, workers=workers,
+            headcount_source=resolved_source, snapshot_data=snapshot,
             tariff_min_workers=tariff.min_workers, tariff_max_workers=tariff.max_workers,
             amount=Decimal(tariff.price) if tariff.price is not None else None,
             currency=tariff.currency,
@@ -197,6 +266,7 @@ class BillingService:
             action="REPORT_QUOTE_CREATED", entity_type="report_order", entity_id=order.id,
             user_id=user.id, project_id=project.id,
             after_data={"workers": workers, "method_code": method_code,
+                        "headcount_source": resolved_source,
                         "amount": str(order.amount) if order.amount is not None else None,
                         "currency": order.currency, "status": order.status},
         )
@@ -205,7 +275,7 @@ class BillingService:
         return order
 
     async def list_orders(self, study_id: int, user: User) -> list[ReportOrder]:
-        await self._organization_admin(study_id, user)
+        study, project, _ = await self._organization_admin(study_id, user)
         return list((await self.db.execute(
             select(ReportOrder).where(ReportOrder.study_id == study_id)
             .order_by(ReportOrder.created_at.desc(), ReportOrder.id.desc())
@@ -225,13 +295,16 @@ class BillingService:
         )).scalar_one_or_none()
         if order is None:
             raise NotFoundError("Cotización no encontrada.")
+        if order.status == "PAID":
+            raise ConflictError("Esta orden ya fue pagada.")
         if order.status != "PENDING_PAYMENT" or order.amount is None:
             raise ConflictError("Primero debe existir un importe confirmado de cotización.")
         if _utc(order.expires_at) <= datetime.now(UTC):
             raise ConflictError("La cotización venció; genera una nueva con el tarifario vigente.")
-        # Manual verification is external. This endpoint records authorization
-        # by a trusted operator, not an independently verified bank transfer.
-        order.payment_reference = payment_reference
+
+        # Sanitizar referencia de pago para no almacenar secretos financieros (Req 10)
+        sanitized_reference = re.sub(r"\b(?:\d[ -]*?){13,19}\b", "[REDACTED_CARD]", payment_reference.strip())
+        order.payment_reference = sanitized_reference
         order.confirmed_by_user_id = user.id
         order.paid_at = datetime.now(UTC)
         order.status = "PAID"
@@ -240,32 +313,61 @@ class BillingService:
             action="REPORT_PAYMENT_CONFIRMED", entity_type="report_order",
             entity_id=order.id, user_id=user.id,
             project_id=study.project_id if study else None,
-            after_data={"reference": payment_reference, "amount": str(order.amount)},
+            after_data={"reference": sanitized_reference, "amount": str(order.amount), "workers": order.workers},
         )
         await self.db.commit()
         await self.db.refresh(order)
         return order
 
-    async def reserve_report_order(self, order_id: int | None, study_id: int) -> ReportOrder | None:
-        """Hold row lock until report commit. A paid order can fund one report run."""
-        if get_settings().environment.lower() != "production":
-            if order_id is None:
-                return None   # legacy test/dev flows remain available.
+    async def reserve_report_order(self, order_id: int | None, study_id: int, request=None) -> ReportOrder | None:
+        """Hold row lock until report commit. Atomically transition to RESERVED to prevent concurrent reuse."""
+        settings = get_settings()
+        env = settings.environment.lower()
+        from app.core.network_security import is_direct_local_request
+        is_local_test = (
+            env in {"test", "local", "development"}
+            and (request is None or is_direct_local_request(request))
+        )
+        if not is_local_test and order_id is None:
+            raise ConflictError(
+                "Antes de generar el informe en una instancia comercial o pública, "
+                "solicita una cotización y confirma su pago."
+            )
         if order_id is None:
-            raise ConflictError("Antes de generar el informe, solicita una cotización y confirma su pago.")
+            return None
+
         order = (await self.db.execute(
             select(ReportOrder).where(ReportOrder.id == order_id).with_for_update()
         )).scalar_one_or_none()
         if order is None or order.study_id != study_id:
             raise AuthorizationError("La orden no corresponde al estudio.")
+        if order.status == "RESERVED":
+            raise ConflictError("La orden ya se encuentra reservada por otra solicitud en curso.")
+        if order.status == "CONSUMED":
+            raise ConflictError("Esta orden ya fue utilizada para generar un informe.")
         if order.status != "PAID":
-            raise ConflictError("La orden no tiene un pago confirmado o ya fue utilizada.")
+            raise ConflictError(f"La orden no tiene un pago confirmado o no está disponible (estado actual: {order.status}).")
+        if _utc(order.expires_at) <= datetime.now(UTC):
+            raise ConflictError("La orden pagada ha vencido su período de vigencia.")
+
         previous = (await self.db.execute(
             select(ReportRun.id).where(ReportRun.billing_order_id == order.id)
         )).scalar_one_or_none()
         if previous is not None:
             raise ConflictError("Esta orden ya fue utilizada para generar un informe.")
+
+        # Transición atómica a RESERVED bajo bloqueo de fila (Req 5)
+        order.status = "RESERVED"
+        await self.db.flush()
         return order
+
+    async def release_reservation(self, order: ReportOrder | None) -> None:
+        """If report generation fails, safely roll back reservation so credit is not lost (Req 9)."""
+        if order is None:
+            return
+        order.status = "PAID"
+        order.consumed_at = None
+        await self.db.flush()
 
     async def consume_order(self, order: ReportOrder | None, report_id: int) -> None:
         if order is None:
@@ -277,3 +379,35 @@ class BillingService:
             project_id=(await self.db.get(Study, order.study_id)).project_id,
             after_data={"report_id": report_id},
         )
+
+    async def get_organization_billing_summary(self, organization_id: int, user: User) -> dict:
+        """Consolidado empresarial de licencias y órdenes (Req 11)."""
+        if not is_platform_operator(user):
+            member = await self.db.get(OrganizationMembership, (organization_id, user.id))
+            if member is None or member.role_code not in {"OWNER", "ADMIN"}:
+                raise AuthorizationError("Sólo administradores de la empresa pueden consultar el estado comercial.")
+        org = await self.db.get(Organization, organization_id)
+        if org is None:
+            raise NotFoundError("Empresa no encontrada.")
+
+        orders = list((await self.db.execute(
+            select(ReportOrder).where(ReportOrder.organization_id == organization_id)
+            .order_by(ReportOrder.created_at.desc(), ReportOrder.id.desc())
+        )).scalars().all())
+
+        available = sum(1 for o in orders if o.status == "PAID")
+        consumed = sum(1 for o in orders if o.status == "CONSUMED")
+        pending = sum(1 for o in orders if o.status == "PENDING_PAYMENT")
+        awaiting = sum(1 for o in orders if o.status == "AWAITING_QUOTE")
+
+        return {
+            "organization_id": org.id,
+            "organization_name": org.name,
+            "total_orders": len(orders),
+            "available_licenses": available,
+            "consumed_licenses": consumed,
+            "pending_payment": pending,
+            "awaiting_quote": awaiting,
+            "orders": orders,
+        }
+
