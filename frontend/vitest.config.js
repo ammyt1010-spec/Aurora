@@ -8,5 +8,12 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.js'],
     css: false,
+    fileParallelism: false,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
 });

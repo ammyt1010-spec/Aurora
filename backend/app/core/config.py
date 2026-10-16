@@ -49,11 +49,17 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
-        if self.environment.lower() == "production":
+        env = self.environment.lower()
+        if env in {"production", "staging"}:
             if len(self.jwt_secret_key) < 48 or self.jwt_secret_key.startswith("dev-only") or "change-me" in self.jwt_secret_key.lower():
-                raise ValueError("JWT_SECRET_KEY debe tener al menos 48 caracteres aleatorios en producción.")
+                raise ValueError("JWT_SECRET_KEY debe tener al menos 48 caracteres aleatorios en producción o staging.")
             if self.demo_access_enabled:
-                raise ValueError("No se permite DEMO_ACCESS_ENABLED en producción.")
+                raise ValueError("No se permite DEMO_ACCESS_ENABLED en entornos de producción o staging.")
+        if self.demo_access_enabled:
+            for origin in self.cors_origins:
+                clean_origin = origin.strip().lower()
+                if clean_origin.startswith("https://") or ("localhost" not in clean_origin and "127.0.0.1" not in clean_origin):
+                    raise ValueError("No se permite DEMO_ACCESS_ENABLED cuando CORS_ORIGINS contiene dominios públicos o HTTPS.")
         return self
 
 

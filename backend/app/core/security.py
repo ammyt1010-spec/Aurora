@@ -90,18 +90,39 @@ def access_token_expires_at(token: str) -> datetime:
     return datetime.fromtimestamp(int(claims["exp"]), tz=UTC)
 
 
-def get_request_access_token(
+def get_bearer_token(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = None,
 ) -> str | None:
-    """Use the same Bearer-over-cookie precedence on auth and logout."""
-    if credentials is not None:
-        return credentials.credentials
+    if credentials is not None and credentials.credentials:
+        return credentials.credentials.strip()
     authorization = request.headers.get("authorization", "")
     scheme, _, value = authorization.partition(" ")
     if scheme.lower() == "bearer" and value.strip():
         return value.strip()
-    return request.cookies.get(SESSION_COOKIE)
+    return None
+
+
+def get_cookie_token(request: Request) -> str | None:
+    token = request.cookies.get(SESSION_COOKIE)
+    return token.strip() if token else None
+
+
+def get_all_request_access_tokens(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = None,
+) -> tuple[str | None, str | None]:
+    """Return (bearer_token, cookie_token)."""
+    return get_bearer_token(request, credentials), get_cookie_token(request)
+
+
+def get_request_access_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = None,
+) -> str | None:
+    """Use Bearer-over-cookie precedence when resolving a single token."""
+    bearer, cookie = get_all_request_access_tokens(request, credentials)
+    return bearer or cookie
 
 
 async def get_optional_current_user(
@@ -116,20 +137,41 @@ async def get_optional_current_user(
     """
     if request.headers.get("X-Response-Token"):
         return None
-    token = get_request_access_token(request, credentials)
-    if not token:
+
+    bearer_token, cookie_token = get_all_request_access_tokens(request, credentials)
+    if not bearer_token and not cookie_token:
         return None
-    if credentials is None:
+
+    # CSRF validation is MANDATORY whenever browser session cookies are present on unsafe methods,
+    # regardless of whether an Authorization header was also provided.
+    if cookie_token is not None:
         validate_cookie_csrf(request)
-    claims = decode_access_token_claims(token)
-    user_id = int(claims["sub"])
-    if await session.get(RevokedAccessToken, access_token_fingerprint(token)) is not None:
+
+    # Decode and validate claims for presented credentials
+    claims_bearer = decode_access_token_claims(bearer_token) if bearer_token else None
+    claims_cookie = decode_access_token_claims(cookie_token) if cookie_token else None
+
+    # Detect credential confusion: if both are sent, they must belong to the exact same account
+    if claims_bearer and claims_cookie and claims_bearer["sub"] != claims_cookie["sub"]:
+        raise AuthenticationError(
+            "Conflicto de credenciales: el token Bearer y la cookie de sesión pertenecen a cuentas distintas."
+        )
+
+    # Check revocation for every presented credential
+    if bearer_token and await session.get(RevokedAccessToken, access_token_fingerprint(bearer_token)) is not None:
         raise AuthenticationError("La sesión fue cerrada. Inicia sesión nuevamente.")
+    if cookie_token and await session.get(RevokedAccessToken, access_token_fingerprint(cookie_token)) is not None:
+        raise AuthenticationError("La sesión fue cerrada. Inicia sesión nuevamente.")
+
+    primary_claims = claims_bearer or claims_cookie
+    user_id = int(primary_claims["sub"])
     user = await session.get(User, user_id)
     if user is None or user.status != "ACTIVE":
         raise AuthenticationError("La cuenta no existe o no está activa.")
-    if claims.get("sv", 0) != user.session_version:
+
+    if primary_claims.get("sv", 0) != user.session_version:
         raise AuthenticationError("La sesión fue invalidada. Inicia sesión nuevamente.")
+
     return user
 
 
