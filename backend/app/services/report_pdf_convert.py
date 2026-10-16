@@ -22,9 +22,27 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from app.core.exceptions import ColmenaDomainError
+import shutil
 
-class DocxToPdfError(RuntimeError):
-    pass
+
+def get_soffice_binary() -> str:
+    """Resolve soffice executable path across PATH and Windows default install directories."""
+    in_path = shutil.which("soffice")
+    if in_path:
+        return in_path
+    for win_candidate in (
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    ):
+        if Path(win_candidate).exists():
+            return win_candidate
+    return "soffice"
+
+
+class DocxToPdfError(ColmenaDomainError):
+    http_status = 503
+    error_code = "REPORT_CONVERSION_UNAVAILABLE"
 
 
 async def docx_to_pdf(docx_bytes: bytes) -> bytes:
@@ -34,12 +52,13 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
             docx_path = tmp_path / "report.docx"
             docx_path.write_bytes(docx_bytes)
             profile_dir = tmp_path / f"lo_profile_{uuid.uuid4().hex}"
+            soffice_bin = get_soffice_binary()
 
             process = await asyncio.create_subprocess_exec(
-                "soffice",
+                soffice_bin,
                 "--headless",
                 "--norestore",
-                f"-env:UserInstallation=file://{profile_dir}",
+                f"-env:UserInstallation={profile_dir.as_uri()}",
                 "--convert-to",
                 "pdf",
                 "--outdir",
@@ -53,54 +72,20 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
                 pdf_path = tmp_path / "report.pdf"
                 if pdf_path.exists():
                     return pdf_path.read_bytes()
-    except (FileNotFoundError, Exception):
-        pass
-
-    return _generate_fallback_pdf_from_docx(docx_bytes)
-
-
-def _generate_fallback_pdf_from_docx(docx_bytes: bytes) -> bytes:
-    import io
-    from docx import Document
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.backends.backend_pdf import PdfPages
-
-    doc = Document(io.BytesIO(docx_bytes))
-    lines: list[str] = []
-    for p in doc.paragraphs:
-        if p.text.strip():
-            lines.append(p.text.strip())
-    for t in doc.tables:
-        for row in t.rows:
-            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-            if row_text:
-                lines.append(row_text)
-
-    if not lines:
-        lines = ["Reporte CENSOPAS - Colmena 2.0"]
-
-    buf = io.BytesIO()
-    with PdfPages(buf) as pdf:
-        lines_per_page = 35
-        for i in range(0, len(lines), lines_per_page):
-            chunk = lines[i : i + lines_per_page]
-            fig, ax = plt.subplots(figsize=(8.5, 11))
-            ax.axis("off")
-            text_block = "\n".join(chunk[:35])
-            ax.text(
-                0.05,
-                0.95,
-                text_block,
-                transform=ax.transAxes,
-                fontsize=8,
-                verticalalignment="top",
-                fontfamily="sans-serif",
+                raise DocxToPdfError("LibreOffice terminó sin errores pero no produjo el archivo PDF esperado.")
+            err_msg = stderr.decode("utf-8", errors="replace").strip() if stderr else ""
+            raise DocxToPdfError(
+                f"LibreOffice falló con código {process.returncode} al convertir el documento: {err_msg}"
             )
-            pdf.savefig(fig, bbox_inches="tight")
-            plt.close(fig)
-    return buf.getvalue()
+    except FileNotFoundError as exc:
+        raise DocxToPdfError(
+            "LibreOffice no está instalado o no se encuentra en el PATH del sistema. "
+            "No es posible generar una conversión PDF fiel del documento original."
+        ) from exc
+    except DocxToPdfError:
+        raise
+    except Exception as exc:
+        raise DocxToPdfError(f"Error inesperado al convertir el informe DOCX a PDF mediante LibreOffice: {exc}") from exc
 
 
 def count_pdf_pages(pdf_bytes: bytes) -> int:

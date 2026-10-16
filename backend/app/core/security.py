@@ -169,8 +169,11 @@ async def get_optional_current_user(
     if user is None or user.status != "ACTIVE":
         raise AuthenticationError("La cuenta no existe o no está activa.")
 
-    if primary_claims.get("sv", 0) != user.session_version:
-        raise AuthenticationError("La sesión fue invalidada. Inicia sesión nuevamente.")
+    # Validate session version individually on EVERY presented credential
+    if claims_bearer and claims_bearer.get("sv", 0) != user.session_version:
+        raise AuthenticationError("La sesión del token Bearer fue invalidada. Inicia sesión nuevamente.")
+    if claims_cookie and claims_cookie.get("sv", 0) != user.session_version:
+        raise AuthenticationError("La sesión de la cookie fue invalidada. Inicia sesión nuevamente.")
 
     return user
 

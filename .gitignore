@@ -21,3 +21,4 @@ diagnostico-colmena.txt
 .pytest_temp/
 playwright_reports/
 run_audit_playwright.py
+.db_backups/

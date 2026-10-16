@@ -258,3 +258,174 @@ async def test_logout_revokes_both_bearer_and_cookie_simultaneously(client, sess
     # Subsequent access with Cookie fails
     client.cookies.set(SESSION_COOKIE, token_cookie, path="/api/v1")
     assert (await client.get("/api/v1/auth/me")).status_code == 401
+
+
+# -----------------------------------------------------------------------------
+# 5. Additional Bloque C & Bloque E Hardening Tests
+# -----------------------------------------------------------------------------
+
+def test_is_direct_local_request_rejects_0_0_0_0():
+    """0.0.0.0 es INADDR_ANY y nunca debe ser aceptado como loopback."""
+    # Client IP es 0.0.0.0
+    req_ip = DummyRequest(client_host="0.0.0.0", headers={"host": "localhost:8003"})
+    assert is_direct_local_request(req_ip) is False
+
+    # Host es 0.0.0.0
+    req_host = DummyRequest(client_host="127.0.0.1", headers={"host": "0.0.0.0:8003"})
+    assert is_direct_local_request(req_host) is False
+
+    # X-Forwarded-For contiene 0.0.0.0
+    req_xff = DummyRequest(client_host="127.0.0.1", headers={"x-forwarded-for": "0.0.0.0", "host": "localhost:8003"})
+    assert is_direct_local_request(req_xff) is False
+
+
+def test_is_direct_local_request_rejects_via_and_forwarded_proxies():
+    """Rechaza peticiones que incluyen encabezados Via, Forwarded o X-Forwarded-*."""
+    req_via = DummyRequest(client_host="127.0.0.1", headers={"via": "1.1 proxy.corp.local", "host": "127.0.0.1:8003"})
+    assert is_direct_local_request(req_via) is False
+
+    req_fwd = DummyRequest(
+        client_host="127.0.0.1",
+        headers={"x-forwarded-server": "nginx.internal", "host": "127.0.0.1:8003"},
+    )
+    assert is_direct_local_request(req_fwd) is False
+
+
+def test_is_direct_local_request_rejects_external_origin_and_referer():
+    """Detecta proxies que reescriben Host a localhost pero mantienen Origin o Referer externo."""
+    req_origin = DummyRequest(
+        client_host="127.0.0.1",
+        headers={"host": "localhost:8003", "origin": "https://external-tunnel.trycloudflare.com"},
+    )
+    assert is_direct_local_request(req_origin) is False
+
+    req_ref = DummyRequest(
+        client_host="127.0.0.1",
+        headers={"host": "localhost:8003", "referer": "https://attacker.example.org/dashboard"},
+    )
+    assert is_direct_local_request(req_ref) is False
+
+
+def test_settings_rejects_demo_access_in_unauthorized_env():
+    with pytest.raises(ValueError, match="Solo está permitido en desarrollo local aislado"):
+        Settings(
+            environment="qa",
+            demo_access_enabled=True,
+            jwt_secret_key="b" * 50,
+        )
+
+
+def test_settings_rejects_demo_access_with_0_0_0_0_cors():
+    with pytest.raises(ValueError, match="No se permite DEMO_ACCESS_ENABLED con 0.0.0.0 en CORS_ORIGINS"):
+        Settings(
+            environment="development",
+            demo_access_enabled=True,
+            cors_origins=["http://0.0.0.0:5174"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_stale_cookie_with_new_bearer_rejected(client, session):
+    """Una cookie con versión de sesión anterior (stale) es rechazada incluso si el Bearer es nuevo."""
+    user = User(email="stale-test@aurora.test", username="stale-test", status="ACTIVE", session_version=2)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    new_bearer = create_access_token(user.id, session_version=2)
+    stale_cookie = create_access_token(user.id, session_version=1)
+
+    client.cookies.set(SESSION_COOKIE, stale_cookie, path="/api/v1")
+    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {new_bearer}"})
+    assert resp.status_code == 401
+    assert "cookie fue invalidada" in resp.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_stale_bearer_with_new_cookie_rejected(client, session):
+    """Un token Bearer con versión de sesión anterior es rechazado incluso si la cookie es nueva."""
+    user = User(email="stale-b-test@aurora.test", username="stale-b-test", status="ACTIVE", session_version=2)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    stale_bearer = create_access_token(user.id, session_version=1)
+    new_cookie = create_access_token(user.id, session_version=2)
+
+    client.cookies.set(SESSION_COOKIE, new_cookie, path="/api/v1")
+    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {stale_bearer}"})
+    assert resp.status_code == 401
+    assert "Bearer fue invalidada" in resp.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_two_devices_same_account_global_logout(client, session):
+    """Dos dispositivos con la misma cuenta: un logout global invalida a ambos."""
+    user = User(email="twodev@aurora.test", username="twodev", status="ACTIVE", session_version=1)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    token_dev1 = create_access_token(user.id, session_version=1)
+    token_dev2 = create_access_token(user.id, session_version=1)
+
+    # Ambos dispositivos acceden exitosamente
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_dev1}"})).status_code == 200
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_dev2}"})).status_code == 200
+
+    # Dispositivo 1 ejecuta logout_all
+    resp_logout_all = await client.post("/api/v1/auth/logout-all", headers={"Authorization": f"Bearer {token_dev1}"})
+    assert resp_logout_all.status_code == 204
+
+    # Dispositivo 1 queda revocado
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_dev1}"})).status_code == 401
+
+    # Dispositivo 2 queda invalidado por version de sesion
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_dev2}"})).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_two_different_companies_isolation(client, session):
+    """Acciones de cierre de sesión en Empresa A no afectan la sesión de Empresa B."""
+    user_a = User(email="owner-a@corp-a.test", username="owner-a", status="ACTIVE", session_version=1)
+    user_b = User(email="owner-b@corp-b.test", username="owner-b", status="ACTIVE", session_version=1)
+    session.add_all([user_a, user_b])
+    await session.commit()
+    await session.refresh(user_a)
+    await session.refresh(user_b)
+
+    token_a = create_access_token(user_a.id, session_version=1)
+    token_b = create_access_token(user_b.id, session_version=1)
+
+    # Dispositivo A ejecuta logout individual
+    resp_logout_a = await client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token_a}"})
+    assert resp_logout_a.status_code == 204
+
+    # Token A queda revocado
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_a}"})).status_code == 401
+
+    # Token B sigue 100% activo y funcional
+    resp_b = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token_b}"})
+    assert resp_b.status_code == 200
+    assert resp_b.json()["email"] == "owner-b@corp-b.test"
+
+
+@pytest.mark.asyncio
+async def test_csrf_protection_enforced_when_cookie_present(client, session):
+    """Petición mutante (POST) con cookie de sesión pero sin encabezado X-CSRF-Token es rechazada con 403."""
+    user = User(email="csrf-test@aurora.test", username="csrf-test", status="ACTIVE", session_version=1)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    token = create_access_token(user.id, session_version=1)
+    client.cookies.set(SESSION_COOKIE, token, path="/api/v1")
+    client.cookies.set(CSRF_COOKIE, "valid-csrf-token", path="/")
+
+    # POST sin header CSRF -> 403
+    resp_no_csrf = await client.post("/api/v1/auth/logout")
+    assert resp_no_csrf.status_code == 403
+
+    # POST con header CSRF correcto -> 204
+    resp_with_csrf = await client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "valid-csrf-token"})
+    assert resp_with_csrf.status_code == 204

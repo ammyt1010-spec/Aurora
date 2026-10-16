@@ -49,11 +49,12 @@ async def login(payload: LoginRequest, request: Request, response: Response, ses
 @router.post("/demo-login", response_model=TokenResponse)
 async def demo_login(request: Request, response: Response, session: AsyncSession = Depends(get_db)):
     settings = get_settings()
-    if settings.environment.lower() in {"production", "staging"} or not settings.demo_access_enabled:
-        raise AuthenticationError("El acceso demo no está disponible.")
+    if settings.environment.lower() not in {"development", "test", "local"} or not settings.demo_access_enabled:
+        raise AuthenticationError("El acceso demo no está disponible en este entorno o instancia.")
     if not is_direct_local_request(request):
         raise AuthenticationError(
-            "El acceso demo solo está disponible en desarrollo local directo, no a través de túneles o proxies públicos."
+            "El acceso demo solo está disponible en conexiones directas de loopback local, "
+            "no a través de túneles o proxies públicos."
         )
     service = AuthService(session)
     token = await service.demo_login(settings.demo_user_email)
