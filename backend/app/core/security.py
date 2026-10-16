@@ -36,12 +36,13 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, session_version: int = 0) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "scope": "user:access",
+        "sv": session_version,
         "iat": now,
         "jti": secrets.token_urlsafe(24),
         "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
@@ -49,7 +50,8 @@ def create_access_token(user_id: int) -> str:
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def decode_access_token(token: str) -> int:
+def decode_access_token_claims(token: str) -> dict:
+    """Validate signature, expiry and authorization scope before returning claims."""
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
@@ -59,9 +61,17 @@ def decode_access_token(token: str) -> int:
     if payload.get("scope") != "user:access":
         raise AuthenticationError("Token no autorizado para acceso a cuentas.")
     try:
-        return int(payload["sub"])
-    except (KeyError, ValueError) as exc:
+        user_id = int(payload["sub"])
+    except (KeyError, ValueError, TypeError) as exc:
         raise AuthenticationError("Token inválido.") from exc
+    session_version = payload.get("sv", 0)  # Pre-migration access tokens use version 0.
+    if user_id <= 0 or type(session_version) is not int or session_version < 0:
+        raise AuthenticationError("Versión de sesión inválida.")
+    return payload
+
+
+def decode_access_token(token: str) -> int:
+    return int(decode_access_token_claims(token)["sub"])
 
 
 def access_token_fingerprint(token: str) -> str:
@@ -111,12 +121,15 @@ async def get_optional_current_user(
         return None
     if credentials is None:
         validate_cookie_csrf(request)
-    user_id = decode_access_token(token)
+    claims = decode_access_token_claims(token)
+    user_id = int(claims["sub"])
     if await session.get(RevokedAccessToken, access_token_fingerprint(token)) is not None:
         raise AuthenticationError("La sesión fue cerrada. Inicia sesión nuevamente.")
     user = await session.get(User, user_id)
     if user is None or user.status != "ACTIVE":
         raise AuthenticationError("La cuenta no existe o no está activa.")
+    if claims.get("sv", 0) != user.session_version:
+        raise AuthenticationError("La sesión fue invalidada. Inicia sesión nuevamente.")
     return user
 
 
