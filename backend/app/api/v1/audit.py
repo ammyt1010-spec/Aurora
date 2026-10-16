@@ -40,7 +40,10 @@ async def list_enterprise_audit_events(
     # if their verified project belongs to the requested company, never by user_id.
     project_ids = select(Project.id).where(Project.organization_id == organization_id)
     scoped_events = or_(
-        AuditLog.organization_id == organization_id,
+        and_(
+            AuditLog.organization_id == organization_id,
+            or_(AuditLog.project_id.is_(None), AuditLog.project_id.in_(project_ids)),
+        ),
         and_(
             AuditLog.organization_id.is_(None),
             AuditLog.project_id.in_(project_ids),
