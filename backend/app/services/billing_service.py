@@ -295,6 +295,8 @@ class BillingService:
         )).scalar_one_or_none()
         if order is None:
             raise NotFoundError("Cotización no encontrada.")
+        if order.status == "PAID":
+            raise ConflictError("Esta orden ya fue pagada.")
         if order.status != "PENDING_PAYMENT" or order.amount is None:
             raise ConflictError("Primero debe existir un importe confirmado de cotización.")
         if _utc(order.expires_at) <= datetime.now(UTC):
