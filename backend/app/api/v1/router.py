@@ -4,6 +4,7 @@ from app.core.business_access import require_business_access, require_response_a
 
 from app.api.v1 import (
     analytics,
+    audit,
     auth,
     billing,
     bsc,
@@ -25,6 +26,7 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(audit.router)
 api_router.include_router(billing.router)
 api_router.include_router(projects.router)
 api_router.include_router(instruments.router, dependencies=[Depends(require_business_access)])
