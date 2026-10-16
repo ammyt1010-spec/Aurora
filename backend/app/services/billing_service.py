@@ -351,14 +351,8 @@ class BillingService:
 
     async def reserve_report_order(self, order_id: int | None, study_id: int, request=None) -> ReportOrder | None:
         """Hold row lock until report commit. Atomically transition to RESERVED to prevent concurrent reuse."""
-        settings = get_settings()
-        env = settings.environment.lower()
-        from app.core.network_security import is_direct_local_request
-        is_local_test = (
-            env in {"test", "local", "development"}
-            and (request is None or is_direct_local_request(request))
-        )
-        if not is_local_test and order_id is None:
+        from app.core.synthetic_test_bypass import is_authorized_synthetic_test
+        if not is_authorized_synthetic_test(request) and order_id is None:
             raise ConflictError(
                 "Antes de generar el informe en una instancia comercial o pública, "
                 "solicita una cotización y confirma su pago."
