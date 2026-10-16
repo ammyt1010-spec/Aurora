@@ -98,7 +98,8 @@ async def test_session_lifecycle_and_independent_revocation(session):
         )
     ).scalars().first()
     assert audit_rev is not None
-    assert audit_rev.after_data["session_id"] == sid_2
+    assert audit_rev.entity_id == (await session.execute(select(UserSession.id).where(UserSession.session_id == sid_2))).scalar_one()
+    assert "session_id" not in (audit_rev.after_data or {})
 
 
 @pytest.mark.asyncio
@@ -222,3 +223,75 @@ async def test_cleanup_expired_sessions(session):
     # Active session still exists
     rem = (await session.execute(select(UserSession).where(UserSession.session_id == "active_sid_3"))).scalar_one_or_none()
     assert rem is not None
+
+
+@pytest.mark.asyncio
+async def test_sid_token_without_db_session_fails_closed(client, session):
+    from app.core.security import create_access_token
+    user = User(email="missing-session@aurora.test", username="missing_session", status="ACTIVE", session_version=0)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    missing = create_access_token(user.id, user.session_version, session_id="a" * 43)
+    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {missing}"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_sid_token_must_match_owner_and_row_version(client, session):
+    from app.core.security import create_access_token
+    alice = User(email="sid-owner@aurora.test", username="sid_owner", status="ACTIVE", session_version=0)
+    bob = User(email="sid-other@aurora.test", username="sid_other", status="ACTIVE", session_version=0)
+    session.add_all([alice, bob])
+    await session.commit()
+    service = SessionService(session)
+    _, sid = await service.create_user_session(alice)
+    await session.commit()
+
+    forged_owner = create_access_token(bob.id, bob.session_version, session_id=sid)
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {forged_owner}"})).status_code == 401
+
+    row = (await session.execute(select(UserSession).where(UserSession.session_id == sid))).scalar_one()
+    row.session_version = 50
+    await session.commit()
+    mismatched_version = create_access_token(alice.id, alice.session_version, session_id=sid)
+    assert (await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {mismatched_version}"})).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_cleanup_restricted_to_configured_operator(client, session, monkeypatch):
+    from app.core.config import get_settings
+    user = User(email="non-operator@aurora.test", username="non_operator", status="ACTIVE")
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    service = SessionService(session)
+    token, _ = await service.create_user_session(user)
+    await session.commit()
+    endpoint = "/api/v1/auth/sessions/cleanup"
+    # Nobody may perform a global purge when no operator is configured.
+    resp = await client.post(endpoint, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403
+    monkeypatch.setattr(
+        "app.api.v1.sessions.get_settings",
+        lambda: get_settings().model_copy(update={"session_maintenance_operator_user_id": user.id}),
+    )
+    ok = await client.post(endpoint, headers={"Authorization": f"Bearer {token}"})
+    assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_pre_migration_token_cannot_revoke_all_modern_sessions(client, session):
+    from app.core.security import create_access_token
+    user = User(email="legacy-revoke@aurora.test", username="legacy_revoke", status="ACTIVE")
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    service = SessionService(session)
+    modern_token, modern_sid = await service.create_user_session(user)
+    await session.commit()
+    legacy_token = create_access_token(user.id, user.session_version)
+    resp = await client.delete("/api/v1/auth/sessions", headers={"Authorization": f"Bearer {legacy_token}"})
+    assert resp.status_code == 401
+    still_active = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {modern_token}"})
+    assert still_active.status_code == 200

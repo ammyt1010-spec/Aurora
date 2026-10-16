@@ -123,8 +123,8 @@ def main():
 
     # 10. Automated cleanup endpoint
     status, cleanup_res = api_call("/auth/sessions/cleanup", method="POST", token=token_1)
-    assert status == 200, f"Error en endpoint de limpieza: {status} {cleanup_res}"
-    print(f"\n[OK] 10. Endpoint de mantenimiento/limpieza ejecutado: {cleanup_res}")
+    assert status == 403, f"La limpieza debe estar restringida a un operador configurado: {status} {cleanup_res}"
+    print("\n[OK] 10. Mantenimiento global bloqueado para usuario no operador (403).")
 
     print("\n=================================================================")
     print("TODAS LAS VERIFICACIONES DEL PR #8 EN VIVO FUERON EXITOSAS (10/10)")
