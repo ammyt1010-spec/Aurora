@@ -36,8 +36,10 @@ async def _build_open_study(client: AsyncClient, seed_user, seed_project, seed_i
 
 
 async def test_public_session_creation_rate_limited(
-    client: AsyncClient, seed_user, seed_project, seed_instrument_draft
+    client: AsyncClient, seed_user, seed_project, seed_instrument_draft, monkeypatch
 ) -> None:
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "public_session_rate_limit_max", 10)
     study = await _build_open_study(client, seed_user, seed_project, seed_instrument_draft)
 
     for _ in range(10):
