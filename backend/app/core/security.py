@@ -6,6 +6,8 @@ tener login/signup propios en esta iteración.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
+import secrets
 
 import bcrypt
 import jwt
@@ -18,6 +20,7 @@ from app.core.auth_cookie import SESSION_COOKIE, validate_cookie_csrf
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
 from app.models.user import User
+from app.models.revoked_token import RevokedAccessToken
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -40,6 +43,7 @@ def create_access_token(user_id: int) -> str:
         "sub": str(user_id),
         "scope": "user:access",
         "iat": now,
+        "jti": secrets.token_urlsafe(24),
         "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
@@ -60,6 +64,36 @@ def decode_access_token(token: str) -> int:
         raise AuthenticationError("Token inválido.") from exc
 
 
+def access_token_fingerprint(token: str) -> str:
+    """Store only a digest of a signed JWT, never the reusable credential."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def access_token_expires_at(token: str) -> datetime:
+    """Validate the signed user token and return its signed expiry."""
+    decode_access_token(token)
+    settings = get_settings()
+    claims = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm],
+        options={"require": ["exp"]},
+    )
+    return datetime.fromtimestamp(int(claims["exp"]), tz=UTC)
+
+
+def get_request_access_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = None,
+) -> str | None:
+    """Use the same Bearer-over-cookie precedence on auth and logout."""
+    if credentials is not None:
+        return credentials.credentials
+    authorization = request.headers.get("authorization", "")
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() == "bearer" and value.strip():
+        return value.strip()
+    return request.cookies.get(SESSION_COOKIE)
+
+
 async def get_optional_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
@@ -72,14 +106,14 @@ async def get_optional_current_user(
     """
     if request.headers.get("X-Response-Token"):
         return None
-    if credentials is not None:
-        user_id = decode_access_token(credentials.credentials)
-    else:
-        browser_token = request.cookies.get(SESSION_COOKIE)
-        if not browser_token:
-            return None
+    token = get_request_access_token(request, credentials)
+    if not token:
+        return None
+    if credentials is None:
         validate_cookie_csrf(request)
-        user_id = decode_access_token(browser_token)
+    user_id = decode_access_token(token)
+    if await session.get(RevokedAccessToken, access_token_fingerprint(token)) is not None:
+        raise AuthenticationError("La sesión fue cerrada. Inicia sesión nuevamente.")
     user = await session.get(User, user_id)
     if user is None or user.status != "ACTIVE":
         raise AuthenticationError("La cuenta no existe o no está activa.")
