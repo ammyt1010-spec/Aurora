@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = "dev-only-insecure-secret-change-me-in-production-please-1234567890"
     billing_operator_user_id: int | None = None  # Establece este ID después de un alta segura del operador.
+    session_maintenance_operator_user_id: int | None = None  # Operador interno explícitamente autorizado para purgas globales.
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7
 

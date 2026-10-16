@@ -40,7 +40,7 @@ class SessionService:
             session_id=session_id,
             session_version=user.session_version,
             ip_address=ip_addr,
-            user_agent=ua[:500] if ua else None,
+            user_agent=None,  # UA is parsed transiently; do not retain raw tracking data.
             device_family=dev_info["device_family"],
             os_family=dev_info["os_family"],
             browser_family=dev_info["browser_family"],
@@ -57,7 +57,6 @@ class SessionService:
             entity_type="user_session",
             entity_id=user_session.id,
             after_data={
-                "session_id": session_id,
                 "device_family": dev_info["device_family"],
                 "os_family": dev_info["os_family"],
                 "browser_family": dev_info["browser_family"],
@@ -120,7 +119,7 @@ class SessionService:
                 action="USER_SESSION_REVOKED",
                 entity_type="user_session",
                 entity_id=s.id,
-                after_data={"session_id": session_id, "reason": reason},
+                after_data={"reason": reason},
             )
             self.session.add(audit)
             await self.session.flush()

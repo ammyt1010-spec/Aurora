@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_cookie import clear_session_cookies
+from app.core.config import get_settings
+from app.core.exceptions import AuthorizationError, AuthenticationError
 from app.core.database import get_db
 from app.core.security import (
     decode_access_token_claims,
@@ -73,6 +75,14 @@ async def revoke_other_sessions(
 ):
     """Revoke all active device sessions except the one currently in use."""
     current_sid = get_current_session_id(request)
+    if not current_sid:
+        raise AuthenticationError("Para cerrar otras sesiones, inicia sesión nuevamente desde este dispositivo.")
+    bearer, cookie = get_all_request_access_tokens(request)
+    if bearer and cookie:
+        bearer_sid = decode_access_token_claims(bearer).get("sid")
+        cookie_sid = decode_access_token_claims(cookie).get("sid")
+        if bearer_sid != cookie_sid:
+            raise AuthenticationError("Sesión ambigua: renueva las credenciales antes de cerrar otros dispositivos.")
     service = SessionService(session)
     count = await service.revoke_other_sessions(current_user.id, current_sid=current_sid)
     await session.commit()
@@ -87,7 +97,10 @@ async def cleanup_sessions(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Purge expired sessions and revoked token records."""
+    """Privileged maintenance only: never expose a global purge to all accounts."""
+    operator_id = get_settings().session_maintenance_operator_user_id
+    if operator_id is None or current_user.id != operator_id:
+        raise AuthorizationError("Mantenimiento reservado al operador de seguridad autorizado.")
     service = SessionService(session)
     purged_sessions, purged_tokens = await service.cleanup_expired_sessions()
     await session.commit()

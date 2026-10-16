@@ -85,13 +85,10 @@ async def logout(
     # Revoke individual device session if sid is present in presented claims
     session_service = SessionService(session)
     for token in tokens_to_revoke:
-        try:
-            claims = decode_access_token_claims(token)
-            sid = claims.get("sid")
-            if sid:
-                await session_service.revoke_user_session(current_user.id, sid, reason="USER_LOGOUT")
-        except Exception:
-            pass
+        claims = decode_access_token_claims(token)
+        sid = claims.get("sid")
+        if sid:
+            await session_service.revoke_user_session(current_user.id, sid, reason="USER_LOGOUT")
 
     # Record auditable logout event
     audit = AuditLog(

@@ -181,28 +181,47 @@ async def get_optional_current_user(
     if claims_cookie and claims_cookie.get("sv", 0) != user.session_version:
         raise AuthenticationError("La sesión de la cookie fue invalidada. Inicia sesión nuevamente.")
 
-    # Validate individual device session if sid is tracked in claims
-    sid_bearer = claims_bearer.get("sid") if claims_bearer else None
-    sid_cookie = claims_cookie.get("sid") if claims_cookie else None
-
-    for credential_name, sid in [("Bearer", sid_bearer), ("Cookie", sid_cookie)]:
-        if sid:
-            result = await session.execute(
-                select(UserSession).where(UserSession.session_id == sid)
+    # A signed sid binds the JWT to one existing, owned and active DB row.
+    # Legacy pre-0022 tokens without sid are handled by the existing sv/JWT checks.
+    # Never let a sid-bearing token fall back to legacy authorization.
+    touched_sessions = False
+    validated_session_ids: set[str] = set()
+    for credential_name, claims in (("Bearer", claims_bearer), ("Cookie", claims_cookie)):
+        if claims is None or "sid" not in claims:
+            continue
+        sid = claims["sid"]
+        if type(sid) is not str or not (32 <= len(sid) <= 64):
+            raise AuthenticationError(f"Identificador de sesión {credential_name} inválido.")
+        if sid in validated_session_ids:
+            continue
+        validated_session_ids.add(sid)
+        result = await session.execute(
+            select(UserSession).where(
+                UserSession.session_id == sid,
+                UserSession.user_id == user_id,
             )
-            db_session = result.scalars().first()
-            if db_session is not None:
-                if db_session.revoked_at is not None:
-                    raise AuthenticationError(f"La sesión {credential_name} fue cerrada o revocada.")
-                exp = db_session.expires_at if db_session.expires_at.tzinfo is not None else db_session.expires_at.replace(tzinfo=UTC)
-                if exp <= datetime.now(UTC):
-                    raise AuthenticationError(f"La sesión {credential_name} ha expirado.")
-                now = datetime.now(UTC)
-                last_act = db_session.last_activity_at if db_session.last_activity_at.tzinfo is not None else db_session.last_activity_at.replace(tzinfo=UTC)
-                if (now - last_act).total_seconds() > 60:
-                    db_session.last_activity_at = now
-                    await session.flush()
+        )
+        db_session = result.scalar_one_or_none()
+        if db_session is None or db_session.session_version != user.session_version:
+            raise AuthenticationError(f"La sesión {credential_name} ya no existe o no pertenece a esta cuenta.")
+        if db_session.revoked_at is not None:
+            raise AuthenticationError(f"La sesión {credential_name} fue cerrada o revocada.")
+        now = datetime.now(UTC)
+        expires_at = db_session.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at <= now:
+            raise AuthenticationError(f"La sesión {credential_name} ha expirado.")
+        last_activity = db_session.last_activity_at
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=UTC)
+        if (now - last_activity).total_seconds() > 60:
+            db_session.last_activity_at = now
+            touched_sessions = True
 
+    # A read-only request otherwise rolls back an uncommitted activity update.
+    if touched_sessions:
+        await session.commit()
     return user
 
 
