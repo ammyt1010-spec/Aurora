@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, ForeignKey, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, PublicIdMixin, TimestampMixin
@@ -17,6 +17,7 @@ class User(Base, PublicIdMixin, TimestampMixin):
     first_name: Mapped[str | None] = mapped_column(String(150))
     last_name: Mapped[str | None] = mapped_column(String(150))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text('0'))
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSONVariant, nullable=False, default=dict
     )

@@ -4,11 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './AuthContext.jsx';
-import { fetchCurrentUser, logoutUser } from '../api/auth.js';
+import { fetchCurrentUser, logoutAllUser, logoutUser } from '../api/auth.js';
 
 vi.mock('../api/auth.js', () => ({
   fetchCurrentUser: vi.fn(),
   logoutUser: vi.fn(),
+  logoutAllUser: vi.fn(),
   loginUser: vi.fn(),
   demoLoginUser: vi.fn(),
   registerUser: vi.fn(),
@@ -25,13 +26,14 @@ function createDeferred() {
 }
 
 function AuthProbe() {
-  const { status, user, logout } = useAuth();
+  const { status, user, logout, logoutAll } = useAuth();
   const close = () => logout().catch(() => {});
   return (
     <div>
       <span data-testid="auth-status">{status}</span>
       <span data-testid="auth-user">{user?.email || 'none'}</span>
       <button type="button" onClick={close}>Cerrar sesión</button>
+      <button type="button" onClick={() => logoutAll().catch(() => {})}>Cerrar todas</button>
     </div>
   );
 }
@@ -63,6 +65,33 @@ afterEach(() => {
 });
 
 describe('AURORA browser logout', () => {
+  it('waits for global logout confirmation and purges cached tenant state', async () => {
+    const pending = createDeferred();
+    logoutAllUser.mockReturnValue(pending.promise);
+    const client = mountAuthenticatedProvider();
+
+    expect(await screen.findByText('authenticated')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar todas' }));
+    expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
+
+    pending.resolve(null);
+    await waitFor(() => expect(screen.getByTestId('auth-status')).toHaveTextContent('anonymous'));
+    expect(client.getQueryData(['private-project', 9])).toBeUndefined();
+    expect(logoutAllUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the account signed in when global revocation cannot reach the backend', async () => {
+    const pending = createDeferred();
+    logoutAllUser.mockReturnValue(pending.promise);
+    mountAuthenticatedProvider();
+
+    expect(await screen.findByText('authenticated')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar todas' }));
+    pending.reject(new Error('backend unavailable'));
+    await waitFor(() => expect(logoutAllUser).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
+  });
+
   it('does not claim success until the backend confirms revocation', async () => {
     const pending = createDeferred();
     logoutUser.mockReturnValue(pending.promise);

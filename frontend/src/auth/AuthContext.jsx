@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { demoLoginUser, fetchCurrentUser, loginUser, logoutUser, registerUser } from '../api/auth.js';
+import { demoLoginUser, fetchCurrentUser, loginUser, logoutAllUser, logoutUser, registerUser } from '../api/auth.js';
 import { clearStoredToken } from '../api/client.js';
 
 const AuthContext = createContext(null);
@@ -61,15 +61,15 @@ export function AuthProvider({ children }) {
     await registerUser(payload);
   }, []);
 
-  const logout = useCallback(async () => {
+  const signOut = useCallback(async (apiLogout) => {
     if (logoutPromise.current) return logoutPromise.current;
 
-    // Do not announce logout or clear client state until the API confirms it.
+    // Keep the account signed in until revocation is confirmed by the API.
     authRequestVersion.current += 1;
     const operation = (async () => {
-      await logoutUser();
+      await apiLogout();
       clearStoredToken();
-      queryClient.clear(); // Do not retain another business's cached data after logout.
+      queryClient.clear(); // Never reuse a former organization's cached results.
       setUser(null);
       setStatus('anonymous');
     })();
@@ -81,9 +81,12 @@ export function AuthProvider({ children }) {
     }
   }, [queryClient]);
 
+  const logout = useCallback(() => signOut(logoutUser), [signOut]);
+  const logoutAll = useCallback(() => signOut(logoutAllUser), [signOut]);
+
   const value = useMemo(
-    () => ({ user, status, login, demoLogin, signup, logout }),
-    [user, status, login, demoLogin, signup, logout],
+    () => ({ user, status, login, demoLogin, signup, logout, logoutAll }),
+    [user, status, login, demoLogin, signup, logout, logoutAll],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

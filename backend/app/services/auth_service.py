@@ -43,7 +43,7 @@ class AuthService:
         if user.status != "ACTIVE":
             raise AuthenticationError("El usuario no está activo.")
 
-        return create_access_token(user.id)
+        return create_access_token(user.id, user.session_version)
 
     async def demo_login(self, email: str) -> str:
         result = await self.session.execute(select(User).where(User.email == email))

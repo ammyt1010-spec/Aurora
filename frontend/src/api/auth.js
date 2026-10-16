@@ -36,3 +36,7 @@ export function fetchCurrentUser() {
 export function logoutUser() {
   return apiRequest('/auth/logout', { method: 'POST' });
 }
+
+export function logoutAllUser() {
+  return apiRequest('/auth/logout-all', { method: 'POST' });
+}

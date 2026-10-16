@@ -84,3 +84,21 @@
   operación no afecta las encuestas anónimas.
 - No fusionar `main` ni desplegar con usuarios reales antes de validar CI
   y pruebas con PostgreSQL, Windows y Cloudflare Tunnel.
+
+## Fase de cierre global de sesiones (PR de revisión)
+
+- `POST /api/v1/auth/logout-all` incrementa atómicamente
+  `colmena.users.session_version` (migración Alembic 0020).
+- Los JWT nuevos incluyen `sv`, leído desde el usuario al iniciar sesión.
+- Todas las cookies y credenciales Bearer de generaciones anteriores
+  se rechazan en la próxima solicitud, incluso desde otros dispositivos.
+- JWT previos a la migración sin campo `sv` equivalen a versión 0.
+  Al cerrar todas las sesiones pasan a ser inválidos.
+- Los tokens de las encuestas anónimas permanecen independientes.
+- Desde Mi cuenta se solicita confirmación antes de invalidar todas
+  las sesiones. El navegador espera HTTP 204 antes de afirmar éxito.
+- La migración **no debe ejecutarse contra datos reales** antes de
+  respaldar y probar el rollback y la concurrencia en PostgreSQL 16.
+- Pendiente para una fase futura: inventario de dispositivos/sesiones,
+  identificadores de sesión individuales, eventos de seguridad y
+  eliminación programada de huellas de tokens expirados.
