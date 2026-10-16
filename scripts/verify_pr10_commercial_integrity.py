@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 import httpx
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+
 BASE_URL = "http://127.0.0.1:8003"
 CREDS_FILE = Path(".audit_credentials.json")
 
@@ -199,6 +201,28 @@ def run_verification():
         )
         assert resp.status_code == 409, f"Expected 409 Conflict for tunnel request without order, got {resp.status_code}"
         print(f"    [+] Public tunnel request without paid order rejected (409 Conflict): {resp.json().get('detail')}")
+
+        # 10. Expired Order Rejection
+        print("\n[10] Testing expired order rejection...")
+        from sqlalchemy import create_engine, text
+        from app.core.config import get_settings
+
+        eng = create_engine(get_settings().database_url_sync)
+        with eng.connect() as conn:
+            conn.execute(
+                text("UPDATE colmena.report_orders SET expires_at = NOW() - INTERVAL '2 days' WHERE id = :oid"),
+                {"oid": order_id},
+            )
+            conn.commit()
+        eng.dispose()
+
+        resp = client_a.post(
+            f"{BASE_URL}/api/v1/studies/{study_a_id}/reports",
+            headers=tunnel_headers,
+            json={"output_format": "JSON", "report_mode": "PROVISIONAL", "billing_order_id": order_id},
+        )
+        assert resp.status_code == 409, f"Expected 409 for expired order, got {resp.status_code}: {resp.text}"
+        print(f"    [+] Expired order correctly rejected (409 Conflict): {resp.json().get('detail')}")
 
         print("\n=======================================================")
         print("ALL PR #10 COMMERCIAL INTEGRITY LIVE CHECKS PASSED!")

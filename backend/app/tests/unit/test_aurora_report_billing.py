@@ -305,3 +305,41 @@ async def test_enterprise_billing_summary_and_tenant_isolation(session, seed_use
     study_res, proj_res = await _assert_study_access(session, study_a.id, owner_a)
     assert study_res.id == study_a.id
     assert proj_res.id == proj_a.id
+
+
+@pytest.mark.asyncio
+async def test_expired_order_cannot_be_reserved(session, seed_user, monkeypatch):
+    """An expired order must be rejected from reservation, preventing stale consumption."""
+    from datetime import datetime, timedelta, UTC
+
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", seed_user.id)
+    admin = User(email="exp-admin@aurora.test", username="exp-admin", status="ACTIVE")
+    session.add(admin)
+    await session.flush()
+    company = Organization(name="Empresa Exp", tax_id="20700987699")
+    session.add(company)
+    await session.flush()
+    session.add(OrganizationMembership(organization_id=company.id, user_id=admin.id, role_code="OWNER"))
+    project = Project(owner_user_id=admin.id, organization_id=company.id, name="Prj Exp", project_type="RESEARCH")
+    session.add(project)
+    await session.flush()
+    survey = Survey(project_id=project.id, created_by_user_id=admin.id, name="Surv Exp", survey_type="CUSTOM")
+    session.add(survey)
+    await session.flush()
+    study = Study(project_id=project.id, survey_id=survey.id, name="Std Exp", study_type="RESEARCH")
+    session.add(study)
+    await session.commit()
+
+    service = BillingService(session)
+    await service.save_tariff(TariffInput(min_workers=1, max_workers=50, price=Decimal("150")), seed_user)
+    order = await service.create_quote(study.id, 25, admin)
+    await service.confirm_payment(order.id, "TX-EXP-1", seed_user)
+
+    # Expire order in the past
+    order.expires_at = datetime.now(UTC) - timedelta(days=2)
+    await session.commit()
+
+    monkeypatch.setattr(get_settings(), "environment", "production")
+    with pytest.raises(ConflictError, match="ha vencido su per"):
+        await service.reserve_report_order(order.id, study.id)
+
