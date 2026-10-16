@@ -13,6 +13,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -21,6 +22,7 @@ from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
 from app.models.user import User
 from app.models.revoked_token import RevokedAccessToken
+from app.models.user_session import UserSession
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -36,7 +38,9 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int, session_version: int = 0) -> str:
+def create_access_token(
+    user_id: int, session_version: int = 0, session_id: str | None = None
+) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
     payload = {
@@ -47,6 +51,8 @@ def create_access_token(user_id: int, session_version: int = 0) -> str:
         "jti": secrets.token_urlsafe(24),
         "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
     }
+    if session_id:
+        payload["sid"] = session_id
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
@@ -174,6 +180,28 @@ async def get_optional_current_user(
         raise AuthenticationError("La sesión del token Bearer fue invalidada. Inicia sesión nuevamente.")
     if claims_cookie and claims_cookie.get("sv", 0) != user.session_version:
         raise AuthenticationError("La sesión de la cookie fue invalidada. Inicia sesión nuevamente.")
+
+    # Validate individual device session if sid is tracked in claims
+    sid_bearer = claims_bearer.get("sid") if claims_bearer else None
+    sid_cookie = claims_cookie.get("sid") if claims_cookie else None
+
+    for credential_name, sid in [("Bearer", sid_bearer), ("Cookie", sid_cookie)]:
+        if sid:
+            result = await session.execute(
+                select(UserSession).where(UserSession.session_id == sid)
+            )
+            db_session = result.scalars().first()
+            if db_session is not None:
+                if db_session.revoked_at is not None:
+                    raise AuthenticationError(f"La sesión {credential_name} fue cerrada o revocada.")
+                exp = db_session.expires_at if db_session.expires_at.tzinfo is not None else db_session.expires_at.replace(tzinfo=UTC)
+                if exp <= datetime.now(UTC):
+                    raise AuthenticationError(f"La sesión {credential_name} ha expirado.")
+                now = datetime.now(UTC)
+                last_act = db_session.last_activity_at if db_session.last_activity_at.tzinfo is not None else db_session.last_activity_at.replace(tzinfo=UTC)
+                if (now - last_act).total_seconds() > 60:
+                    db_session.last_activity_at = now
+                    await session.flush()
 
     return user
 

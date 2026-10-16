@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card.jsx';
 import { getTariffs, createTariff, editTariff, getPendingOrders, approvePayment, isOperator, loadReferenceTariffs, priceManualQuote, BILLING_METHODS } from '../../api/billing.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { EnterpriseAuditPanel } from '../../components/colmena/EnterpriseAuditPanel.jsx';
+import { SessionManagementPanel } from '../../components/colmena/SessionManagementPanel.jsx';
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -92,6 +93,7 @@ export default function SettingsPage() {
         </div>
         {sessionError && <p role="alert" className="text-xs text-red-700">{sessionError}</p>}
       </Card>
+      <SessionManagementPanel />
       <EnterpriseAuditPanel />
       {enabled ? (
         <>

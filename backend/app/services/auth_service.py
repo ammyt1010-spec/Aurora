@@ -35,7 +35,7 @@ class AuthService:
         await self.session.refresh(user)
         return user
 
-    async def login(self, payload: LoginRequest) -> str:
+    async def login(self, payload: LoginRequest, request: Request | None = None) -> str:
         result = await self.session.execute(select(User).where(User.email == payload.email))
         user = result.scalars().first()
         if user is None or not user.password_hash or not verify_password(payload.password, user.password_hash):
@@ -43,9 +43,12 @@ class AuthService:
         if user.status != "ACTIVE":
             raise AuthenticationError("El usuario no está activo.")
 
-        return create_access_token(user.id, user.session_version)
+        from app.services.session_service import SessionService
+        token, _ = await SessionService(self.session).create_user_session(user, request)
+        await self.session.commit()
+        return token
 
-    async def demo_login(self, email: str) -> str:
+    async def demo_login(self, email: str, request: Request | None = None) -> str:
         result = await self.session.execute(select(User).where(User.email == email))
         user = result.scalars().first()
         if user is None:
@@ -57,5 +60,8 @@ class AuthService:
         if user.status != "ACTIVE":
             raise AuthenticationError("El usuario no está activo.")
 
-        return create_access_token(user.id, user.session_version)
+        from app.services.session_service import SessionService
+        token, _ = await SessionService(self.session).create_user_session(user, request)
+        await self.session.commit()
+        return token
 
