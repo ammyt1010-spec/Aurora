@@ -1,7 +1,7 @@
 name: AURORA Quality Gate
 on:
   pull_request:
-    branches: [main, hardening/aurora-professional-v1]
+    branches: [main, hardening/aurora-professional-v1, hardening/aurora-revocable-sessions]
 
 jobs:
   backend:
