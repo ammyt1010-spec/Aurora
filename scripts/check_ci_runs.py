@@ -1,7 +1,9 @@
 import json
 import urllib.request
 
-SHA = "d9c8f51e9b2ecc41f22c6dec5f229cccd81b0ee1"
+import sys
+
+SHA = sys.argv[1] if len(sys.argv) > 1 else "36efb47529e348e5d7c9b155bd56cba8e044accc"
 url = f"https://api.github.com/repos/ammyt1010-spec/Aurora/commits/{SHA}/check-runs"
 req = urllib.request.Request(url, headers={"User-Agent": "CI-Monitor", "Accept": "application/vnd.github.v3+json"})
 

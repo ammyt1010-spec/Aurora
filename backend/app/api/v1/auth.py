@@ -17,14 +17,17 @@ from app.core.network_security import is_direct_local_request
 from app.core.security import (
     access_token_expires_at,
     access_token_fingerprint,
+    decode_access_token_claims,
     get_all_request_access_tokens,
     get_current_user,
     get_request_access_token,
 )
+from app.models.audit import AuditLog
 from app.models.user import User
 from app.models.revoked_token import RevokedAccessToken
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserRead
 from app.services.auth_service import AuthService
+from app.services.session_service import SessionService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -41,7 +44,7 @@ async def register(payload: RegisterRequest, session: AsyncSession = Depends(get
     dependencies=[Depends(enforce_login_rate_limit)])
 async def login(payload: LoginRequest, request: Request, response: Response, session: AsyncSession = Depends(get_db)):
     service = AuthService(session)
-    token = await service.login(payload)
+    token = await service.login(payload, request=request)
     add_session_cookies(response, token, request)
     return TokenResponse(access_token=token)
 
@@ -57,7 +60,7 @@ async def demo_login(request: Request, response: Response, session: AsyncSession
             "no a través de túneles o proxies públicos."
         )
     service = AuthService(session)
-    token = await service.demo_login(settings.demo_user_email)
+    token = await service.demo_login(settings.demo_user_email, request=request)
     add_session_cookies(response, token, request)
     return TokenResponse(access_token=token)
 
@@ -78,6 +81,26 @@ async def logout(
     tokens_to_revoke = {t for t in (bearer_token, cookie_token) if t}
     if not tokens_to_revoke:
         raise AuthenticationError("No hay una sesión activa para cerrar.")
+
+    # Revoke individual device session if sid is present in presented claims
+    session_service = SessionService(session)
+    for token in tokens_to_revoke:
+        try:
+            claims = decode_access_token_claims(token)
+            sid = claims.get("sid")
+            if sid:
+                await session_service.revoke_user_session(current_user.id, sid, reason="USER_LOGOUT")
+        except Exception:
+            pass
+
+    # Record auditable logout event
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="USER_LOGOUT",
+        entity_type="user",
+        entity_id=current_user.id,
+    )
+    session.add(audit)
 
     # Clear expired records opportunistically; do not retain them indefinitely.
     await session.execute(
@@ -118,6 +141,9 @@ async def logout_all(
         .where(User.id == current_user.id)
         .values(session_version=User.session_version + 1)
     )
+
+    # Invalidate all active sessions in UserSession and record audit log
+    await SessionService(session).revoke_all_sessions(current_user.id, reason="GLOBAL_LOGOUT")
 
     # Also opportunistically record presented tokens in RevokedAccessToken
     bearer_token, cookie_token = get_all_request_access_tokens(request)
