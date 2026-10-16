@@ -76,7 +76,7 @@ async def update_project(
     service = ProjectService(session)
     existing = await service.get(project_id, current_user)
     await service.ensure_access(existing, current_user, write=True)
-    project = await service.update(project_id, payload)
+    project = await service.update(project_id, payload, actor_user_id=current_user.id)
     return ProjectRead.model_validate(project)
 
 

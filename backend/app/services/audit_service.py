@@ -24,6 +24,7 @@ class AuditService:
         entity_id: int | None,
         user_id: int | None = None,
         project_id: int | None = None,
+        organization_id: int | None = None,
         before_data: dict | None = None,
         after_data: dict | None = None,
     ) -> None:
@@ -33,6 +34,7 @@ class AuditService:
             entity_id=entity_id,
             user_id=user_id,
             project_id=project_id,
+            organization_id=organization_id,
             before_data=before_data,
             after_data=after_data,
         )
