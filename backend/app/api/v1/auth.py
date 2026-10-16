@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy import delete
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -69,14 +74,24 @@ async def logout(
     if not token:
         raise AuthenticationError("No hay una sesión activa para cerrar.")
     token_hash = access_token_fingerprint(token)
-    if await session.get(RevokedAccessToken, token_hash) is None:
-        session.add(
-            RevokedAccessToken(
-                token_hash=token_hash,
-                user_id=current_user.id,
-                expires_at=access_token_expires_at(token),
-            )
-        )
-        await session.commit()
+    # Clear expired records opportunistically; do not retain them indefinitely.
+    await session.execute(
+        delete(RevokedAccessToken).where(RevokedAccessToken.expires_at < datetime.now(UTC))
+    )
+    values = {
+        "token_hash": token_hash,
+        "user_id": current_user.id,
+        "expires_at": access_token_expires_at(token),
+    }
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        statement = postgres_insert(RevokedAccessToken).values(**values)
+    elif dialect == "sqlite":
+        statement = sqlite_insert(RevokedAccessToken).values(**values)
+    else:
+        raise RuntimeError("La revocación de sesiones requiere PostgreSQL o SQLite.")
+    # Concurrent logouts must be idempotent across workers and browser tabs.
+    await session.execute(statement.on_conflict_do_nothing(index_elements=["token_hash"]))
+    await session.commit()
     clear_session_cookies(response)
     return None
