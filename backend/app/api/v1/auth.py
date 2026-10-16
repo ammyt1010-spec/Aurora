@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request, Response
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,6 +92,27 @@ async def logout(
         raise RuntimeError("La revocación de sesiones requiere PostgreSQL o SQLite.")
     # Concurrent logouts must be idempotent across workers and browser tabs.
     await session.execute(statement.on_conflict_do_nothing(index_elements=["token_hash"]))
+    await session.commit()
+    clear_session_cookies(response)
+    return None
+
+
+@router.post("/logout-all", status_code=204)
+async def logout_all(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Invalidate every existing access token for the requesting account.
+
+    An atomic increment prevents lost updates under simultaneous requests.
+    This affects both browser cookies and independent API Bearer tokens.
+    """
+    await session.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(session_version=User.session_version + 1)
+    )
     await session.commit()
     clear_session_cookies(response)
     return None
