@@ -16,6 +16,7 @@ from app.repositories.projects import ProjectRepository
 from app.schemas.projects import ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.censopas_provisioning_service import CensopasProvisioningService
 from app.services.organization_service import OrganizationService
+from app.services.audit_service import AuditService
 
 
 class ProjectService:
@@ -93,6 +94,12 @@ class ProjectService:
                 await CensopasProvisioningService(self.session).provision_project(project)
                 if payload.censopas_study is not None:
                     await self._create_initial_study(project, payload.censopas_study)
+            await AuditService(self.session).log(
+                action="PROJECT_CREATED", entity_type="project",
+                entity_id=project.id, project_id=project.id,
+                organization_id=project.organization_id,
+                user_id=payload.owner_user_id,
+            )
             await self.session.commit()
             await self.session.refresh(project)
             return project
@@ -244,12 +251,21 @@ class ProjectService:
         if target is None or target.status != "ACTIVE":
             raise NotFoundError("El usuario seleccionado no está disponible.")
         member = await self.session.get(ProjectMember, (project.id, target_user_id))
+        previous_role = member.role_code if member is not None else None
         if member is None:
             member = ProjectMember(project_id=project.id, user_id=target_user_id,
                                    role_code=role_code, permissions={})
             self.session.add(member)
         else:
             member.role_code = role_code
+        await AuditService(self.session).log(
+            action="PROJECT_MEMBER_ADDED" if previous_role is None else "PROJECT_MEMBER_ROLE_CHANGED",
+            entity_type="project_member", entity_id=target_user_id,
+            project_id=project.id, organization_id=project.organization_id,
+            user_id=user.id,
+            before_data={"role": previous_role} if previous_role else None,
+            after_data={"role": role_code},
+        )
         await self.session.commit()
         return {"user_id": member.user_id, "username": target.username or "", "role_code": member.role_code}
 
@@ -260,16 +276,31 @@ class ProjectService:
         member = await self.session.get(ProjectMember, (project.id, target_user_id))
         if member is None:
             raise NotFoundError("Miembro no encontrado.")
+        previous_role = member.role_code
         await self.session.delete(member)
+        await AuditService(self.session).log(
+            action="PROJECT_MEMBER_REMOVED", entity_type="project_member",
+            entity_id=target_user_id, project_id=project.id,
+            organization_id=project.organization_id, user_id=user.id,
+            before_data={"role": previous_role},
+        )
         await self.session.commit()
 
-    async def update(self, project_id: int, payload: ProjectUpdate) -> Project:
+    async def update(self, project_id: int, payload: ProjectUpdate, actor_user_id: int | None = None) -> Project:
         project = await self.get(project_id)
         data = payload.model_dump(exclude_unset=True)
         if "metadata" in data:
             project.metadata_ = data.pop("metadata")
         for field, value in data.items():
             setattr(project, field, value)
+        if data or "metadata" in payload.model_fields_set:
+            await AuditService(self.session).log(
+                action="PROJECT_UPDATED", entity_type="project",
+                entity_id=project.id, project_id=project.id,
+                organization_id=project.organization_id,
+                user_id=actor_user_id,
+                after_data={"fields_changed": sorted(payload.model_fields_set)},
+            )
         await self.session.commit()
         await self.session.refresh(project)
         return project

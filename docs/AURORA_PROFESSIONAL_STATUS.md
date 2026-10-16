@@ -102,3 +102,33 @@
 - Pendiente para una fase futura: inventario de dispositivos/sesiones,
   identificadores de sesión individuales, eventos de seguridad y
   eliminación programada de huellas de tokens expirados.
+
+## Fase auditoría empresarial (PR apilado)
+
+- Ya existía la tabla `colmena.audit_logs`; esta fase añade índices
+  de consulta por empresa y proyecto (Alembic `0021`).
+- `GET /api/v1/organizations/{organization_id}/audit-events` devuelve un
+  historial paginado mediante `limit` y `before_id`. Requiere autenticación
+  y pertenencia activa `OWNER`/`ADMIN` a esa empresa.
+- Los eventos antiguos sin `organization_id` se pueden consultar
+  únicamente cuando su proyecto pertenece realmente a la empresa.
+  Se rechazan los cruces inconsistentes entre empresa y proyecto.
+- La API muestra exclusivamente fecha, acción, actor, empresa, proyecto,
+  tipo de entidad y número de entidad. Los campos `before_data` y
+  `after_data` **no se devuelven**, pues contienen datos históricos
+  cuyo carácter sensible no puede descartarse.
+- Se registran, dentro de las mismas transacciones existentes,
+  creación de empresas y proyectos, cambios de proyectos,
+  incorporación/cambio/retiro de miembros y generación/revocación
+  de códigos de colaboración. No se guardan códigos secretos,
+  contraseñas ni contenido de respuestas en estos nuevos eventos.
+- `Configuración > Historial de actividad empresarial` permite consultar
+  y paginar los eventos para los administradores habilitados.
+- **Limitaciones deliberadas:** no es un sistema forense inmutable,
+  no tiene firmas ni retención legal definida; todavía se necesita
+  política de conservación, monitoreo de manipulación y auditoría
+  de eventos del sistema fuera de los flujos cubiertos.
+- Integración local: preservar modificaciones de Codex
+  (`integration/aurora-pr3-pr4-local`), realizar copia PostgreSQL
+  aislada y aplicar `alembic upgrade head` únicamente después de
+  validar la secuencia hasta `0021`.
