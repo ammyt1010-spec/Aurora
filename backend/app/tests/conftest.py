@@ -11,6 +11,7 @@ ver README.md.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+import secrets
 
 import pytest
 import pytest_asyncio
@@ -19,6 +20,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import get_db
+from app.core.config import get_settings
+
+# Ephemeral per-pytest-process secret. Never check into GitHub or display it.
+_TEST_BYPASS_SECRET = secrets.token_urlsafe(32)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_synthetic_billing_test_gate(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "environment", "test")
+    monkeypatch.setattr(settings, "allow_synthetic_test_bypass", True)
+    monkeypatch.setattr(settings, "test_bypass_secret", _TEST_BYPASS_SECRET)
+
 from app.core.business_access import require_business_access, require_response_access
 from app.main import app
 from app.models import Base
@@ -62,7 +76,11 @@ async def client(engine) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[require_business_access] = lambda: None
     app.dependency_overrides[require_response_access] = lambda: None
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Aurora-Test-Token": _TEST_BYPASS_SECRET},
+    ) as ac:
         yield ac
     app.dependency_overrides.clear()
 

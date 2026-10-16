@@ -35,6 +35,10 @@ class Settings(BaseSettings):
         "http://localhost:5176",
         "http://127.0.0.1:5176",
     ]
+    # Test-only internal report issuance; disabled unless explicitly enabled in pytest.
+    allow_synthetic_test_bypass: bool = False
+    test_bypass_secret: str | None = None
+
     demo_access_enabled: bool = False
     demo_user_email: str = "demo@aurora.local"
 
@@ -54,6 +58,11 @@ class Settings(BaseSettings):
         if env in {"production", "staging"}:
             if len(self.jwt_secret_key) < 48 or self.jwt_secret_key.startswith("dev-only") or "change-me" in self.jwt_secret_key.lower():
                 raise ValueError("JWT_SECRET_KEY debe tener al menos 48 caracteres aleatorios en producción o staging.")
+        if self.allow_synthetic_test_bypass:
+            if env != "test":
+                raise ValueError("ALLOW_SYNTHETIC_TEST_BYPASS solo se permite en ENVIRONMENT=test.")
+            if self.test_bypass_secret is None or len(self.test_bypass_secret) < 43:
+                raise ValueError("TEST_BYPASS_SECRET requiere al menos 43 caracteres aleatorios para habilitar las pruebas.")
         if self.demo_access_enabled:
             if env in {"production", "staging"}:
                 raise ValueError("No se permite DEMO_ACCESS_ENABLED en entornos de producción o staging.")

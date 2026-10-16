@@ -235,17 +235,24 @@ async def test_public_tunnel_suppresses_license_bypass(session, seed_user, monke
 
     service = BillingService(session)
 
-    # Clean direct local request in dev can bypass
+    # A clean loopback request with all proxy headers removed MUST NOT bypass.
     local_req = build_mock_request(client_ip="127.0.0.1")
-    assert await service.reserve_report_order(None, study.id, request=local_req) is None
+    with pytest.raises(ConflictError, match="solicita una cotizaci"):
+        await service.reserve_report_order(None, study.id, request=local_req)
 
-    # Request via public tunnel (CF-Connecting-IP / X-Forwarded-For) CANNOT bypass
+    # An ordinary public tunnel request is also denied.
     tunnel_req = build_mock_request(
         client_ip="127.0.0.1",
         headers={"cf-connecting-ip": "198.51.100.24", "x-forwarded-for": "198.51.100.24"},
     )
     with pytest.raises(ConflictError, match="solicita una cotizaci"):
         await service.reserve_report_order(None, study.id, request=tunnel_req)
+
+    # Even in test mode, a missing token is rejected.
+    monkeypatch.setattr(get_settings(), "environment", "test")
+    with pytest.raises(ConflictError):
+        await service.reserve_report_order(None, study.id, request=local_req)
+    monkeypatch.setattr(get_settings(), "environment", "development")
 
 
 @pytest.mark.asyncio
@@ -343,3 +350,55 @@ async def test_expired_order_cannot_be_reserved(session, seed_user, monkeypatch)
     with pytest.raises(ConflictError, match="ha vencido su per"):
         await service.reserve_report_order(order.id, study.id)
 
+
+
+
+def test_synthetic_bypass_requires_explicit_test_mode_and_secret(monkeypatch):
+    import secrets
+    from app.core.synthetic_test_bypass import is_authorized_synthetic_test
+    from app.core.config import Settings
+    from pydantic import ValidationError
+
+    settings = get_settings()
+    token = secrets.token_urlsafe(32)
+    request = build_mock_request(
+        client_ip="127.0.0.1",
+        headers={"x-aurora-test-token": token},
+    )
+    monkeypatch.setattr(settings, "environment", "test")
+    monkeypatch.setattr(settings, "allow_synthetic_test_bypass", True)
+    monkeypatch.setattr(settings, "test_bypass_secret", token)
+    assert is_authorized_synthetic_test(request)
+    monkeypatch.setattr(settings, "environment", "development")
+    assert not is_authorized_synthetic_test(request)
+    monkeypatch.setattr(settings, "environment", "test")
+    assert not is_authorized_synthetic_test(build_mock_request())
+    assert not is_authorized_synthetic_test(
+        build_mock_request(headers={"x-aurora-test-token": "invalid"})
+    )
+    with pytest.raises(ValidationError):
+        Settings(environment="production", allow_synthetic_test_bypass=True,
+                 test_bypass_secret=token, jwt_secret_key="A" * 52)
+    with pytest.raises(ValidationError):
+        Settings(environment="test", allow_synthetic_test_bypass=True,
+                 test_bypass_secret="short")
+
+
+@pytest.mark.asyncio
+async def test_localhost_report_access_denied_without_test_token(session, seed_user, seed_project, monkeypatch):
+    from app.api.v1.reports import _assert_study_access
+    from app.models.study import Study
+    from app.models.survey import Survey
+
+    survey = Survey(project_id=seed_project.id, created_by_user_id=seed_user.id,
+                    name="Seguridad del túnel", survey_type="CUSTOM")
+    session.add(survey)
+    await session.flush()
+    study = Study(project_id=seed_project.id, survey_id=survey.id,
+                  name="Informe privado", study_type="RESEARCH")
+    session.add(study)
+    await session.flush()
+    request = build_mock_request()
+    monkeypatch.setattr(get_settings(), "environment", "development")
+    with pytest.raises(AuthorizationError):
+        await _assert_study_access(session, study.id, None, request)

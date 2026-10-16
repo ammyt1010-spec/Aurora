@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
-from app.core.network_security import is_direct_local_request
+from app.core.synthetic_test_bypass import is_authorized_synthetic_test
 from app.core.security import get_current_user, get_optional_current_user
 from app.models.project import Project
 from app.models.report import ReportRun
@@ -45,7 +45,7 @@ async def _assert_study_access(
             member = await session.get(OrganizationMembership, (project.organization_id, user.id))
             if member is None:
                 raise AuthorizationError("No tienes acceso a los informes de esta empresa.")
-    elif get_settings().environment.lower() == "production" or (request is not None and not is_direct_local_request(request)):
+    elif not is_authorized_synthetic_test(request):
         raise AuthorizationError("Debes iniciar sesión para consultar este informe.")
 
     return study, project
@@ -71,11 +71,10 @@ async def generate_report(
     session: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    if get_settings().environment.lower() == "production" or not is_direct_local_request(request):
-        if current_user is None:
+    if current_user is None:
+        if not is_authorized_synthetic_test(request):
             raise AuthorizationError("Debes iniciar sesión como administrador de la empresa.")
-        await BillingService(session)._organization_admin(study_id, current_user)
-    elif current_user is not None:
+    else:
         await BillingService(session)._organization_admin(study_id, current_user)
 
     service = ReportService(session)
@@ -92,11 +91,10 @@ async def generate_report_preview(
     session: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    if get_settings().environment.lower() == "production" or not is_direct_local_request(request):
-        if current_user is None:
+    if current_user is None:
+        if not is_authorized_synthetic_test(request):
             raise AuthorizationError("Debes iniciar sesión como administrador de la empresa.")
-        await BillingService(session)._organization_admin(study_id, current_user)
-    elif current_user is not None:
+    else:
         await BillingService(session)._organization_admin(study_id, current_user)
 
     service = ReportService(session)
