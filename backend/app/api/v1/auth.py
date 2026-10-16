@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy import delete
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -8,8 +13,14 @@ from app.core.rate_limit import enforce_login_rate_limit, enforce_registration_r
 from app.core.auth_cookie import add_session_cookies, clear_session_cookies
 from app.core.exceptions import AuthenticationError
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import (
+    access_token_expires_at,
+    access_token_fingerprint,
+    get_current_user,
+    get_request_access_token,
+)
 from app.models.user import User
+from app.models.revoked_token import RevokedAccessToken
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserRead
 from app.services.auth_service import AuthService
 
@@ -52,7 +63,35 @@ async def me(current_user: User = Depends(get_current_user)):
     return UserRead.model_validate(current_user)
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response, _user: User = Depends(get_current_user)):
-    """Revoke the browser cookie in this client (bearer tokens expire naturally)."""
+async def logout(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Revoke precisely this JWT for all workers, then clear browser cookies."""
+    token = get_request_access_token(request)
+    if not token:
+        raise AuthenticationError("No hay una sesión activa para cerrar.")
+    token_hash = access_token_fingerprint(token)
+    # Clear expired records opportunistically; do not retain them indefinitely.
+    await session.execute(
+        delete(RevokedAccessToken).where(RevokedAccessToken.expires_at < datetime.now(UTC))
+    )
+    values = {
+        "token_hash": token_hash,
+        "user_id": current_user.id,
+        "expires_at": access_token_expires_at(token),
+    }
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        statement = postgres_insert(RevokedAccessToken).values(**values)
+    elif dialect == "sqlite":
+        statement = sqlite_insert(RevokedAccessToken).values(**values)
+    else:
+        raise RuntimeError("La revocación de sesiones requiere PostgreSQL o SQLite.")
+    # Concurrent logouts must be idempotent across workers and browser tabs.
+    await session.execute(statement.on_conflict_do_nothing(index_elements=["token_hash"]))
+    await session.commit()
     clear_session_cookies(response)
     return None

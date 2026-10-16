@@ -30,11 +30,13 @@ from app.models.scoring import ScoringRule
 from app.models.study import Study, StudySnapshot, StudyUnit, StudyUnitType
 from app.models.survey import Survey, SurveyQuestion, SurveySection
 from app.models.user import Organization, OrganizationMembership, User
+from app.models.revoked_token import RevokedAccessToken
 from app.models.variable import Variable
 
 __all__ = [
     "Base",
     "User",
+    "RevokedAccessToken",
     "Organization",
     "OrganizationMembership",
     "Project",

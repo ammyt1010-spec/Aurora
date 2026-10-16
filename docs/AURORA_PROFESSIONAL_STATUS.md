@@ -32,12 +32,18 @@
     verificables, proxy para assets compilados y documentación de restauración.
 14. Pipeline CI: npm ci sobre lockfile persistido, build, Vitest,
     Pytest + pruebas de controles de acceso + migraciones PostgreSQL.
+15. Fase de cierre de sesión seguro (PR de revisión): JWT con identificador
+    aleatorio; revocación del token firmado tanto para cookies como para
+    clientes Bearer, almacenando solo su SHA-256 en PostgreSQL (migración
+    0019). Revocación idempotente y purga oportunista de registros vencidos.
+    Otros dispositivos permanecen conectados.
 
 ## Requisitos aún pendientes de aprobación/validación
 
 - **Seguridad:** realizar pentest profesional autenticado y anónimo,
   penetración multiempresa, autorización de referencias complejas y RLS
-  opcional. Completar rotación/revocación server-side de sesiones.
+  opcional. Completar rotación de sesiones, cierre de todas las sesiones
+  y política de revisión de sesiones activas.
 - **Privacidad:** clasificar y revisar todos los archivos ya incluidos en
   el historial de Git; diseñar su saneamiento coordinado con el propietario,
   implementar retención y respuesta a solicitudes de los titulares.
@@ -64,3 +70,17 @@
 - Aprobación expresa para activar un entorno con datos reales.
 
 **No equivale a software certificado ni a disponibilidad comercial.**
+
+## Integración segura de la revocación (PR de revisión)
+
+- Crear respaldo y mantener la instalación anterior operativa.
+- Aplicar `poetry run alembic upgrade head` en la base aislada; comprobar
+  tabla `colmena.revoked_access_tokens` y revisión `0019`.
+- Ejecutar `poetry run pytest -q app/tests/unit/test_aurora_session_revocation.py`
+  y toda la suite, con dos empresas de prueba.
+- Iniciar sesión por cookie y Bearer, cerrar sesión y comprobar 401 usando
+  el token capturado antes del logout; otra sesión distinta debe seguir activa.
+- Validar que los hash SHA-256 se almacenan sin guardar el JWT, y que la
+  operación no afecta las encuestas anónimas.
+- No fusionar `main` ni desplegar con usuarios reales antes de validar CI
+  y pruebas con PostgreSQL, Windows y Cloudflare Tunnel.
