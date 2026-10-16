@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card.jsx';
 import { getTariffs, createTariff, editTariff, getPendingOrders, approvePayment, isOperator, loadReferenceTariffs, priceManualQuote, BILLING_METHODS } from '../../api/billing.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { EnterpriseAuditPanel } from '../../components/colmena/EnterpriseAuditPanel.jsx';
+import { EnterpriseBillingPanel } from '../../components/colmena/EnterpriseBillingPanel.jsx';
 import { SessionManagementPanel } from '../../components/colmena/SessionManagementPanel.jsx';
 
 export default function SettingsPage() {
@@ -95,6 +96,7 @@ export default function SettingsPage() {
       </Card>
       <SessionManagementPanel />
       <EnterpriseAuditPanel />
+      <EnterpriseBillingPanel />
       {enabled ? (
         <>
           <Card className="p-5 space-y-3">

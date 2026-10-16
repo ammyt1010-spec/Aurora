@@ -6,7 +6,7 @@ from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Intege
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
-from app.models.types import BigIntPK
+from app.models.types import BigIntPK, JSONVariant
 
 
 class ReportTariff(Base):
@@ -46,6 +46,8 @@ class ReportOrder(Base):
     method_code: Mapped[str] = mapped_column(String(50), nullable=False, default="SUSESO_ISTAS21_BREVE")
     pricing_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="FIXED")
     workers: Mapped[int] = mapped_column(Integer, nullable=False)
+    headcount_source: Mapped[str] = mapped_column(String(60), nullable=False, default="ESTUDIO_DECLARADO")
+    snapshot_data: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
     tariff_min_workers: Mapped[int] = mapped_column(Integer, nullable=False)
     tariff_max_workers: Mapped[int | None] = mapped_column(Integer)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))

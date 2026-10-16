@@ -23,6 +23,13 @@ export const priceManualQuote = (id, amount) =>
     method: 'POST', body: { amount },
   });
 
+export const getOrganizationBillingSummary = (orgId) =>
+  apiRequest(`/billing/organizations/${orgId}/summary`);
+
+export const getOrganizationOrders = (orgId) =>
+  apiRequest(`/billing/organizations/${orgId}/orders`);
+
+
 export const BILLING_METHODS = [
   { code: 'SUSESO_ISTAS21_BREVE', label: 'SUSESO / ISTAS21 breve' },
   { code: 'CENSOPAS_CORTA', label: 'CENSOPAS COPSOQ corta' },
