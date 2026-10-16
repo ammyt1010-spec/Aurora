@@ -230,12 +230,12 @@ class BillingService:
             if payroll_proof is None and (
                 get_settings().environment.lower() in {"production", "staging"} or verified_workers is None
             ):
-                raise ValidationDomainError("No existe una planilla oficial vigente con verificación documentada.")
+                raise ValidationDomainError("No existe una planilla oficial verificada y vigente con verificación documentada.")
         if headcount_source == "AUDITORIA_RRHH":
             if hr_proof is None and (
                 get_settings().environment.lower() in {"production", "staging"} or audited_workers is None
             ):
-                raise ValidationDomainError("No existe una auditoría de RR. HH. vigente con verificación documentada.")
+                raise ValidationDomainError("No existe una auditoría de RR. HH. verificada y vigente con verificación documentada.")
 
         resolved_source = headcount_source or (
             "PLANILLA_OFICIAL_EMPRESA" if payroll_proof is not None
