@@ -161,8 +161,14 @@ class BillingService:
         order.amount = amount
         order.status = "PENDING_PAYMENT"
         order.expires_at = datetime.now(UTC) + timedelta(days=7)
-        if order.snapshot_data:
-            order.snapshot_data["amount"] = str(amount)
+        if order.snapshot_data is not None:
+            # Reassign JSON rather than mutating in place: SQLAlchemy's JSON
+            # column does not track nested dict changes automatically.
+            order.snapshot_data = {
+                **order.snapshot_data,
+                "amount": str(amount),
+                "pricing_finalized_at": datetime.now(UTC).isoformat(),
+            }
         await AuditService(self.db).log(
             action="REPORT_MANUAL_QUOTE_PRICED", entity_type="report_order",
             entity_id=order.id, user_id=user.id,
@@ -185,16 +191,40 @@ class BillingService:
         await self._validate_method_for_study(study, method_code)
 
         # 1. Definir fuente empresarial verificable y evitar reducciones unilaterales (Req 2 y 3)
-        resolved_source = headcount_source or "ESTUDIO_DECLARADO"
-        if org and org.metadata_:
-            verified_hc = org.metadata_.get("headcount") or org.metadata_.get("verified_workers")
-            if verified_hc is not None and workers < int(verified_hc):
-                raise ValidationDomainError(
-                    f"La cantidad de trabajadores ({workers}) no puede ser menor a la dotación oficial "
-                    f"registrada de la empresa ({verified_hc})."
-                )
-            if verified_hc is not None and not headcount_source:
-                resolved_source = "PLANILLA_OFICIAL_EMPRESA"
+        allowed_sources = {"ESTUDIO_DECLARADO", "PLANILLA_OFICIAL_EMPRESA", "AUDITORIA_RRHH"}
+        if headcount_source is not None and headcount_source not in allowed_sources:
+            raise ValidationDomainError("La fuente de dotación declarada no está reconocida.")
+
+        metadata = (org.metadata_ or {}) if org else {}
+        # The user cannot self-certify an official evidence source by changing
+        # a label sent in the quote request. These fields are populated only
+        # by a separate verified enterprise-operator workflow.
+        try:
+            verified_workers = int(metadata["verified_workers"]) if metadata.get("verified_workers") is not None else None
+            audited_workers = int(metadata["rrhh_verified_workers"]) if metadata.get("rrhh_verified_workers") is not None else None
+            company_workers = int(metadata["headcount"]) if metadata.get("headcount") is not None else None
+        except (TypeError, ValueError) as exc:
+            raise ValidationDomainError("La dotación registrada de la empresa es inválida.") from exc
+        for value in (verified_workers, audited_workers, company_workers):
+            if value is not None and value < 1:
+                raise ValidationDomainError("La dotación registrada debe ser positiva.")
+        if headcount_source == "PLANILLA_OFICIAL_EMPRESA" and verified_workers is None:
+            raise ValidationDomainError("No existe una planilla oficial verificada para esta empresa.")
+        if headcount_source == "AUDITORIA_RRHH" and audited_workers is None:
+            raise ValidationDomainError("No existe una auditoría de RR. HH. verificada para esta empresa.")
+
+        resolved_source = headcount_source or (
+            "PLANILLA_OFICIAL_EMPRESA" if verified_workers is not None else "ESTUDIO_DECLARADO"
+        )
+        verified_floor = max(
+            (n for n in (verified_workers, audited_workers, company_workers) if n is not None),
+            default=None,
+        )
+        if verified_floor is not None and workers < verified_floor:
+            raise ValidationDomainError(
+                f"La cantidad de trabajadores ({workers}) no puede ser menor a la dotación oficial "
+                f"registrada de la empresa ({verified_floor})."
+            )
 
         study_settings = dict(study.settings or {})
         study_hc = study_settings.get("headcount") or study_settings.get("declared_workers")
@@ -395,7 +425,17 @@ class BillingService:
             .order_by(ReportOrder.created_at.desc(), ReportOrder.id.desc())
         )).scalars().all())
 
-        available = sum(1 for o in orders if o.status == "PAID")
+        # An expired paid order is not a spendable license. Keep its persisted
+        # audit status unchanged; expose EXPIRED in the dashboard view only.
+        from app.schemas.billing import OrderRead
+        now = datetime.now(UTC)
+        available = sum(1 for o in orders if o.status == "PAID" and _utc(o.expires_at) > now)
+        view_orders = [
+            OrderRead.model_validate(o).model_copy(update={"status": "EXPIRED"})
+            if o.status == "PAID" and _utc(o.expires_at) <= now
+            else OrderRead.model_validate(o)
+            for o in orders
+        ]
         consumed = sum(1 for o in orders if o.status == "CONSUMED")
         pending = sum(1 for o in orders if o.status == "PENDING_PAYMENT")
         awaiting = sum(1 for o in orders if o.status == "AWAITING_QUOTE")
@@ -408,6 +448,6 @@ class BillingService:
             "consumed_licenses": consumed,
             "pending_payment": pending,
             "awaiting_quote": awaiting,
-            "orders": orders,
+            "orders": view_orders,
         }
 

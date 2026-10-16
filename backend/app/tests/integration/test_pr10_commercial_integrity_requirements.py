@@ -125,7 +125,9 @@ async def test_03_cotizaciones_concurrentes(session, seed_user, monkeypatch):
     await service.save_tariff(TariffInput(min_workers=51, max_workers=200, price=Decimal("250.00")), seed_user)
 
     order1 = await service.create_quote(study.id, 45, owner, headcount_source="ESTUDIO_DECLARADO")
-    order2 = await service.create_quote(study.id, 80, owner, headcount_source="PLANILLA_OFICIAL_EMPRESA")
+    with pytest.raises(ValidationDomainError, match="planilla oficial verificada"):
+        await service.create_quote(study.id, 80, owner, headcount_source="PLANILLA_OFICIAL_EMPRESA")
+    order2 = await service.create_quote(study.id, 80, owner, headcount_source="ESTUDIO_DECLARADO")
 
     assert order1.id != order2.id
     assert order1.workers == 45
@@ -264,3 +266,59 @@ async def test_08_consumo_simultaneo_misma_licencia(session, seed_user, monkeypa
 
     with pytest.raises(ConflictError, match="ya fue utilizada"):
         await service.reserve_report_order(order.id, study.id)
+
+
+
+@pytest.mark.asyncio
+async def test_manual_quote_snapshot_is_persisted(session, seed_user, monkeypatch):
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", seed_user.id)
+    owner, org, _project, study = await _setup_tenant(session, "ManualSnapshot", "manual-snapshot@aurora.pe")
+    service = BillingService(session)
+    await service.save_tariff(
+        TariffInput(min_workers=1, max_workers=100, pricing_mode="QUOTE", price=None),
+        seed_user,
+    )
+    order = await service.create_quote(study.id, 40, owner)
+    assert order.snapshot_data["amount"] is None
+    await service.set_manual_quote_price(order.id, Decimal("375.00"), seed_user)
+    await session.refresh(order)
+    assert order.amount == Decimal("375.00")
+    assert order.snapshot_data["amount"] == "375.00"
+    assert order.snapshot_data["pricing_finalized_at"]
+
+
+@pytest.mark.asyncio
+async def test_expired_paid_order_is_not_an_available_license(session, seed_user, monkeypatch):
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", seed_user.id)
+    owner, org, _project, study = await _setup_tenant(session, "ExpiredBalance", "expired-balance@aurora.pe")
+    service = BillingService(session)
+    await service.save_tariff(TariffInput(min_workers=1, max_workers=100, price=Decimal("120.00")), seed_user)
+    order = await service.create_quote(study.id, 40, owner)
+    await service.confirm_payment(order.id, "EXPIRED-TXN", seed_user)
+    order.expires_at = datetime.now(UTC) - timedelta(days=1)
+    await session.commit()
+    summary = await service.get_organization_billing_summary(org.id, owner)
+    assert summary["available_licenses"] == 0
+    assert summary["orders"][0].status == "EXPIRED"
+    await session.refresh(order)
+    assert order.status == "PAID"  # View does not rewrite the financial audit row.
+
+
+@pytest.mark.asyncio
+async def test_official_source_requires_verified_company_evidence(session, seed_user, monkeypatch):
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", seed_user.id)
+    owner, org, _project, study = await _setup_tenant(session, "SourceProof", "source-proof@aurora.pe")
+    service = BillingService(session)
+    await service.save_tariff(TariffInput(min_workers=1, max_workers=100, price=Decimal("120.00")), seed_user)
+    with pytest.raises(ValidationDomainError, match="planilla oficial verificada"):
+        await service.create_quote(study.id, 60, owner, headcount_source="PLANILLA_OFICIAL_EMPRESA")
+    with pytest.raises(ValidationDomainError, match="auditoría de RR. HH. verificada"):
+        await service.create_quote(study.id, 60, owner, headcount_source="AUDITORIA_RRHH")
+    with pytest.raises(ValidationDomainError, match="fuente de dotación"):
+        await service.create_quote(study.id, 60, owner, headcount_source="FUENTE_FALSA")
+    org.metadata_ = {"verified_workers": 75}
+    await session.commit()
+    with pytest.raises(ValidationDomainError, match="no puede ser menor"):
+        await service.create_quote(study.id, 60, owner, headcount_source="PLANILLA_OFICIAL_EMPRESA")
+    valid = await service.create_quote(study.id, 75, owner, headcount_source="PLANILLA_OFICIAL_EMPRESA")
+    assert valid.workers == 75 and valid.headcount_source == "PLANILLA_OFICIAL_EMPRESA"

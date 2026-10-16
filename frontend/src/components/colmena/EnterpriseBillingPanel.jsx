@@ -18,6 +18,7 @@ function formatDate(value) {
 
 const STATUS_BADGES = {
   PAID: { label: 'Disponible', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  EXPIRED: { label: 'Vencida', className: 'bg-rose-50 text-rose-700 border-rose-200' },
   CONSUMED: { label: 'Consumida', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   PENDING_PAYMENT: { label: 'Pendiente de pago', className: 'bg-amber-50 text-amber-800 border-amber-200' },
   AWAITING_QUOTE: { label: 'Por cotizar', className: 'bg-purple-50 text-purple-700 border-purple-200' },

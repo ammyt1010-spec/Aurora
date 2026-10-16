@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 MethodCode = Literal["SUSESO_ISTAS21_BREVE", "CENSOPAS_CORTA", "CENSOPAS_MEDIA"]
+HeadcountSource = Literal["ESTUDIO_DECLARADO", "PLANILLA_OFICIAL_EMPRESA", "AUDITORIA_RRHH"]
 
 
 class TariffInput(BaseModel):
@@ -38,7 +39,7 @@ class TariffRead(TariffInput):
 class QuoteCreate(BaseModel):
     workers: int = Field(ge=1, le=10_000_000)
     method_code: MethodCode = "SUSESO_ISTAS21_BREVE"
-    headcount_source: str | None = Field(default=None, max_length=60)
+    headcount_source: HeadcountSource | None = None
 
 
 class OrderRead(BaseModel):
