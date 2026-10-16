@@ -11,6 +11,7 @@ from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.models.analytics_plan import OrganizationCollaboratorCode
 from app.models.project import Project
 from app.models.user import Organization, OrganizationMembership, User
+from app.services.audit_service import AuditService
 from app.schemas.organizations import (
     CollaboratorCodeCreate,
     OrganizationCreate,
@@ -66,6 +67,11 @@ class OrganizationService:
                 permissions={},
             )
         )
+        await AuditService(self.session).log(
+            action="ORGANIZATION_CREATED", entity_type="organization",
+            entity_id=organization.id, organization_id=organization.id,
+            user_id=user.id,
+        )
         if commit:
             await self.session.commit()
             await self.session.refresh(organization)
@@ -97,6 +103,13 @@ class OrganizationService:
             created_by_user_id=user.id,
         )
         self.session.add(code)
+        await self.session.flush()
+        # Audit the identifier only. The raw invitation secret is never persisted in logs.
+        await AuditService(self.session).log(
+            action="COLLABORATOR_CODE_CREATED", entity_type="collaborator_code",
+            entity_id=code.id, organization_id=organization.id,
+            user_id=user.id,
+        )
         await self.session.commit()
         await self.session.refresh(code)
         return code, raw_code
@@ -121,6 +134,11 @@ class OrganizationService:
             raise NotFoundError(f"Código {code_id} no encontrado")
         code.status = "REVOKED"
         code.revoked_at = datetime.now(UTC)
+        await AuditService(self.session).log(
+            action="COLLABORATOR_CODE_REVOKED", entity_type="collaborator_code",
+            entity_id=code.id, organization_id=organization_id,
+            user_id=user.id,
+        )
         await self.session.commit()
         await self.session.refresh(code)
         return code
@@ -147,6 +165,10 @@ class OrganizationService:
                     role_code="COLLABORATOR",
                     permissions={"read": True},
                 )
+            )
+            await AuditService(self.session).log(
+                action="ORGANIZATION_MEMBER_JOINED", entity_type="organization_member",
+                entity_id=user.id, organization_id=organization.id, user_id=user.id,
             )
             await self.session.commit()
         return organization
