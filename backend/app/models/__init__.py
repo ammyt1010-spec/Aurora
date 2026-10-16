@@ -14,6 +14,7 @@ from app.models.analytics_plan import (
 )
 from app.models.audit import AuditLog
 from app.models.billing import ReportTariff, ReportOrder
+from app.models.headcount_evidence import HeadcountEvidence
 from app.models.base import Base
 from app.models.censopas import Barem, BaremBand, BaremCutoff, ConstructResult, ConstructScore, ResponseScore
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi, KpiMeasurement
@@ -55,6 +56,7 @@ __all__ = [
     "AuditLog",
     "ReportTariff",
     "ReportOrder",
+    "HeadcountEvidence",
     "Survey",
     "SurveySection",
     "SurveyQuestion",
