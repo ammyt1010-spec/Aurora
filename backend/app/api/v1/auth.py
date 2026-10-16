@@ -8,8 +8,14 @@ from app.core.rate_limit import enforce_login_rate_limit, enforce_registration_r
 from app.core.auth_cookie import add_session_cookies, clear_session_cookies
 from app.core.exceptions import AuthenticationError
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import (
+    access_token_expires_at,
+    access_token_fingerprint,
+    get_current_user,
+    get_request_access_token,
+)
 from app.models.user import User
+from app.models.revoked_token import RevokedAccessToken
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserRead
 from app.services.auth_service import AuthService
 
@@ -52,7 +58,25 @@ async def me(current_user: User = Depends(get_current_user)):
     return UserRead.model_validate(current_user)
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response, _user: User = Depends(get_current_user)):
-    """Revoke the browser cookie in this client (bearer tokens expire naturally)."""
+async def logout(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Revoke precisely this JWT for all workers, then clear browser cookies."""
+    token = get_request_access_token(request)
+    if not token:
+        raise AuthenticationError("No hay una sesión activa para cerrar.")
+    token_hash = access_token_fingerprint(token)
+    if await session.get(RevokedAccessToken, token_hash) is None:
+        session.add(
+            RevokedAccessToken(
+                token_hash=token_hash,
+                user_id=current_user.id,
+                expires_at=access_token_expires_at(token),
+            )
+        )
+        await session.commit()
     clear_session_cookies(response)
     return None
