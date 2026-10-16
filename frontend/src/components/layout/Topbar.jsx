@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, LogOut, RefreshCcw, Search, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +21,8 @@ async function fetchHealth() {
 export function Topbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
   const { data, refetch, isFetching } = useQuery({
     queryKey: ['health'],
     queryFn: fetchHealth,
@@ -29,9 +32,18 @@ export function Topbar() {
 
   const connected = data?.status?.toLowerCase() === 'ok';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login', { replace: true });
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError('');
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch {
+      setLogoutError('No se pudo confirmar el cierre de sesión. Verifica tu conexión e inténtalo nuevamente.');
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const displayName = user?.first_name || user?.username || user?.email || 'Investigador';
@@ -39,6 +51,11 @@ export function Topbar() {
 
   return (
     <div className="sticky top-0 z-10 h-14 border-b border-[#eef0f3] bg-white/90 px-4 backdrop-blur-xl sm:px-5">
+      {logoutError && (
+        <div role="alert" className="absolute right-4 top-full z-30 mt-2 max-w-sm rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700 shadow-lg">
+          {logoutError}
+        </div>
+      )}
       <div className="flex h-full w-full items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center">
           <div className="group flex h-9 min-w-0 w-full max-w-[520px] items-center gap-2.5 rounded-xl border border-[#eef0f3] bg-[#f8f9fb] px-3 transition-all hover:border-[#dfe2e6] hover:bg-white focus-within:border-amber focus-within:bg-white focus-within:ring-2 focus-within:ring-amber/10">
@@ -94,13 +111,15 @@ export function Topbar() {
 
           {user && (
             <button
-              aria-label="Cerrar sesión"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#eef0f3] bg-white text-muted transition hover:bg-red-50 hover:text-red-500"
+              aria-label={loggingOut ? 'Cerrando sesión' : 'Cerrar sesión'}
+              aria-busy={loggingOut}
+              disabled={loggingOut}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#eef0f3] bg-white text-muted transition hover:bg-red-50 hover:text-red-500 disabled:cursor-wait disabled:opacity-50"
               onClick={handleLogout}
-              title="Cerrar sesión"
+              title={loggingOut ? 'Cerrando sesión' : 'Cerrar sesión'}
               type="button"
             >
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className={`h-3.5 w-3.5 ${loggingOut ? 'animate-pulse' : ''}`} />
             </button>
           )}
         </div>
