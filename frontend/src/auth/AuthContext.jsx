@@ -27,12 +27,13 @@ export function AuthProvider({ children }) {
     } catch (error) {
       if (version === authRequestVersion.current) {
         clearStoredToken();
+        queryClient.clear();
         setUser(null);
         setStatus('anonymous');
       }
       throw error;
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     // The initial check may fail when the user is not logged in.
@@ -43,16 +44,18 @@ export function AuthProvider({ children }) {
     async ({ email, password }) => {
       await loginUser({ email, password });
       clearStoredToken();
+      queryClient.clear();
       await loadCurrentUser();
     },
-    [loadCurrentUser],
+    [loadCurrentUser, queryClient],
   );
 
   const demoLogin = useCallback(async () => {
     await demoLoginUser();
     clearStoredToken();
+    queryClient.clear();
     await loadCurrentUser();
-  }, [loadCurrentUser]);
+  }, [loadCurrentUser, queryClient]);
 
   const signup = useCallback(async (payload) => {
     await registerUser(payload);
