@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, CreditCard, Settings2 } from 'lucide-react';
 import { PageHeader } from '../../components/layout/PageHeader.jsx';
@@ -8,7 +9,10 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 
 export default function SettingsPage() {
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logoutAll } = useAuth();
+  const [closingAll, setClosingAll] = useState(false);
+  const [sessionError, setSessionError] = useState('');
   const [minWorkers, setMinWorkers] = useState('1');
   const [maxWorkers, setMaxWorkers] = useState('');
   const [price, setPrice] = useState('');
@@ -17,6 +21,19 @@ export default function SettingsPage() {
   const [paymentRefs, setPaymentRefs] = useState({});
   const [manualAmounts, setManualAmounts] = useState({});
   const [notice, setNotice] = useState('');
+  const handleCloseAllSessions = async () => {
+    if (closingAll || !window.confirm('¿Cerrar todas las sesiones, incluida esta? Tendrás que volver a iniciar sesión en todos tus dispositivos.')) return;
+    setClosingAll(true);
+    setSessionError('');
+    try {
+      await logoutAll();
+      navigate('/login', { replace: true });
+    } catch {
+      setSessionError('No se pudieron invalidar las sesiones. Comprueba tu conexión y vuelve a intentarlo.');
+    } finally {
+      setClosingAll(false);
+    }
+  };
   const { data: operatorStatus } = useQuery({ queryKey: ['aurora-operator'], queryFn: isOperator });
   const enabled = operatorStatus?.is_operator === true;
   const { data: tariffs = [] } = useQuery({ queryKey: ['aurora-tariffs'], queryFn: getTariffs, enabled });
@@ -63,6 +80,16 @@ export default function SettingsPage() {
         <h2 className="flex items-center gap-2 text-base font-bold text-dark"><Settings2 size={18} /> Mi cuenta</h2>
         <p className="text-sm text-muted">Usuario: {user?.username || '—'} · {user?.email || '—'}</p>
         <p className="text-xs text-muted">Los permisos empresariales se gestionan dentro de cada proyecto.</p>
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+          <button type="button" disabled={closingAll}
+            aria-busy={closingAll}
+            className="rounded-lg border border-red-200 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"
+            onClick={handleCloseAllSessions}>
+            {closingAll ? 'Invalidando sesiones...' : 'Cerrar sesión en todos los dispositivos'}
+          </button>
+          <p className="text-xs text-muted">Invalida las sesiones de tu cuenta en todos los navegadores y dispositivos.</p>
+        </div>
+        {sessionError && <p role="alert" className="text-xs text-red-700">{sessionError}</p>}
       </Card>
       {enabled ? (
         <>
