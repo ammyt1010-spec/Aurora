@@ -16,3 +16,9 @@ backend/reports_storage/
 backend/exports_storage/
 diagnostico-colmena.txt
 .superdesign/tmp/
+.audit_credentials.json
+.backup_*/
+.pytest_temp/
+playwright_reports/
+run_audit_playwright.py
+.db_backups/

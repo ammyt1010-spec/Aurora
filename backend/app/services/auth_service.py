@@ -54,5 +54,8 @@ class AuthService:
             await self.session.commit()
             await self.session.refresh(user)
 
-        return create_access_token(user.id)
+        if user.status != "ACTIVE":
+            raise AuthenticationError("El usuario no está activo.")
+
+        return create_access_token(user.id, user.session_version)
 

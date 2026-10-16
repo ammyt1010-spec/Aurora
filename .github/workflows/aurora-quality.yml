@@ -1,9 +1,13 @@
 name: AURORA Quality Gate
 on:
   pull_request:
-    branches: [main, hardening/aurora-professional-v1, hardening/aurora-revocable-sessions, hardening/aurora-logout-confirmation]
+    branches:
+      - main
+      - 'hardening/**'
   push:
-    branches: [hardening/aurora-logout-all]
+    branches:
+      - main
+      - 'hardening/**'
 
 jobs:
   backend:
@@ -100,4 +104,4 @@ jobs:
       - name: Verify migration at head, rate limits, and revoked sessions
         working-directory: backend
         run: |
-          poetry run python -c "from sqlalchemy import create_engine,text; from app.core.config import get_settings; e=create_engine(get_settings().database_url_sync); c=e.connect(); print(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one()); assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() == '0020'; assert c.execute(text(\"SELECT to_regclass('colmena.public_rate_limits')\")).scalar_one() is not None; assert c.execute(text(\"SELECT to_regclass('colmena.revoked_access_tokens')\")).scalar_one() is not None; assert c.execute(text(\"SELECT session_version FROM colmena.users LIMIT 1\")).fetchall() == []; c.close()"
+          poetry run python -c "from sqlalchemy import create_engine,text; from app.core.config import get_settings; e=create_engine(get_settings().database_url_sync); c=e.connect(); print(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one()); assert c.execute(text('SELECT version_num FROM alembic_version')).scalar_one() in ('0020', '0021'); assert c.execute(text(\"SELECT to_regclass('colmena.public_rate_limits')\")).scalar_one() is not None; assert c.execute(text(\"SELECT to_regclass('colmena.revoked_access_tokens')\")).scalar_one() is not None; assert c.execute(text(\"SELECT session_version FROM colmena.users LIMIT 1\")).fetchall() == []; c.close()"

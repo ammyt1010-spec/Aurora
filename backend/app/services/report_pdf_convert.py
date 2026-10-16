@@ -22,9 +22,27 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from app.core.exceptions import ColmenaDomainError
+import shutil
 
-class DocxToPdfError(RuntimeError):
-    pass
+
+def get_soffice_binary() -> str:
+    """Resolve soffice executable path across PATH and Windows default install directories."""
+    in_path = shutil.which("soffice")
+    if in_path:
+        return in_path
+    for win_candidate in (
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    ):
+        if Path(win_candidate).exists():
+            return win_candidate
+    return "soffice"
+
+
+class DocxToPdfError(ColmenaDomainError):
+    http_status = 503
+    error_code = "REPORT_CONVERSION_UNAVAILABLE"
 
 
 async def docx_to_pdf(docx_bytes: bytes) -> bytes:
@@ -34,12 +52,13 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
             docx_path = tmp_path / "report.docx"
             docx_path.write_bytes(docx_bytes)
             profile_dir = tmp_path / f"lo_profile_{uuid.uuid4().hex}"
+            soffice_bin = get_soffice_binary()
 
             process = await asyncio.create_subprocess_exec(
-                "soffice",
+                soffice_bin,
                 "--headless",
                 "--norestore",
-                f"-env:UserInstallation=file://{profile_dir}",
+                f"-env:UserInstallation={profile_dir.as_uri()}",
                 "--convert-to",
                 "pdf",
                 "--outdir",
@@ -53,11 +72,20 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
                 pdf_path = tmp_path / "report.pdf"
                 if pdf_path.exists():
                     return pdf_path.read_bytes()
+                raise DocxToPdfError("LibreOffice terminó sin errores pero no produjo el archivo PDF esperado.")
+            err_msg = stderr.decode("utf-8", errors="replace").strip() if stderr else ""
+            raise DocxToPdfError(
+                f"LibreOffice falló con código {process.returncode} al convertir el documento: {err_msg}"
+            )
     except FileNotFoundError as exc:
-        raise DocxToPdfError("LibreOffice no está instalado. No es posible generar un PDF fiel al documento.") from exc
+        raise DocxToPdfError(
+            "LibreOffice no está instalado o no se encuentra en el PATH del sistema. "
+            "No es posible generar una conversión PDF fiel del documento original."
+        ) from exc
+    except DocxToPdfError:
+        raise
     except Exception as exc:
-        raise DocxToPdfError("Error convirtiendo el informe mediante LibreOffice.") from exc
-    raise DocxToPdfError("LibreOffice no produjo el PDF solicitado. Comprueba la instalación y los permisos.")
+        raise DocxToPdfError(f"Error inesperado al convertir el informe DOCX a PDF mediante LibreOffice: {exc}") from exc
 
 
 def count_pdf_pages(pdf_bytes: bytes) -> int:

@@ -18,24 +18,53 @@ CSRF_HEADER = "X-CSRF-Token"
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
-def add_session_cookies(response: Response, token: str) -> None:
+def is_request_secure(request: Request | None = None) -> bool:
+    """Detect if the connection is HTTPS directly or terminated by a TLS reverse proxy."""
     settings = get_settings()
-    secure = settings.environment.lower() == "production"
+    if settings.environment.lower() == "production":
+        return True
+    if request is None:
+        return False
+
+    # Direct HTTPS scheme
+    if getattr(request, "url", None) and request.url.scheme == "https":
+        return True
+
+    # Standard proxy TLS termination headers
+    headers = request.headers
+    if headers.get("x-forwarded-proto", "").lower() == "https":
+        return True
+    if headers.get("x-forwarded-ssl", "").lower() == "on":
+        return True
+    if '"scheme":"https"' in headers.get("cf-visitor", ""):
+        return True
+    if headers.get("front-end-https", "").lower() == "on":
+        return True
+
+    return False
+
+
+def add_session_cookies(response: Response, token: str, request: Request | None = None) -> None:
+    settings = get_settings()
+    secure = is_request_secure(request)
+    samesite = "strict" if secure else "lax"
     ttl = settings.jwt_expire_minutes * 60
     response.set_cookie(
         SESSION_COOKIE, token, httponly=True, secure=secure,
-        samesite="strict", max_age=ttl, path="/api/v1",
+        samesite=samesite, max_age=ttl, path="/api/v1",
     )
     response.set_cookie(
         CSRF_COOKIE, secrets.token_urlsafe(32), httponly=False,
-        secure=secure, samesite="strict", max_age=ttl, path="/",
+        secure=secure, samesite=samesite, max_age=ttl, path="/",
     )
     response.headers["Cache-Control"] = "no-store"
 
 
-def clear_session_cookies(response: Response) -> None:
-    response.delete_cookie(SESSION_COOKIE, path="/api/v1")
-    response.delete_cookie(CSRF_COOKIE, path="/")
+def clear_session_cookies(response: Response, request: Request | None = None) -> None:
+    secure = is_request_secure(request)
+    samesite = "strict" if secure else "lax"
+    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=secure, samesite=samesite)
+    response.delete_cookie(CSRF_COOKIE, path="/", secure=secure, samesite=samesite)
     response.headers["Cache-Control"] = "no-store"
 
 

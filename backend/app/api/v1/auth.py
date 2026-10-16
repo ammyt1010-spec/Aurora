@@ -13,9 +13,11 @@ from app.core.rate_limit import enforce_login_rate_limit, enforce_registration_r
 from app.core.auth_cookie import add_session_cookies, clear_session_cookies
 from app.core.exceptions import AuthenticationError
 from app.core.database import get_db
+from app.core.network_security import is_direct_local_request
 from app.core.security import (
     access_token_expires_at,
     access_token_fingerprint,
+    get_all_request_access_tokens,
     get_current_user,
     get_request_access_token,
 )
@@ -37,24 +39,26 @@ async def register(payload: RegisterRequest, session: AsyncSession = Depends(get
 
 @router.post("/login", response_model=TokenResponse,
     dependencies=[Depends(enforce_login_rate_limit)])
-async def login(payload: LoginRequest, response: Response, session: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, request: Request, response: Response, session: AsyncSession = Depends(get_db)):
     service = AuthService(session)
     token = await service.login(payload)
-    add_session_cookies(response, token)
+    add_session_cookies(response, token, request)
     return TokenResponse(access_token=token)
 
 
 @router.post("/demo-login", response_model=TokenResponse)
 async def demo_login(request: Request, response: Response, session: AsyncSession = Depends(get_db)):
     settings = get_settings()
-    client_host = request.client.host if request.client else ""
-    if settings.environment == "production" or not settings.demo_access_enabled:
-        raise AuthenticationError("El acceso demo no está disponible.")
-    if client_host not in {"127.0.0.1", "::1", "localhost"}:
-        raise AuthenticationError("El acceso demo solo está disponible desde el servidor local.")
+    if settings.environment.lower() not in {"development", "test", "local"} or not settings.demo_access_enabled:
+        raise AuthenticationError("El acceso demo no está disponible en este entorno o instancia.")
+    if not is_direct_local_request(request):
+        raise AuthenticationError(
+            "El acceso demo solo está disponible en conexiones directas de loopback local, "
+            "no a través de túneles o proxies públicos."
+        )
     service = AuthService(session)
     token = await service.demo_login(settings.demo_user_email)
-    add_session_cookies(response, token)
+    add_session_cookies(response, token, request)
     return TokenResponse(access_token=token)
 
 
@@ -69,50 +73,72 @@ async def logout(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Revoke precisely this JWT for all workers, then clear browser cookies."""
-    token = get_request_access_token(request)
-    if not token:
+    """Revoke ALL credentials presented in this request (Bearer and/or Cookie) then clear cookies."""
+    bearer_token, cookie_token = get_all_request_access_tokens(request)
+    tokens_to_revoke = {t for t in (bearer_token, cookie_token) if t}
+    if not tokens_to_revoke:
         raise AuthenticationError("No hay una sesión activa para cerrar.")
-    token_hash = access_token_fingerprint(token)
+
     # Clear expired records opportunistically; do not retain them indefinitely.
     await session.execute(
         delete(RevokedAccessToken).where(RevokedAccessToken.expires_at < datetime.now(UTC))
     )
-    values = {
-        "token_hash": token_hash,
-        "user_id": current_user.id,
-        "expires_at": access_token_expires_at(token),
-    }
+
     dialect = session.get_bind().dialect.name
-    if dialect == "postgresql":
-        statement = postgres_insert(RevokedAccessToken).values(**values)
-    elif dialect == "sqlite":
-        statement = sqlite_insert(RevokedAccessToken).values(**values)
-    else:
-        raise RuntimeError("La revocación de sesiones requiere PostgreSQL o SQLite.")
-    # Concurrent logouts must be idempotent across workers and browser tabs.
-    await session.execute(statement.on_conflict_do_nothing(index_elements=["token_hash"]))
+    for token in tokens_to_revoke:
+        token_hash = access_token_fingerprint(token)
+        values = {
+            "token_hash": token_hash,
+            "user_id": current_user.id,
+            "expires_at": access_token_expires_at(token),
+        }
+        if dialect == "postgresql":
+            statement = postgres_insert(RevokedAccessToken).values(**values)
+        elif dialect == "sqlite":
+            statement = sqlite_insert(RevokedAccessToken).values(**values)
+        else:
+            raise RuntimeError("La revocación de sesiones requiere PostgreSQL o SQLite.")
+        await session.execute(statement.on_conflict_do_nothing(index_elements=["token_hash"]))
+
     await session.commit()
-    clear_session_cookies(response)
+    clear_session_cookies(response, request)
     return None
 
 
 @router.post("/logout-all", status_code=204)
 async def logout_all(
+    request: Request,
     response: Response,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Invalidate every existing access token for the requesting account.
-
-    An atomic increment prevents lost updates under simultaneous requests.
-    This affects both browser cookies and independent API Bearer tokens.
-    """
+    """Invalidate every existing access token for the requesting account across all devices."""
     await session.execute(
         update(User)
         .where(User.id == current_user.id)
         .values(session_version=User.session_version + 1)
     )
+
+    # Also opportunistically record presented tokens in RevokedAccessToken
+    bearer_token, cookie_token = get_all_request_access_tokens(request)
+    tokens_to_revoke = {t for t in (bearer_token, cookie_token) if t}
+    if tokens_to_revoke:
+        dialect = session.get_bind().dialect.name
+        for token in tokens_to_revoke:
+            values = {
+                "token_hash": access_token_fingerprint(token),
+                "user_id": current_user.id,
+                "expires_at": access_token_expires_at(token),
+            }
+            if dialect == "postgresql":
+                statement = postgres_insert(RevokedAccessToken).values(**values)
+            elif dialect == "sqlite":
+                statement = sqlite_insert(RevokedAccessToken).values(**values)
+            else:
+                statement = None
+            if statement is not None:
+                await session.execute(statement.on_conflict_do_nothing(index_elements=["token_hash"]))
+
     await session.commit()
-    clear_session_cookies(response)
+    clear_session_cookies(response, request)
     return None
