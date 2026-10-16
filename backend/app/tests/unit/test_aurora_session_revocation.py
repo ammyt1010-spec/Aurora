@@ -1,6 +1,7 @@
 """Access tokens remain invalid after logout, even through a different request."""
 import pytest
-from httpx import ASGITransport, AsyncClient
+from app.core.security import access_token_fingerprint
+from app.models.revoked_token import RevokedAccessToken
 
 from app.core.security import create_access_token, decode_access_token
 from app.models.user import User
@@ -31,6 +32,9 @@ async def test_bearer_logout_is_revoked_server_side(client, session):
 
     after = await client.get("/api/v1/auth/me", headers=headers)
     assert after.status_code == 401
+    stored = await session.get(RevokedAccessToken, access_token_fingerprint(token))
+    assert stored is not None
+    assert stored.token_hash != token
 
     fresh = create_access_token(user.id)
     assert fresh != token
