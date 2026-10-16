@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError, ValidationDomainError
 from app.models.billing import ReportOrder, ReportTariff
+from app.models.headcount_evidence import HeadcountEvidence
 from app.core.report_pricing import METHOD_LABELS, REFERENCE_WEB_TARIFFS
 from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
@@ -208,16 +209,45 @@ class BillingService:
         for value in (verified_workers, audited_workers, company_workers):
             if value is not None and value < 1:
                 raise ValidationDomainError("La dotación registrada debe ser positiva.")
-        if headcount_source == "PLANILLA_OFICIAL_EMPRESA" and verified_workers is None:
-            raise ValidationDomainError("No existe una planilla oficial verificada para esta empresa.")
-        if headcount_source == "AUDITORIA_RRHH" and audited_workers is None:
-            raise ValidationDomainError("No existe una auditoría de RR. HH. verificada para esta empresa.")
+        # Operator-reviewed evidence supersedes unaudited legacy metadata.
+        # Old paid orders remain unchanged; existing metadata is still a
+        # conservative floor while the operator migrates the legacy records.
+        now = datetime.now(UTC)
+        verified_records = list((await self.db.execute(
+            select(HeadcountEvidence)
+            .where(
+                HeadcountEvidence.organization_id == project.organization_id,
+                HeadcountEvidence.revoked_at.is_(None),
+                HeadcountEvidence.valid_until > now,
+            ).order_by(HeadcountEvidence.id.desc())
+        )).scalars().all())
+        active_by_source = {}
+        for record in verified_records:
+            active_by_source.setdefault(record.source_type, record)
+        payroll_proof = active_by_source.get("PLANILLA_OFICIAL_EMPRESA")
+        hr_proof = active_by_source.get("AUDITORIA_RRHH")
+        if headcount_source == "PLANILLA_OFICIAL_EMPRESA":
+            if payroll_proof is None and (
+                get_settings().environment.lower() in {"production", "staging"} or verified_workers is None
+            ):
+                raise ValidationDomainError("No existe una planilla oficial verificada y vigente con verificación documentada.")
+        if headcount_source == "AUDITORIA_RRHH":
+            if hr_proof is None and (
+                get_settings().environment.lower() in {"production", "staging"} or audited_workers is None
+            ):
+                raise ValidationDomainError("No existe una auditoría de RR. HH. verificada y vigente con verificación documentada.")
 
         resolved_source = headcount_source or (
-            "PLANILLA_OFICIAL_EMPRESA" if verified_workers is not None else "ESTUDIO_DECLARADO"
+            "PLANILLA_OFICIAL_EMPRESA" if payroll_proof is not None
+            else "AUDITORIA_RRHH" if hr_proof is not None
+            else "ESTUDIO_DECLARADO"
         )
+        resolved_proof = active_by_source.get(resolved_source)
         verified_floor = max(
-            (n for n in (verified_workers, audited_workers, company_workers) if n is not None),
+            (n for n in (
+                verified_workers, audited_workers, company_workers,
+                *(item.workers for item in active_by_source.values()),
+            ) if n is not None),
             default=None,
         )
         if verified_floor is not None and workers < verified_floor:
@@ -274,6 +304,16 @@ class BillingService:
             },
             "workers": workers,
             "headcount_source": resolved_source,
+            "headcount_evidence": (
+                {
+                    "id": resolved_proof.id,
+                    "sha256": resolved_proof.document_sha256,
+                    "verified_at": resolved_proof.verified_at.isoformat(),
+                    "valid_until": resolved_proof.valid_until.isoformat(),
+                } if resolved_proof else (
+                    {"status": "LEGACY_NOT_DOCUMENTED"} if resolved_source != "ESTUDIO_DECLARADO" else None
+                )
+            ),
             "amount": str(tariff.price) if tariff.price is not None else None,
             "currency": tariff.currency,
             "created_at": datetime.now(UTC).isoformat(),

@@ -7,6 +7,8 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.billing import EnterpriseBillingSummary, ManualQuotePrice, OrderRead, PaymentConfirmation, QuoteCreate, TariffInput, TariffRead
 from app.services.billing_service import BillingService, is_platform_operator, require_operator
+from app.schemas.headcount_evidence import HeadcountEvidenceApprove, HeadcountEvidenceRead
+from app.services.headcount_evidence_service import HeadcountEvidenceService
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -110,3 +112,33 @@ async def organization_orders(
     summary = await BillingService(db).get_organization_billing_summary(organization_id, user)
     return summary["orders"]
 
+
+
+
+@router.get("/organizations/{organization_id}/headcount-evidence", response_model=list[HeadcountEvidenceRead])
+async def list_headcount_evidence(
+    organization_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await HeadcountEvidenceService(db).list_history(organization_id, user)
+
+
+@router.post("/organizations/{organization_id}/headcount-evidence", response_model=HeadcountEvidenceRead, status_code=201)
+async def approve_headcount_evidence(
+    organization_id: int,
+    payload: HeadcountEvidenceApprove,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await HeadcountEvidenceService(db).approve(organization_id, payload, user)
+
+
+@router.post("/organizations/{organization_id}/headcount-evidence/{evidence_id}/revoke", response_model=HeadcountEvidenceRead)
+async def revoke_headcount_evidence(
+    organization_id: int,
+    evidence_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await HeadcountEvidenceService(db).revoke(organization_id, evidence_id, user)
