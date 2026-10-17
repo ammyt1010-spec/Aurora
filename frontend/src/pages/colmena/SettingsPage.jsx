@@ -9,6 +9,7 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { EnterpriseAuditPanel } from '../../components/colmena/EnterpriseAuditPanel.jsx';
 import { EnterpriseBillingPanel } from '../../components/colmena/EnterpriseBillingPanel.jsx';
 import { SessionManagementPanel } from '../../components/colmena/SessionManagementPanel.jsx';
+import ReportTemplateEditor from '../../components/colmena/project/ReportTemplateEditor.jsx';
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -99,6 +100,7 @@ export default function SettingsPage() {
       <EnterpriseBillingPanel />
       {enabled ? (
         <>
+          <ReportTemplateEditor />
           <Card className="p-5 space-y-3">
             <h2 className="flex items-center gap-2 font-bold text-dark"><CreditCard size={18}/> Tarifario editable (PEN)</h2>
             <p className="text-xs text-muted">El importe corresponde a una solicitud de informe, no al pago por cada trabajador. Editar una tarifa no modifica cotizaciones emitidas.</p>
