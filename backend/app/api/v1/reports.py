@@ -320,12 +320,14 @@ async def list_organization_reports_history(
     study_id: int | None = None,
     discipline: str | None = None,
     session: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    if current_user is not None and not is_platform_operator(current_user) and not getattr(current_user, "is_superuser", False):
+    # Defense in depth: never accept an anonymous request, even if the router
+    # is mounted without require_business_access in another application.
+    if not is_platform_operator(current_user):
         member = await session.get(OrganizationMembership, (organization_id, current_user.id))
-        if member is None:
-            raise AuthorizationError("No tienes acceso a los informes de esta organización.")
+        if member is None or member.role_code not in {"OWNER", "ADMIN"}:
+            raise AuthorizationError("No tienes permiso para consultar el historial de informes de esta organización.")
     service = ReportService(session)
     items = await service.get_organization_report_history(
         organization_id, study_id=study_id, discipline=discipline
