@@ -44,7 +44,7 @@ def add_page_field(paragraph, field_code: str) -> None:
     run.font.color.rgb = RGBColor.from_string(COLMENA["muted"])
 
 
-def add_header_band(document) -> None:
+def add_header_band(document, *, title: str = "AURORA PROFESSIONAL") -> None:
     """Franja navy con el nombre de marca y una línea dorada parcial debajo
     — nunca debe parecer una tabla.
 
@@ -71,7 +71,7 @@ def add_header_band(document) -> None:
     set_cell_vertical_center(cell)
     remove_table_borders(band)
     paragraph = cell.paragraphs[0]
-    _run(paragraph, "COLMENA | INTELIGENCIA PSICOSOCIAL", size=8.5, bold=True, color=COLMENA["white"])
+    _run(paragraph, title[:95], size=8.5, bold=True, color=COLMENA["white"])
 
     # Word/LibreOffice tratan dos `w:tbl` consecutivas sin un párrafo entre
     # medio como una única tabla fusionada (la grilla de la segunda termina
@@ -93,7 +93,7 @@ def add_header_band(document) -> None:
     remove_table_borders(rule)
 
 
-def add_footer_band(document) -> None:
+def add_footer_band(document, *, text: str = "AURORA PROFESSIONAL · expediente agregado · privacidad protegida") -> None:
     """Regla fina + identificación a la izquierda + paginación a la derecha
     — dos columnas 85/15, nunca un párrafo centrado."""
     section = document.sections[0]
@@ -119,7 +119,7 @@ def add_footer_band(document) -> None:
     set_cell_vertical_center(right_cell)
 
     left_paragraph = left_cell.paragraphs[0]
-    _run(left_paragraph, "CENSOPAS-COPSOQ · expediente agregado · privacidad protegida", size=FONT["caption"], color=COLMENA["muted"])
+    _run(left_paragraph, text[:105], size=FONT["caption"], color=COLMENA["muted"])
 
     right_paragraph = right_cell.paragraphs[0]
     right_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
