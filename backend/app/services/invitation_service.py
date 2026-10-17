@@ -17,7 +17,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import UTC, datetime
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationDomainError
+from app.services.audit_service import AuditService
 from app.models.participant import StudyInvitation
 from app.repositories.studies import StudyRepository
 
@@ -39,6 +40,16 @@ class InvitationService:
         study = await self.study_repo.get(study_id)
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
+        if not 1 <= count <= 1000:
+            raise ValidationDomainError("La cantidad de invitaciones debe estar entre 1 y 1000.")
+        if not study.requires_invitation:
+            raise ConflictError("Este estudio no tiene activado el acceso por invitaciones.")
+        if study.status != "OPEN":
+            raise ConflictError("Sólo se pueden emitir invitaciones para estudios abiertos.")
+        if study.end_at is not None:
+            end_at = study.end_at if study.end_at.tzinfo else study.end_at.replace(tzinfo=UTC)
+            if datetime.now(UTC) >= end_at:
+                raise ConflictError("La campaña terminó; no se pueden emitir invitaciones.")
 
         tokens: list[str] = []
         for _ in range(count):
@@ -89,8 +100,12 @@ class InvitationService:
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def revoke(
-        self, study_id: int, invitation_id: int, reason: str | None = None
+        self, study_id: int, invitation_id: int, reason: str | None = None,
+        *, user_id: int | None = None,
     ) -> StudyInvitation:
+        study = await self.study_repo.get(study_id)
+        if study is None:
+            raise NotFoundError(f"Estudio {study_id} no encontrado")
         stmt = select(StudyInvitation).where(
             StudyInvitation.id == invitation_id, StudyInvitation.study_id == study_id
         )
@@ -99,6 +114,8 @@ class InvitationService:
             raise NotFoundError(f"Invitación {invitation_id} no encontrada en este estudio")
         if invitation.status == "CONSUMED":
             raise ConflictError("No se puede revocar una invitación que ya ha sido consumida.")
+        if invitation.status == "REVOKED":
+            return invitation
 
         invitation.status = "REVOKED"
         meta = dict(invitation.metadata_ or {})
@@ -106,6 +123,14 @@ class InvitationService:
         if reason:
             meta["revocation_reason"] = reason
         invitation.metadata_ = meta
+        await AuditService(self.session).log(
+            action="STUDY_INVITATION_REVOKED",
+            entity_type="study_invitation",
+            entity_id=invitation.id,
+            user_id=user_id,
+            project_id=study.project_id,
+            after_data={"status": "REVOKED", "reason": reason},
+        )
         await self.session.commit()
         await self.session.refresh(invitation)
         return invitation
