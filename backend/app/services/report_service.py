@@ -586,6 +586,10 @@ class ReportService:
         bundle["premium_analytics"] = self._build_premium_analytics(
             bundle["analysis_results"], study.min_publishable_n
         )
+        if not bundle["is_censopas"]:
+            limitations = bundle["premium_analytics"].get("limitations") or []
+            if limitations:
+                limitations[0] = "Los análisis complementarios no sustituyen el método ni el baremo propio del instrumento."
         # The report template is part of the render input, not merely a
         # label in report metadata. Validate discipline to prevent displaying
         # one methodology with another methodology's title or template.
