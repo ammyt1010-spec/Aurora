@@ -18,7 +18,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,15 +27,19 @@ from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.services.billing_service import BillingService
 from app.models.analysis import AnalysisResult, AnalysisRun
+from app.models.audit import AuditLog
+from app.models.billing import ReportOrder
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi
 from app.models.censopas import Barem
 from app.models.construct import Construct
+from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
+from app.models.study import Study
 from app.models.user import Organization, User
 from app.repositories.analytics import AnalyticsRepository
 from app.repositories.reports import ReportRepository
 from app.repositories.studies import StudyRepository
-from app.schemas.reports import ReportRunCreate, ReportTemplateCreate
+from app.schemas.reports import ReportRunCreate, ReportTemplateCreate, ReportTemplateUpdate
 from app.services.censopas_methodology import (
     resolve_censopas_methodological_status,
     resolve_official_equivalence_enabled,
@@ -64,18 +68,112 @@ class ReportService:
         self.study_repo = StudyRepository(session)
         self.analytics_repo = AnalyticsRepository(session)
 
+    async def ensure_default_templates(self) -> None:
+        from app.models.report import ReportTemplate
+        existing = await self.repo.list_templates()
+        if existing:
+            return
+
+        defaults = [
+            ReportTemplate(
+                code="TPL_PSICOSOCIAL_CENSOPAS",
+                name="Informe Técnico Oficial — Riesgos Psicosociales (CENSOPAS-COPSOQ)",
+                report_type="PSICOSOCIAL",
+                template_config={
+                    "discipline": "PSICOSOCIAL",
+                    "palette": "aurora-amber",
+                    "header_title": "INFORME TÉCNICO DE EVALUACIÓN DE RIESGOS PSICOSOCIALES EN EL TRABAJO",
+                    "sections": [
+                        "portada", "resumen_ejecutivo", "ficha_tecnica", "calidad_datos",
+                        "variables_descriptivas", "dimensiones", "subdimensiones",
+                        "hallazgos_premium", "plan_accion", "conclusiones", "anexos"
+                    ],
+                    "cover_style": "corporate_dark",
+                    "show_priority_ranking": True,
+                },
+                is_system=True,
+                status="ACTIVE",
+            ),
+            ReportTemplate(
+                code="TPL_ERGONOMIA_ROSA",
+                name="Informe Ergonómico Ocupacional — Puestos con Pantallas (Método ROSA)",
+                report_type="ERGONOMIA",
+                template_config={
+                    "discipline": "ERGONOMIA",
+                    "palette": "aurora-teal",
+                    "header_title": "INFORME TÉCNICO DE EVALUACIÓN ERGONÓMICA DE PUESTOS CON PANTALLAS",
+                    "sections": [
+                        "portada", "resumen_ejecutivo", "ficha_tecnica", "calidad_datos",
+                        "dimensiones", "plan_accion", "conclusiones", "anexos"
+                    ],
+                    "cover_style": "ergonomic_clean",
+                    "risk_levels": ["Riesgo Bajo", "Riesgo Medio", "Riesgo Alto", "Riesgo Crítico"],
+                },
+                is_system=True,
+                status="ACTIVE",
+            ),
+            ReportTemplate(
+                code="TPL_CLIMA_ORGANIZACIONAL",
+                name="Informe Ejecutivo de Clima Laboral y Factores Organizacionales",
+                report_type="CLIMA",
+                template_config={
+                    "discipline": "CLIMA",
+                    "palette": "aurora-indigo",
+                    "header_title": "INFORME EJECUTIVO DE CLIMA LABORAL Y ENGAGEMENT ORGANIZACIONAL",
+                    "sections": [
+                        "portada", "resumen_ejecutivo", "ficha_tecnica", "calidad_datos",
+                        "dimensiones", "hallazgos_premium", "plan_accion", "conclusiones"
+                    ],
+                    "cover_style": "executive_gold",
+                },
+                is_system=True,
+                status="ACTIVE",
+            ),
+        ]
+        for tpl in defaults:
+            self.session.add(tpl)
+        await self.session.commit()
+
+    async def list_templates(self, discipline: str | None = None) -> list:
+        from app.models.report import ReportTemplate
+        await self.ensure_default_templates()
+        return await self.repo.list_templates(discipline=discipline)
+
     async def create_template(self, payload: ReportTemplateCreate):
         from app.models.report import ReportTemplate
 
+        cfg = dict(payload.template_config or {})
+        if payload.discipline:
+            cfg["discipline"] = payload.discipline
         template = ReportTemplate(
             code=payload.code,
             name=payload.name,
             report_type=payload.report_type,
             instrument_version_id=payload.instrument_version_id,
-            template_config=payload.template_config,
+            template_config=cfg,
         )
         template = await self.repo.add_template(template)
         await self.session.commit()
+        return template
+
+    async def update_template(self, template_id: int, payload: ReportTemplateUpdate):
+        template = await self.repo.get_template(template_id)
+        if template is None:
+            raise NotFoundError(f"Plantilla {template_id} no encontrada.")
+        if payload.name is not None:
+            template.name = payload.name
+        if payload.report_type is not None:
+            template.report_type = payload.report_type
+        if payload.status is not None:
+            template.status = payload.status
+        cfg = dict(template.template_config or {})
+        if payload.discipline is not None:
+            cfg["discipline"] = payload.discipline
+        if payload.template_config is not None:
+            cfg.update(payload.template_config)
+        template.template_config = cfg
+        await self.session.commit()
+        await self.session.refresh(template)
         return template
 
     async def get_run(self, run_id: int):
@@ -86,6 +184,9 @@ class ReportService:
 
     async def generate(self, study_id: int, payload: ReportRunCreate, *, request=None):
         from app.models.report import ReportRun
+
+        if payload.is_sample_preview or payload.report_mode == "SAMPLE":
+            raise ConflictError("No es posible emitir un informe definitivo oficial a partir de una solicitud de muestra.")
 
         study = await self.study_repo.get(study_id)
         if study is None:
@@ -101,6 +202,31 @@ class ReportService:
             if analysis is None or analysis.study_id != study_id:
                 raise NotFoundError("El análisis seleccionado no pertenece a este estudio")
 
+        template_name = None
+        template_code = None
+        discipline = "PSICOSOCIAL"
+        if payload.report_template_id:
+            tpl = await self.repo.get_template(payload.report_template_id)
+            if tpl:
+                template_name = tpl.name
+                template_code = tpl.code
+                discipline = (tpl.template_config or {}).get("discipline", "PSICOSOCIAL")
+        elif study.instrument_version_id:
+            ver = await self.session.get(InstrumentVersion, study.instrument_version_id)
+            if ver and ver.instrument_id:
+                inst = await self.session.get(Instrument, ver.instrument_id)
+                if inst and inst.discipline:
+                    discipline = inst.discipline.upper()
+
+        meta = {
+            "report_mode": payload.report_mode,
+            "sections": payload.sections,
+            "template_name": template_name,
+            "template_code": template_code,
+            "discipline": discipline,
+            "is_sample_preview": False,
+        }
+
         report_run = ReportRun(
             billing_order_id=paid_order.id if paid_order else None,
             study_id=study_id,
@@ -109,10 +235,7 @@ class ReportService:
             requested_by_user_id=payload.requested_by_user_id,
             output_format=payload.output_format,
             status="PENDING",
-            metadata_={
-                "report_mode": payload.report_mode,
-                "sections": payload.sections,
-            },
+            metadata_=meta,
         )
         report_run = await self.repo.add_run(report_run)
         await self.session.flush()
@@ -136,9 +259,6 @@ class ReportService:
                 path = storage_dir / f"{report_run.public_id}.docx"
                 path.write_bytes(file_bytes)
             elif payload.output_format == "PDF":
-                # El PDF nunca se renderiza aparte: siempre es una conversión
-                # del mismo DOCX (LibreOffice headless), para que el layout
-                # entregado en PDF y en Word coincida por construcción.
                 from app.services.report_docx import render_report_docx
                 from app.services.report_pdf_convert import docx_to_pdf
 
@@ -173,40 +293,116 @@ class ReportService:
         return report_run
 
     async def generate_preview(self, study_id: int, payload: ReportRunCreate, *, request=None) -> tuple:
-        """Genera el DOCX canónico (siempre, sin importar `output_format`
-        pedido) y deriva su PDF de preview convirtiéndolo con LibreOffice.
-
-        El PDF de preview se guarda como archivo hermano del `.docx`
-        (`{public_id}.pdf`, mismo `report_run`) en vez de agregar una
-        columna nueva a `ReportRun` — el path se puede derivar siempre por
-        convención desde `storage_path`. `GET /reports/{id}/download` sigue
-        sirviendo ese mismo `.docx` sin regenerar nada: es el archivo que
-        efectivamente se descarga al exportar.
-        """
         from app.services.report_pdf_convert import count_pdf_pages, docx_to_pdf
+        from app.models.report import ReportRun
 
+        is_sample = bool(payload.is_sample_preview or payload.report_mode == "SAMPLE")
         forced_payload = payload.model_copy(update={"output_format": "DOCX"})
-        report_run = await self.generate(study_id, forced_payload, request=request)
 
-        docx_path = Path(report_run.storage_path)
-        try:
-            pdf_bytes = await docx_to_pdf(docx_path.read_bytes())
-            pdf_path = docx_path.with_suffix(".pdf")
-            pdf_path.write_bytes(pdf_bytes)
-        except Exception as exc:
-            # A failed preview does not consume a paid report: restore credit.
-            from app.models.billing import ReportOrder
-            billing = BillingService(self.session)
-            if report_run.billing_order_id is not None:
-                order = await self.session.get(ReportOrder, report_run.billing_order_id)
-                if order is not None:
-                    await billing.release_reservation(order)
-                report_run.billing_order_id = None
-            report_run.status = "FAILED"
-            report_run.error_message = f"Falló la conversión de vista previa: {exc}"
-            await self.session.commit()
-            raise
-        return report_run, count_pdf_pages(pdf_bytes)
+        if is_sample:
+            # Vista previa segura de muestra con marca de agua (Req 4):
+            # No consume crédito ni exige orden pagada, permitiendo ver la estructura y estética sin entregar archivo oficial.
+            study = await self.study_repo.get(study_id)
+            if study is None:
+                raise NotFoundError(f"Estudio {study_id} no encontrado")
+
+            template_name = None
+            template_code = None
+            discipline = "PSICOSOCIAL"
+            if payload.report_template_id:
+                tpl = await self.repo.get_template(payload.report_template_id)
+                if tpl:
+                    template_name = tpl.name
+                    template_code = tpl.code
+                    discipline = (tpl.template_config or {}).get("discipline", "PSICOSOCIAL")
+            elif study.instrument_version_id:
+                ver = await self.session.get(InstrumentVersion, study.instrument_version_id)
+                if ver and ver.instrument_id:
+                    inst = await self.session.get(Instrument, ver.instrument_id)
+                    if inst and inst.discipline:
+                        discipline = inst.discipline.upper()
+
+            watermark_text = "VISTA PREVIA DE MUESTRA — SIN VALIDEZ OFICIAL — AURORA PRO"
+            meta = {
+                "report_mode": "SAMPLE",
+                "is_sample_preview": True,
+                "watermark": watermark_text,
+                "sections": payload.sections,
+                "template_name": template_name,
+                "template_code": template_code,
+                "discipline": discipline,
+            }
+
+            report_run = ReportRun(
+                billing_order_id=None,
+                study_id=study_id,
+                report_template_id=payload.report_template_id,
+                analysis_run_id=payload.analysis_run_id,
+                requested_by_user_id=payload.requested_by_user_id,
+                output_format="DOCX",
+                status="PENDING",
+                metadata_=meta,
+            )
+            report_run = await self.repo.add_run(report_run)
+            await self.session.flush()
+
+            try:
+                bundle = await self._build_bundle(
+                    study,
+                    payload.analysis_run_id,
+                    report_mode="SAMPLE",
+                    sections=payload.sections,
+                    report_run=report_run,
+                )
+                bundle["is_sample_preview"] = True
+                bundle["watermark"] = watermark_text
+
+                storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
+                storage_dir.mkdir(parents=True, exist_ok=True)
+
+                from app.services.report_docx import render_report_docx
+                file_bytes = render_report_docx(bundle)
+                docx_path = storage_dir / f"{report_run.public_id}.docx"
+                docx_path.write_bytes(file_bytes)
+
+                pdf_bytes = await docx_to_pdf(file_bytes)
+                pdf_path = docx_path.with_suffix(".pdf")
+                pdf_path.write_bytes(pdf_bytes)
+
+                report_run.storage_path = str(docx_path)
+                report_run.data_hash = hashlib.sha256(file_bytes).hexdigest()
+                report_run.status = "COMPLETED"
+                report_run.generated_at = datetime.now(UTC)
+                await self.session.commit()
+                await self.session.refresh(report_run)
+                return report_run, count_pdf_pages(pdf_bytes)
+            except Exception as exc:
+                report_run.status = "FAILED"
+                report_run.error_message = f"Falló la conversión de vista previa de muestra: {exc}"
+                await self.session.commit()
+                raise
+        else:
+            report_run = await self.generate(study_id, forced_payload, request=request)
+            docx_path = Path(report_run.storage_path)
+            try:
+                pdf_bytes = await docx_to_pdf(docx_path.read_bytes())
+                pdf_path = docx_path.with_suffix(".pdf")
+                pdf_path.write_bytes(pdf_bytes)
+            except Exception as exc:
+                # A failed preview does not consume a paid report: restore credit.
+                from app.models.billing import ReportOrder
+                billing = BillingService(self.session)
+                if report_run.billing_order_id is not None:
+                    order = await self.session.get(ReportOrder, report_run.billing_order_id)
+                    if order is not None:
+                        await billing.release_reservation(order)
+                    report_run.billing_order_id = None
+                report_run.status = "FAILED"
+                report_run.error_message = f"Falló la conversión de vista previa: {exc}"
+                await self.session.commit()
+                raise
+            return report_run, count_pdf_pages(pdf_bytes)
+
 
     async def _build_bundle(
         self,
@@ -295,10 +491,23 @@ class ReportService:
             bundle["censopas_results"], bundle["data_quality"], bundle["methodological_label"]
         )
 
+        is_psicosocial = True
+        discipline = "PSICOSOCIAL"
         if study.instrument_version_id is not None:
+            inst_stmt = (
+                select(Instrument.discipline, Instrument.name)
+                .join(InstrumentVersion, InstrumentVersion.instrument_id == Instrument.id)
+                .where(InstrumentVersion.id == study.instrument_version_id)
+            )
+            inst_row = (await self.session.execute(inst_stmt)).first()
+            if inst_row and inst_row[0]:
+                discipline = str(inst_row[0]).upper()
+                is_psicosocial = discipline == "PSICOSOCIAL"
+
             readiness = await censopas_service.get_readiness(study.instrument_version_id)
             bundle["methodological_status"] = readiness
-            if report_mode == "OFFICIAL" and not readiness["ready_for_official_reporting"]:
+            is_censopas = bool(readiness.get("is_censopas_instrument"))
+            if is_censopas and report_mode == "OFFICIAL" and not readiness["ready_for_official_reporting"]:
                 raise ConflictError(
                     "El reporte oficial está bloqueado porque la versión CENSOPAS no cumple readiness.",
                     readiness=readiness,
@@ -306,19 +515,12 @@ class ReportService:
             overview = await ScoringService(self.session).get_overview(study.id)
             bundle["barem_results"] = overview.model_dump(mode="json")
 
-        # Fase 4/5: D1-D6 y S1-S20 se construyen desde `censopas_results`
-        # (trichotomy favorable/intermedio/desfavorable + clasificación
-        # colectiva + priority_rank ya agrupado por construct_type en
-        # `attach_priority_ranks`) — es la MISMA fuente que ya usaba el PDF,
-        # y la que trae exactamente los campos que pide la tabla CENSOPAS
-        # (antes el DOCX usaba `barem_results`, una fuente distinta con
-        # bandas/media/mediana pero sin trichotomy — esa divergencia era
-        # el origen de GAP-REPORT-PDF-PARITY). `barem_results` se conserva
-        # en el bundle para compatibilidad JSON (media/mediana), pero deja
-        # de ser la fuente de las secciones D1-D6/S1-S20/interpretación.
         bundle["dimension_results"] = [
             r for r in bundle["censopas_results"] if r.get("construct_type") == _DIMENSION_TYPE
         ]
+        if not bundle["dimension_results"] and bundle["censopas_results"]:
+            bundle["dimension_results"] = bundle["censopas_results"]
+
         bundle["subdimension_results"] = [
             r for r in bundle["censopas_results"] if r.get("construct_type") == _SUBDIMENSION_TYPE
         ]
@@ -355,17 +557,32 @@ class ReportService:
                 evaluator_label = full_name or user.username or user.email
 
         readiness = bundle.get("methodological_status") or {}
+        run_meta = getattr(report_run, "metadata_", {}) or {}
+        is_sample = bool(run_meta.get("is_sample_preview") or bundle.get("is_sample_preview"))
+        badge = "VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL" if is_sample else "EXPEDIENTE TÉCNICO OFICIAL · AURORA PRO"
+
+        if readiness.get("is_censopas_instrument"):
+            inst_label = "CENSOPAS-COPSOQ"
+        else:
+            inst_label = study.instrument_name or "Instrumento de Evaluación"
+            if study.instrument_version_id:
+                ver = await self.session.get(InstrumentVersion, study.instrument_version_id)
+                if ver and ver.instrument:
+                    inst_label = ver.instrument.name or inst_label
+
         return {
             "organization_name": organization_name,
             "study_code": bundle["study"]["code"],
             "period_start": bundle["study"]["period_start"],
             "period_end": bundle["study"]["period_end"],
-            "instrument_label": "CENSOPAS-COPSOQ",
-            "version_kind": readiness.get("version_kind", "UNKNOWN"),
+            "instrument_label": inst_label,
+            "version_kind": readiness.get("version_kind", "ESTÁNDAR"),
             "generated_at": bundle["generated_at"],
             "evaluator_label": evaluator_label,
             "confidentiality_notice": _CONFIDENTIALITY_NOTICE,
             "methodological_label": bundle["methodological_label"],
+            "badge_text": badge,
+            "is_sample_preview": is_sample,
         }
 
     async def _build_sociolaboral_profile(self, study) -> list[dict]:
@@ -903,3 +1120,210 @@ class ReportService:
             "text_value": result.text_value,
             "result_data": result_data,
         }
+
+    async def get_executive_dashboard(self, study_id: int) -> dict:
+        study = await self.study_repo.get(study_id)
+        if study is None:
+            raise NotFoundError(f"Estudio {study_id} no encontrado")
+
+        project = await self.session.get(Project, study.project_id)
+        org = await self.session.get(Organization, project.organization_id) if project and project.organization_id else None
+
+        inst_name = study.instrument_name or "Instrumento de Evaluación"
+        discipline = "PSICOSOCIAL"
+        if study.instrument_version_id:
+            ver_stmt = (
+                select(InstrumentVersion)
+                .where(InstrumentVersion.id == study.instrument_version_id)
+                .options(selectinload(InstrumentVersion.instrument))
+            )
+            version = (await self.session.execute(ver_stmt)).scalar_one_or_none()
+            if version and version.instrument:
+                discipline = (version.instrument.discipline or "PSICOSOCIAL").upper()
+                inst_name = version.instrument.name or inst_name
+
+        telemetry = await TelemetryService(self.session).get_study_telemetry(study.id)
+        scoring_overview = await ScoringService(self.session).get_overview(study.id)
+
+        plans_stmt = select(ActionPlan).where(ActionPlan.study_id == study_id).options(selectinload(ActionPlan.items))
+        plans = list((await self.session.execute(plans_stmt)).scalars().all())
+        total_actions = sum(len(p.items) for p in plans)
+        completed_actions = sum(sum(1 for it in p.items if it.status in ("DONE", "COMPLETED")) for p in plans)
+        in_progress_actions = sum(sum(1 for it in p.items if it.status in ("IN_PROGRESS", "EN_PROGRESO")) for p in plans)
+        pending_actions = total_actions - completed_actions - in_progress_actions
+
+        recommendations_catalog = {
+            "PSICOSOCIAL": {
+                "RED": "Intervención prioritaria: rediseñar cargas laborales, clarificar roles y establecer protocolos de apoyo psicosocial y pausas activas.",
+                "AMBER": "Monitoreo preventivo: evaluar distribución de turnos, canales de retroalimentación y capacitación en liderazgo.",
+                "GREEN": "Condición favorable: mantener buenas prácticas organizacionales y programas de reconocimiento continuo.",
+            },
+            "ERGONOMIA": {
+                "RED": "Intervención inmediata: ajustar altura de planos de trabajo, soportes lumbares y monitores; implementar rotación de puestos y micro-pausas obligatorias.",
+                "AMBER": "Acción preventiva: verificar confort postural y condiciones de sillas ergonómicas con ajuste dinámico.",
+                "GREEN": "Postura adecuada: los parámetros biomecánicos cumplen con los estándares de confort y prevención osteomuscular.",
+            },
+            "CLIMA": {
+                "RED": "Plan correctivo de clima: fortalecer canales bidireccionales de comunicación interna y revisar políticas de equidad y reconocimiento.",
+                "AMBER": "Oportunidad de mejora: dinamizar actividades de integración y reforzar el alineamiento con objetivos del equipo.",
+                "GREEN": "Excelente clima organizacional: alto engagement y sentido de pertenencia en el colectivo evaluado.",
+            },
+        }
+        disc_key = discipline if discipline in recommendations_catalog else "PSICOSOCIAL"
+
+        construct_rankings = []
+        high_risk_count = 0
+        medium_risk_count = 0
+        low_risk_count = 0
+
+        for r in scoring_overview.results:
+            score = float(r.mean_score) if r.mean_score is not None else (float(r.median_score) if r.median_score is not None else 50.0)
+
+            unfav_pct = None
+            predominant_band = None
+            if r.bands:
+                for b in r.bands:
+                    b_code = (b.code or "").upper()
+                    b_class = (b.classification_code or "").upper()
+                    if any(k in b_code or k in b_class for k in ("ALTO", "CRITICO", "DESFAVORABLE")):
+                        unfav_pct = (unfav_pct or 0.0) + (b.pct or 0.0)
+                predominant_band = max(r.bands, key=lambda b: (b.pct or 0.0))
+
+            level = (predominant_band.classification_code or predominant_band.label) if predominant_band else (getattr(r, "classification_code", None) or "EVALUADO")
+            code_upper = ((predominant_band.code or "") + " " + (predominant_band.classification_code or "") + " " + (getattr(r, "classification_code", None) or "")).upper() if predominant_band else (getattr(r, "classification_code", None) or "").upper()
+
+            if "ALTO" in code_upper or "CRITICO" in code_upper or "DESFAVORABLE" in code_upper:
+                t_light = "RED"
+                high_risk_count += 1
+            elif "MEDIO" in code_upper or "INTERMEDIO" in code_upper or "REVISION" in code_upper:
+                t_light = "AMBER"
+                medium_risk_count += 1
+            else:
+                t_light = "GREEN"
+                low_risk_count += 1
+
+            recom = recommendations_catalog[disc_key].get(t_light, recommendations_catalog["PSICOSOCIAL"][t_light])
+
+            construct_rankings.append({
+                "construct_code": r.construct_code,
+                "construct_name": r.construct_name,
+                "construct_type": r.construct_type or "DIMENSION",
+                "score_0_100": score,
+                "level_label": level,
+                "traffic_light": t_light,
+                "unfavorable_pct": unfav_pct,
+                "recommendation": recom,
+                "severity_order": 1 if t_light == "RED" else 2 if t_light == "AMBER" else 3,
+            })
+
+        construct_rankings.sort(key=lambda x: (x["severity_order"], -(x["score_0_100"] or 0)))
+
+        headline = (
+            f"{high_risk_count} constructo(s) en semáforo rojo requieren intervención prioritaria."
+            if high_risk_count > 0
+            else "Resultados favorables: ningún constructo evaluado presenta semáforo rojo de riesgo crítico."
+        )
+
+        signature_material = f"{study_id}:{scoring_overview.analysis_run_id}:{high_risk_count}:{telemetry.valid_count}"
+        sig_hash = hashlib.sha256(signature_material.encode("utf-8")).hexdigest()
+
+        return {
+            "study_id": study_id,
+            "study_name": study.name,
+            "company_name": org.name if org else None,
+            "company_tax_id": org.tax_id if org else None,
+            "discipline": discipline,
+            "instrument_name": inst_name,
+            "period_start": study.start_at.isoformat() if study.start_at else None,
+            "period_end": study.end_at.isoformat() if study.end_at else None,
+            "participation": {
+                "total_target": telemetry.invited_count or telemetry.valid_count,
+                "valid_count": telemetry.valid_count,
+                "completion_rate": telemetry.completion_rate,
+                "min_publishable_n": study.min_publishable_n,
+            },
+            "risk_distribution": {
+                "high_risk_count": high_risk_count,
+                "medium_risk_count": medium_risk_count,
+                "low_risk_count": low_risk_count,
+                "total_constructs": len(construct_rankings),
+            },
+            "construct_rankings": construct_rankings,
+            "action_plans_summary": {
+                "total_actions": total_actions,
+                "completed": completed_actions,
+                "in_progress": in_progress_actions,
+                "pending": pending_actions,
+            },
+            "headline": headline,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "signature_hash": sig_hash,
+        }
+
+    async def get_organization_report_history(
+        self,
+        organization_id: int,
+        study_id: int | None = None,
+        discipline: str | None = None,
+    ) -> list[dict]:
+        from app.models.report import ReportRun, ReportTemplate
+        stmt = (
+            select(ReportRun, Study, User, ReportTemplate, ReportOrder)
+            .join(Study, ReportRun.study_id == Study.id)
+            .join(Project, Study.project_id == Project.id)
+            .outerjoin(User, ReportRun.requested_by_user_id == User.id)
+            .outerjoin(ReportTemplate, ReportRun.report_template_id == ReportTemplate.id)
+            .outerjoin(ReportOrder, ReportRun.billing_order_id == ReportOrder.id)
+            .where(Project.organization_id == organization_id)
+            .order_by(ReportRun.created_at.desc(), ReportRun.id.desc())
+        )
+        if study_id is not None:
+            stmt = stmt.where(ReportRun.study_id == study_id)
+
+        rows = (await self.session.execute(stmt)).all()
+        history = []
+        for run, study, user, template, order in rows:
+            cfg = (template.template_config if template else {}) or {}
+            run_meta = run.metadata_ or {}
+            disc = str(cfg.get("discipline") or run_meta.get("discipline") or "").upper()
+            if not disc and study.instrument_version_id:
+                ver = await self.session.get(InstrumentVersion, study.instrument_version_id)
+                if ver and ver.instrument_id:
+                    inst = await self.session.get(Instrument, ver.instrument_id)
+                    if inst and inst.discipline:
+                        disc = inst.discipline.upper()
+            if not disc:
+                disc = "PSICOSOCIAL"
+            if discipline and discipline.upper() not in disc:
+                continue
+
+            user_email = user.email if user else None
+            user_name = " ".join(filter(None, [user.first_name, user.last_name])).strip() if user else None
+
+            dl_stmt = (
+                select(func.count(AuditLog.id))
+                .where(AuditLog.entity_type == "report", AuditLog.entity_id == run.id, AuditLog.action == "REPORT_DOWNLOADED")
+            )
+            dl_count = (await self.session.execute(dl_stmt)).scalar() or 0
+
+            history.append({
+                "id": run.id,
+                "public_id": run.public_id,
+                "study_id": study.id,
+                "study_name": study.name,
+                "discipline": disc,
+                "template_name": template.name if template else "Plantilla Estándar",
+                "output_format": run.output_format,
+                "status": run.status,
+                "data_hash": run.data_hash,
+                "generated_at": run.generated_at,
+                "requested_by_email": user_email,
+                "requested_by_name": user_name or user_email,
+                "billing_order_id": run.billing_order_id,
+                "billing_order_code": f"ORD-{order.id:05d}" if order else None,
+                "download_count": dl_count,
+                "is_sample_preview": bool(run_meta.get("is_sample_preview")),
+                "created_at": run.created_at,
+            })
+        return history
+
