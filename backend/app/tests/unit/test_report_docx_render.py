@@ -59,3 +59,59 @@ if __name__ == "__main__":
     test_render_report_docx_produces_valid_document()
     test_every_table_has_a_single_tblw_and_tbllayout()
     print("ok")
+
+
+def test_multidisciplinary_docx_uses_template_and_suppresses_private_scores():
+    import copy
+
+    bundle = copy.deepcopy(_BUNDLE)
+    bundle.update({
+        "is_censopas": False,
+        "discipline": "ERGONOMIA",
+        "report_template": {
+            "discipline": "ERGONOMIA",
+            "header_title": "Informe de evaluación ergonómica de puestos",
+        },
+        "cover": {
+            "badge_text": "INFORME TÉCNICO AURORA",
+            "instrument_label": "Instrumento Ergonómico",
+            "version_kind": "V1",
+        },
+        "sections": ["portada", "ficha_tecnica", "dimensiones"],
+        "barem_results": {
+            "results": [
+                {
+                    "construct_name": "Postura cervical",
+                    "n_valid": 2,
+                    "suppressed": True,
+                    "mean_score": None,
+                    "bands": [],
+                },
+                {
+                    "construct_name": "Carga postural",
+                    "n_valid": 8,
+                    "suppressed": False,
+                    "mean_score": 61.5,
+                    "bands": [{"label": "Riesgo alto", "classification_code": "RIESGO_ALTO", "pct": 75.0}],
+                },
+            ]
+        },
+    })
+    doc = Document(io.BytesIO(render_report_docx(bundle)))
+    body = "\n".join(
+        [paragraph.text for paragraph in doc.paragraphs]
+        + [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
+    )
+    header = "\n".join(cell.text for table in doc.sections[0].header.tables for row in table.rows for cell in row.cells)
+    footer = "\n".join(cell.text for table in doc.sections[0].footer.tables for row in table.rows for cell in row.cells)
+
+    assert "Informe de evaluación ergonómica de puestos" in header
+    assert "ERGONOMIA" in footer
+    assert "Resultados por constructo" in body
+    assert "Postura cervical" in body
+    assert "Suprimido" in body
+    assert "No publicable" in body
+    assert "Carga postural" in body
+    assert "61.50" in body
+    assert "CENSOPAS-COPSOQ" not in body + header + footer
+    assert "Resultados por dimensión (D1-D6)" not in body
