@@ -1169,7 +1169,14 @@ class ReportService:
                 "GREEN": "Excelente clima organizacional: alto engagement y sentido de pertenencia en el colectivo evaluado.",
             },
         }
-        disc_key = discipline if discipline in recommendations_catalog else "PSICOSOCIAL"
+        recommendations_catalog["GENERAL"] = {
+            "RED": "Revisar el constructo de mayor riesgo con un profesional competente y definir acciones verificables.",
+            "AMBER": "Establecer seguimiento del indicador con criterios metodológicos adecuados.",
+            "GREEN": "Mantener el seguimiento periódico conforme a la metodología del instrumento.",
+        }
+        discipline_aliases = {"CLIMA_ORGANIZACIONAL": "CLIMA"}
+        normalized_discipline = discipline_aliases.get(discipline, discipline)
+        disc_key = normalized_discipline if normalized_discipline in recommendations_catalog else "GENERAL"
 
         construct_rankings = []
         high_risk_count = 0
