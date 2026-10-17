@@ -271,7 +271,10 @@ class ReportService:
                 path = storage_dir / f"{report_run.public_id}.pdf"
                 path.write_bytes(file_bytes)
             else:
-                file_bytes = json.dumps(bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
+                # El logo sólo forma parte del render visual; nunca se expone
+                # como bytes serializados en la exportación JSON.
+                public_bundle = {key: value for key, value in bundle.items() if key != "brand_logo_png"}
+                file_bytes = json.dumps(public_bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
                 path = storage_dir / f"{report_run.public_id}.json"
                 path.write_bytes(file_bytes)
 
