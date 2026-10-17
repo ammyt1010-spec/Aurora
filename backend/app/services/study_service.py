@@ -8,7 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import ConflictError, NotFoundError, ValidationDomainError
+from app.core.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationDomainError,
+)
 from app.core.pagination import Page, PageParams, paginate
 from app.models.study import Study, StudySnapshot, StudyUnit, StudyUnitType
 from app.models.censopas import Barem
@@ -224,6 +229,32 @@ class StudyService:
                 target_status=target,
             )
 
+    async def _is_enterprise_evaluation(self, study: Study, project: Project | None = None) -> bool:
+        if project is None:
+            project = await self.session.get(Project, study.project_id)
+        if project is None:
+            return False
+
+        # Si el proyecto no pertenece a ninguna organización empresarial, es investigación libre / personal
+        if project.organization_id is None:
+            return False
+
+        # Criterio A1: La condición de evaluación empresarial se deriva de relaciones confiables del backend:
+        # 1. Pertenencia a organización y tipo de proyecto corporativo/empresarial (no académico)
+        if project.project_type != "ACADEMIC":
+            return True
+
+        # 2. Si el proyecto se declaró ACADEMIC pero el estudio tiene características explícitas de evaluación corporativa:
+        has_enterprise_settings = bool(
+            study.settings.get("is_enterprise_evaluation")
+            or study.settings.get("enterprise_campaign")
+            or study.settings.get("is_enterprise")
+        )
+        if has_enterprise_settings:
+            return True
+
+        return False
+
     async def open(self, study_id: int) -> Study:
         """harness §15: al abrir un estudio se valida survey/instrument_version,
         se congela una snapshot de configuración y se impiden cambios
@@ -322,6 +353,9 @@ class StudyService:
             }
         }
 
+        project = await self.session.get(Project, study.project_id)
+        is_enterprise = await self._is_enterprise_evaluation(study, project)
+
         if study.instrument_version_id is not None:
             version = await self.instrument_repo.get_version_with_instrument(
                 study.instrument_version_id
@@ -330,6 +364,48 @@ class StudyService:
                 raise NotFoundError(
                     f"Versión de instrumento {study.instrument_version_id} no encontrada"
                 )
+            instrument = version.instrument
+
+            # Aislamiento multiempresa (A1):
+            if not getattr(instrument, "is_system", False) and project is not None and project.organization_id is not None:
+                if instrument.organization_id is not None and instrument.organization_id != project.organization_id:
+                    raise AuthorizationError(
+                        "Aislamiento multiempresa: el instrumento pertenece a otra organización y no puede asignarse a este estudio."
+                    )
+                if instrument.organization_id is None and instrument.project_id is not None and instrument.project_id != project.id:
+                    raise AuthorizationError(
+                        "Aislamiento multiempresa: el instrumento está restringido a otro proyecto."
+                    )
+
+            if is_enterprise and not getattr(instrument, "is_system", False):
+                if version.status not in ("AUTHORIZED", "ACTIVE"):
+                    raise ValidationDomainError(
+                        f"No se puede abrir el estudio empresarial: la versión del instrumento '{version.version_code}' "
+                        f"no está en estado AUTHORIZED o ACTIVE (estado actual: {version.status})."
+                    )
+                if version.scoring_status != "CONFIGURED":
+                    raise ValidationDomainError(
+                        f"No se puede abrir el estudio empresarial: la versión del instrumento '{version.version_code}' "
+                        f"tiene scoring_status='{version.scoring_status}'. Debe estar en estado CONFIGURED."
+                    )
+
+            if is_enterprise:
+                # Reglas metodológicas válidas (A1): verificar que existan constructos
+                construct_count_stmt = select(Construct.id).where(
+                    Construct.instrument_version_id == version.id
+                )
+                first_construct = (await self.session.execute(construct_count_stmt)).scalars().first()
+                if first_construct is None:
+                    raise ValidationDomainError(
+                        "La versión del instrumento no tiene constructos metodológicos configurados."
+                    )
+                if study.barem_id is not None:
+                    barem = await self.session.get(Barem, study.barem_id)
+                    if barem is None or barem.instrument_version_id != version.id:
+                        raise ValidationDomainError(
+                            "El baremo asignado no corresponde a la versión del instrumento del estudio."
+                        )
+
             snapshot_data["instrument_version"] = {
                 "id": version.id,
                 "version_code": version.version_code,
@@ -429,6 +505,46 @@ class StudyService:
                     for band in barem.bands
                 ],
             }
+
+        unit_types_stmt = (
+            select(StudyUnitType)
+            .where(StudyUnitType.study_id == study.id)
+            .order_by(StudyUnitType.sort_order, StudyUnitType.id)
+        )
+        unit_types = list((await self.session.execute(unit_types_stmt)).scalars().all())
+        unit_type_ids = [ut.id for ut in unit_types]
+        study_units: list[StudyUnit] = []
+        if unit_type_ids:
+            units_stmt = (
+                select(StudyUnit)
+                .where(StudyUnit.study_unit_type_id.in_(unit_type_ids))
+                .order_by(StudyUnit.study_unit_type_id, StudyUnit.name, StudyUnit.id)
+            )
+            study_units = list((await self.session.execute(units_stmt)).scalars().all())
+
+        snapshot_data["organizational_structure"] = {
+            "unit_types": [
+                {
+                    "id": ut.id,
+                    "code": ut.code,
+                    "name": ut.name,
+                    "is_sensitive": ut.is_sensitive,
+                    "sort_order": ut.sort_order,
+                }
+                for ut in unit_types
+            ],
+            "units": [
+                {
+                    "id": u.id,
+                    "study_unit_type_id": u.study_unit_type_id,
+                    "code": u.code,
+                    "name": u.name,
+                    "parent_id": u.parent_id,
+                    "is_active": u.is_active,
+                }
+                for u in study_units
+            ],
+        }
 
         payload_bytes = json.dumps(snapshot_data, sort_keys=True, default=str).encode("utf-8")
         sha256_hash = hashlib.sha256(payload_bytes).hexdigest()

@@ -230,3 +230,40 @@ class AnalysisRunRead(BaseModel):
     results: list[AnalysisResultRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LongitudinalPoint(BaseModel):
+    study_id: int
+    study_name: str
+    study_status: str
+    date: datetime | None = None
+    n_valid: int
+    mean_score: float | None = None
+    median_score: float | None = None
+    unfavorable_pct: float | None = None
+    favorable_pct: float | None = None
+    intermediate_pct: float | None = None
+    suppressed: bool = False
+    signature: str
+
+
+class LongitudinalConstructTrend(BaseModel):
+    construct_id: int
+    construct_code: str
+    construct_name: str
+    construct_type: str
+    points: list[LongitudinalPoint]
+    is_comparable: bool
+    delta_unfavorable_pct: float | None = None
+    delta_mean_score: float | None = None
+    trend_direction: str | None = None
+    methodological_equivalence: bool = True
+    incomparability_reasons: list[str] = Field(default_factory=list)
+
+
+class LongitudinalComparisonResponse(BaseModel):
+    project_id: int
+    total_studies_analyzed: int
+    reference_signature: str | None
+    constructs: list[LongitudinalConstructTrend]
+    methodological_notes: list[str] = Field(default_factory=list)

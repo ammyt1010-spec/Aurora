@@ -4,7 +4,16 @@ crear survey desde instrumento -> crear estudio -> abrir -> crear sesión de
 respuesta -> responder -> completar -> data-dictionary -> long/wide dataset.
 """
 
+import pytest
 from httpx import AsyncClient
+
+from app.core.security import create_access_token
+
+
+@pytest.fixture(autouse=True)
+def _auth_survey_client(client: AsyncClient, seed_user):
+    token = create_access_token(seed_user.id)
+    client.headers["Authorization"] = f"Bearer {token}"
 
 
 async def test_full_survey_study_response_flow(

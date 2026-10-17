@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.analytics.censopas.classification import cutoff_to_bands, summarize_trichotomy
+from app.analytics.methodology_dispatcher import dispatch_construct_aggregation
 from app.core.exceptions import (
     ConflictError,
     NotFoundError,
@@ -738,14 +739,24 @@ class CensopasScoringService:
         if not session_units:
             return
         study = await self.study_repo.get(study_id)
-        # Sólo DIMENSION/SUBDIMENSION: el resultado por unidad es un desglose
-        # psicosocial, no el rollup de la variable raíz del instrumento.
+        version = (
+            await self.instrument_repo.get_version_with_instrument(study.instrument_version_id)
+            if study and study.instrument_version_id
+            else None
+        )
+        instrument = version.instrument if version else None
+        discipline = instrument.discipline if instrument else None
+        method_code = instrument.method_code if instrument else None
+        methodological_rules = version.methodological_rules if version else None
+        barem = await self.repo.get_barem(study.barem_id) if study and study.barem_id else None
+
+        # Desglose psicosocial o multidisciplinario por unidad organizacional
         scores_stmt = (
             select(ConstructScore)
             .join(Construct, Construct.id == ConstructScore.construct_id)
             .where(
                 ConstructScore.analysis_run_id == analysis_run_id,
-                Construct.construct_type.in_(("DIMENSION", "SUBDIMENSION")),
+                Construct.construct_type.in_(("DIMENSION", "SUBDIMENSION", "FACTOR", "SCALE", "CONSTRUCT")),
             )
             .options(selectinload(ConstructScore.band))
         )
@@ -761,7 +772,19 @@ class CensopasScoringService:
                 grouped.setdefault(key, []).append((float(score.score_0_100), category))
 
         for (unit_type_id, unit_id, construct_id), values in grouped.items():
-            summary = summarize_trichotomy(values)
+            summary = dispatch_construct_aggregation(
+                values,
+                discipline=discipline,
+                method_code=method_code,
+                barem=barem,
+                study_algorithm_version=study.algorithm_version if study else None,
+                methodological_rules=methodological_rules,
+            )
+            meta = {
+                "aggregation": "STUDY_UNIT",
+                "min_publishable_n": study.min_publishable_n if study else None,
+                **summary.get("metadata", {}),
+            }
             await self.repo.add_construct_result(
                 ConstructResult(
                     study_id=study_id,
@@ -780,11 +803,8 @@ class CensopasScoringService:
                     classification=summary["classification"],
                     classification_status="PROVISIONAL",
                     barem_id=study.barem_id if study else None,
-                    algorithm_version="censopas-v2",
-                    metadata_={
-                        "aggregation": "STUDY_UNIT",
-                        "min_publishable_n": study.min_publishable_n if study else None,
-                    },
+                    algorithm_version=summary["algorithm_version"],
+                    metadata_=meta,
                 )
             )
         await self.session.commit()

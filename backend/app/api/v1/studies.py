@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.pagination import Page, PageParams, page_params
 from app.schemas.datasets import DataDictionary, LongDataset, WideDataset
-from app.schemas.invitations import InvitationBatchRead, InvitationIssueRequest, InvitationSummaryRead
+from app.schemas.invitations import (
+    InvitationBatchRead,
+    InvitationIssueRequest,
+    InvitationRead,
+    InvitationSummaryRead,
+)
 from app.schemas.studies import (
     StudyCreate,
     StudyRead,
@@ -183,7 +188,36 @@ async def issue_invitations(
     return InvitationBatchRead(tokens=tokens)
 
 
-@router.get("/studies/{study_id}/invitations", response_model=InvitationSummaryRead)
-async def get_invitations_summary(study_id: int, session: AsyncSession = Depends(get_db)):
-    summary = await InvitationService(session).summary(study_id)
+@router.get(
+    "/studies/{study_id}/invitations",
+    response_model=InvitationSummaryRead,
+    response_model_exclude_none=True,
+)
+async def get_invitations_summary(
+    study_id: int,
+    include_revoked: bool = False,
+    session: AsyncSession = Depends(get_db),
+):
+    summary = await InvitationService(session).summary(study_id, include_revoked=include_revoked)
     return InvitationSummaryRead(**summary)
+
+
+@router.get("/studies/{study_id}/invitations/list", response_model=list[InvitationRead])
+async def list_study_invitations(
+    study_id: int, status: str | None = None, session: AsyncSession = Depends(get_db)
+):
+    items = await InvitationService(session).list_invitations(study_id, status)
+    return [InvitationRead.model_validate(item) for item in items]
+
+
+@router.post(
+    "/studies/{study_id}/invitations/{invitation_id}/revoke", response_model=InvitationRead
+)
+async def revoke_study_invitation(
+    study_id: int,
+    invitation_id: int,
+    reason: str | None = None,
+    session: AsyncSession = Depends(get_db),
+):
+    invitation = await InvitationService(session).revoke(study_id, invitation_id, reason)
+    return InvitationRead.model_validate(invitation)

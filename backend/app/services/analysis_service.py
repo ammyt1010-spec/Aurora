@@ -56,6 +56,9 @@ from app.schemas.analytics import (
     FrequenciesRequest,
     KMeansRequest,
     LogisticRegressionRequest,
+    LongitudinalComparisonResponse,
+    LongitudinalConstructTrend,
+    LongitudinalPoint,
     ReliabilityRequest,
 )
 from app.services.privacy_service import PrivacyService
@@ -849,4 +852,148 @@ class AnalysisService:
             n_valid=stats.get("n_valid"),
             numeric_value=stats.get("mean"),
             result_data=stats,
+        )
+
+    async def get_longitudinal_comparison(
+        self, project_id: int, study_ids: list[int] | None = None
+    ) -> LongitudinalComparisonResponse:
+        from collections import Counter
+        from app.models.study import Study
+        from app.services.scoring_service import ScoringService
+
+        stmt = select(Study).where(
+            Study.project_id == project_id, Study.instrument_version_id.is_not(None)
+        )
+        if study_ids:
+            stmt = stmt.where(Study.id.in_(study_ids))
+        stmt = stmt.order_by(Study.start_at.asc().nulls_last(), Study.id.asc())
+        studies = list((await self.session.execute(stmt)).scalars().all())
+
+        if not studies:
+            return LongitudinalComparisonResponse(
+                project_id=project_id,
+                total_studies_analyzed=0,
+                reference_signature=None,
+                constructs=[],
+            )
+
+        scoring_service = ScoringService(self.session)
+        study_overviews = []
+        for study in studies:
+            overview = await scoring_service.get_overview(study.id)
+            algo = study.algorithm_version or "default"
+            sig = f"v:{overview.instrument_version_id or 'none'}|algo:{algo}|barem:{overview.barem_id or 'none'}"
+            study_overviews.append((study, overview, sig))
+
+        signatures = [sig for _, _, sig in study_overviews]
+        sig_counts = Counter(signatures)
+        reference_signature = sig_counts.most_common(1)[0][0] if sig_counts else None
+
+        construct_points: dict[str, dict] = {}
+        for study, overview, sig in study_overviews:
+            for res in overview.results:
+                code = res.construct_code or str(res.construct_id)
+                if code not in construct_points:
+                    construct_points[code] = {
+                        "id": res.construct_id,
+                        "code": code,
+                        "name": res.construct_name,
+                        "type": res.construct_type,
+                        "points": [],
+                    }
+                unfavorable_band = next(
+                    (b for b in res.bands if b.classification_code == "UNFAVORABLE"), None
+                )
+                favorable_band = next(
+                    (b for b in res.bands if b.classification_code == "FAVORABLE"), None
+                )
+                intermediate_band = next(
+                    (b for b in res.bands if b.classification_code == "INTERMEDIATE"), None
+                )
+                # Privacidad: Si está suprimido, no revelar medias, medianas ni porcentajes
+                mean_val = res.mean_score if not res.suppressed else None
+                median_val = res.median_score if not res.suppressed else None
+                unfav_pct = unfavorable_band.pct if (unfavorable_band and not res.suppressed) else None
+                fav_pct = favorable_band.pct if (favorable_band and not res.suppressed) else None
+                inter_pct = intermediate_band.pct if (intermediate_band and not res.suppressed) else None
+
+                point = LongitudinalPoint(
+                    study_id=study.id,
+                    study_name=study.name,
+                    study_status=study.status,
+                    date=study.start_at,
+                    n_valid=res.n_valid,
+                    mean_score=mean_val,
+                    median_score=median_val,
+                    unfavorable_pct=unfav_pct,
+                    favorable_pct=fav_pct,
+                    intermediate_pct=inter_pct,
+                    suppressed=res.suppressed,
+                    signature=sig,
+                )
+                construct_points[code]["points"].append(point)
+
+        trends: list[LongitudinalConstructTrend] = []
+        notes: list[str] = []
+
+        for code, info in construct_points.items():
+            pts = info["points"]
+            reasons: list[str] = []
+            comparable_pts = [p for p in pts if p.signature == reference_signature and not p.suppressed]
+
+            if any(p.signature != reference_signature for p in pts):
+                reasons.append("METHODOLOGICAL_INCOMPATIBILITY_SIGNATURE_MISMATCH")
+            if any(p.suppressed for p in pts):
+                reasons.append("SUPPRESSED_DUE_TO_PRIVACY_THRESHOLD")
+
+            is_comparable = len(comparable_pts) >= 2 and len(comparable_pts) == len(pts)
+            methodological_eq = (len(reasons) == 0) and (len(pts) >= 2)
+
+            delta_unfavorable: float | None = None
+            delta_mean: float | None = None
+            trend_direction: str | None = None
+
+            if is_comparable:
+                first = comparable_pts[0]
+                last = comparable_pts[-1]
+                if last.unfavorable_pct is not None and first.unfavorable_pct is not None:
+                    delta_unfavorable = round(last.unfavorable_pct - first.unfavorable_pct, 4)
+                    if delta_unfavorable < -2.0:
+                        trend_direction = "IMPROVED"
+                    elif delta_unfavorable > 2.0:
+                        trend_direction = "DETERIORATED"
+                    else:
+                        trend_direction = "STABLE"
+                if last.mean_score is not None and first.mean_score is not None:
+                    delta_mean = round(last.mean_score - first.mean_score, 4)
+            else:
+                if len(pts) <= 1:
+                    trend_direction = "BASELINE"
+                    reasons.append("INSUFFICIENT_HISTORICAL_POINTS")
+                elif any(p.suppressed for p in pts):
+                    trend_direction = "INSUFFICIENT_SAMPLE"
+                else:
+                    trend_direction = "NOT_COMPARABLE"
+
+            trends.append(
+                LongitudinalConstructTrend(
+                    construct_id=info["id"],
+                    construct_code=info["code"],
+                    construct_name=info["name"],
+                    construct_type=info["type"],
+                    points=pts,
+                    is_comparable=is_comparable,
+                    delta_unfavorable_pct=delta_unfavorable,
+                    delta_mean_score=delta_mean,
+                    trend_direction=trend_direction,
+                    methodological_equivalence=methodological_eq,
+                    incomparability_reasons=reasons,
+                )
+            )
+
+        return LongitudinalComparisonResponse(
+            project_id=project_id,
+            total_studies_analyzed=len(studies),
+            reference_signature=reference_signature,
+            constructs=trends,
         )
