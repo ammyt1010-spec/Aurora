@@ -56,11 +56,23 @@ class MethodologyValidator:
         scored_questions = [q for q in questions if getattr(q, "is_scored", True)]
         unassigned_questions = 0
 
-        # Cargar mapeo de ítems a constructos si existen
-        construct_item_stmt = select(ConstructItem.question_id).join(Construct).where(
-            Construct.instrument_version_id == version_id
+        # Cargar ítems asociados a constructos de esta versión
+        construct_items_stmt = (
+            select(ConstructItem)
+            .join(Construct)
+            .where(Construct.instrument_version_id == version_id)
         )
-        assigned_question_ids = set((await self.session.execute(construct_item_stmt)).scalars().all())
+        construct_items = (await self.session.execute(construct_items_stmt)).scalars().all()
+        version_question_ids = {q.id for q in questions}
+        assigned_question_ids = set()
+
+        for ci in construct_items:
+            if ci.question_id not in version_question_ids:
+                errors.append(f"El reactivo ID {ci.question_id} asignado a un constructo no pertenece a esta versión de instrumento.")
+            else:
+                assigned_question_ids.add(ci.question_id)
+            if ci.weight is not None and ci.weight < 0:
+                errors.append(f"La ponderación del reactivo ID {ci.question_id} en el constructo no puede ser negativa ({ci.weight}).")
 
         for q in questions:
             # Validar escala de respuesta
@@ -102,16 +114,24 @@ class MethodologyValidator:
         has_scoring_rules = bool(rules.get("scoring_rules") or config.get("scoring_rules") or rules.get("barems") or config.get("barem_matrix"))
         cutoffs = rules.get("cutoffs") or config.get("cutoffs") or rules.get("risk_levels")
 
+        if isinstance(cutoffs, dict):
+            # Validar monotonicidad de cortes si son valores numéricos
+            numeric_vals = [v for v in cutoffs.values() if isinstance(v, (int, float))]
+            if len(numeric_vals) >= 2:
+                for idx in range(len(numeric_vals) - 1):
+                    if numeric_vals[idx] >= numeric_vals[idx + 1]:
+                        errors.append(f"Los puntos de corte de baremos deben ser estrictamente crecientes: {numeric_vals[idx]} >= {numeric_vals[idx+1]}.")
+
         if not has_scoring_rules and scored_questions:
-            # Si no hay reglas explícitas en json, verificar si al menos hay baremos o lógica implícita
             if not cutoffs and not config.get("censopas_version_kind"):
                 warnings.append("No se han configurado reglas de puntuación o baremos de corte para interpretar los resultados.")
 
-        # Determinación de validez
+        # Determinación de validez técnica
         is_valid = len(errors) == 0 and total_questions > 0
+        technical_completeness = is_valid and (has_scoring_rules or cutoffs or bool(config.get("censopas_version_kind")))
 
         # Scoring status: CONFIGURED, PARTIAL, NOT_CONFIGURED
-        if is_valid and (has_scoring_rules or cutoffs or config.get("censopas_version_kind")):
+        if technical_completeness:
             new_scoring_status = "CONFIGURED"
         elif is_valid:
             new_scoring_status = "PARTIAL"
@@ -126,6 +146,7 @@ class MethodologyValidator:
             "has_scoring_rules": has_scoring_rules,
             "has_cutoffs": bool(cutoffs),
             "unassigned_items": unassigned_questions,
+            "technical_completeness": technical_completeness,
         }
 
         if persist_metrics:
@@ -133,16 +154,21 @@ class MethodologyValidator:
             version.dimension_count = dimension_count
             version.subdimension_count = subdimension_count
             version.scoring_status = new_scoring_status
-            version.validation_notes = (
-                f"Validación metodológica ejecutada: {'Aprobada' if is_valid else 'Con observaciones'}. "
-                f"Errores: {len(errors)}, Advertencias: {len(warnings)}."
-            )
+            if technical_completeness:
+                version.validation_notes = (
+                    "Completitud técnica verificada. Certificación científica oficial sujeta a acreditación por comité o autoridad ocupacional competente."
+                )
+            else:
+                version.validation_notes = (
+                    f"Estructura técnica incompleta. Errores: {len(errors)}, Advertencias: {len(warnings)}."
+                )
             await self.session.flush()
 
         return MethodologicalValidationResult(
             version_id=version.id,
             version_code=version.version_code,
             is_valid=is_valid,
+            technical_completeness=technical_completeness,
             errors=errors,
             warnings=warnings,
             metrics=metrics,

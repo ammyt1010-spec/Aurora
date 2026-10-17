@@ -129,6 +129,8 @@ class MethodologicalValidationResult(BaseModel):
     version_id: int
     version_code: str
     is_valid: bool
+    technical_completeness: bool = False
+    historical_version_locked: bool = False
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     metrics: dict = Field(default_factory=dict)
