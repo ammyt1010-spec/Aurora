@@ -65,6 +65,10 @@ async def list_report_templates(
 ):
     service = ReportService(session)
     templates = await service.list_templates(discipline=discipline)
+    if current_user is None:
+        raise AuthorizationError("Debes iniciar sesión para consultar las plantillas.")
+    if not is_platform_operator(current_user):
+        templates = [template for template in templates if template.status == "ACTIVE"]
     return [
         ReportTemplateRead(
             id=t.id,
@@ -92,6 +96,10 @@ async def get_report_template(
     t = await service.repo.get_template(template_id)
     if t is None:
         raise NotFoundError(f"Plantilla {template_id} no encontrada.")
+    if current_user is None:
+        raise AuthorizationError("Debes iniciar sesión para consultar la plantilla.")
+    if t.status != "ACTIVE" and not is_platform_operator(current_user):
+        raise AuthorizationError("Esta plantilla todavía no está publicada.")
     return ReportTemplateRead(
         id=t.id,
         public_id=t.public_id,
