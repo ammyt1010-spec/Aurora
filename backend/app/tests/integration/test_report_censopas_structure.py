@@ -5,11 +5,20 @@ preventivo, conclusiones, trazabilidad y paridad DOCX/PDF/JSON."""
 import json
 from io import BytesIO
 
+import pytest
 from docx import Document
 from httpx import AsyncClient
 from pypdf import PdfReader
 
+from app.core.security import create_access_token
 from app.tests.integration.test_censopas_flow import _setup_censopas_study
+
+
+@pytest.fixture(autouse=True)
+def _auth_censopas_structure_client(client: AsyncClient, seed_user):
+    token = create_access_token(seed_user.id)
+    client.headers["Authorization"] = f"Bearer {token}"
+
 
 # El PDF ya no es un renderer aparte: `ReportService.generate` siempre
 # renderiza el DOCX primero y lo convierte con LibreOffice headless

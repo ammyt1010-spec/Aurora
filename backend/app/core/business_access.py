@@ -50,6 +50,8 @@ async def _study(db: AsyncSession, study_id: int, user: User, write: bool) -> No
 
 
 async def _instrument(db: AsyncSession, instrument_id: int, user: User, write: bool) -> None:
+    if is_platform_operator(user):
+        return
     item = await _get(db, Instrument, instrument_id)
     if item.project_id is not None:
         await _project(db, item.project_id, user, write)

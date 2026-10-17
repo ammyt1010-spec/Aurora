@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
+from app.core.exceptions import AuthenticationError, AuthorizationError, ConflictError, NotFoundError
 from app.core.security import get_current_user, get_optional_current_user
 from app.core.business_access import _project, _study
 from app.models.instrument import INSTRUMENT_DISCIPLINES, INSTRUMENT_STATUSES, Instrument, InstrumentVersion
@@ -89,13 +89,8 @@ async def list_disciplines():
 async def create_instrument(
     payload: InstrumentCreate,
     session: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    if current_user is None and payload.owner_user_id:
-        current_user = await session.get(User, payload.owner_user_id)
-    if current_user is None:
-        raise AuthenticationError("Se requiere autenticación.")
-
     service = InstrumentService(session)
     is_operator = is_platform_operator(current_user)
 
@@ -133,15 +128,11 @@ async def create_project_instrument(
     project_id: int,
     payload: InstrumentCreate,
     session: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     project = await session.get(Project, project_id)
     if project is None:
         raise NotFoundError(f"Proyecto {project_id} no encontrado")
-    if current_user is None and payload.owner_user_id:
-        current_user = await session.get(User, payload.owner_user_id)
-    if current_user is None:
-        raise AuthenticationError("Se requiere autenticación.")
 
     await _project(session, project_id, current_user, write=True)
 
@@ -313,15 +304,13 @@ async def create_instrument_version(
     instrument_id: int,
     payload: InstrumentVersionCreate,
     session: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    if current_user is None:
-        inst = await session.get(Instrument, instrument_id)
-        if inst and inst.owner_user_id:
-            current_user = await session.get(User, inst.owner_user_id)
     service = InstrumentService(session)
     user_org_id = await _resolve_user_org_id(session, current_user)
-    version = await service.create_version(instrument_id, payload, organization_id=user_org_id)
+    version = await service.create_version(
+        instrument_id, payload, organization_id=user_org_id, user=current_user
+    )
     return InstrumentVersionRead.model_validate(version)
 
 

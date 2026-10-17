@@ -18,7 +18,12 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import AuthorizationError, InstrumentLockedError, ValidationDomainError
+from app.core.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    InstrumentLockedError,
+    ValidationDomainError,
+)
 from app.core.security import create_access_token
 from app.main import app
 from app.models.billing import ReportTariff, ReportOrder
@@ -553,3 +558,291 @@ async def test_08_regresion_censopas_y_suseso_sin_degradacion(session, monkeypat
             assert res_tamper.status_code in (403, 404, 409)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_09_tarifas_independientes_por_instrumento_mismo_metodo(session, monkeypatch):
+    """9. Tarifas por instrumento independientes cuando coincide el código metodológico (Requisito 1)."""
+    operator = await _create_test_user(session, "tariff-op-09@aurora.pe", "tariff_op_09")
+    await session.commit()
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", operator.id)
+
+    inst_a = Instrument(name="Instrumento Ergo A", discipline="ERGONOMIA", method_code="ROSA", is_system=True, status="AUTHORIZED")
+    inst_b = Instrument(name="Instrumento Ergo B", discipline="ERGONOMIA", method_code="ROSA", is_system=True, status="AUTHORIZED")
+    session.add_all([inst_a, inst_b])
+    await session.commit()
+    await session.refresh(inst_a)
+    await session.refresh(inst_b)
+
+    billing = BillingService(session)
+
+    # 1. Crear tarifa para Instrumento A (1-50 trabajadores, ROSA)
+    tariff_a = await billing.save_tariff(
+        TariffInput(
+            instrument_id=inst_a.id,
+            method_code="ROSA",
+            pricing_mode="FIXED",
+            min_workers=1,
+            max_workers=50,
+            price=Decimal("120.00"),
+            currency="PEN",
+            active=True,
+        ),
+        operator,
+    )
+    assert tariff_a.id is not None
+
+    # 2. Crear tarifa independiente para Instrumento B con el mismo method_code y mismo rango de trabajadores (1-50, ROSA)
+    # Debe permitirse porque pertenecen a instrumentos distintos
+    tariff_b = await billing.save_tariff(
+        TariffInput(
+            instrument_id=inst_b.id,
+            method_code="ROSA",
+            pricing_mode="FIXED",
+            min_workers=1,
+            max_workers=50,
+            price=Decimal("150.00"),
+            currency="PEN",
+            active=True,
+        ),
+        operator,
+    )
+    assert tariff_b.id is not None
+    assert tariff_b.id != tariff_a.id
+
+    # 3. Intentar crear una tarifa superpuesta para el MISMO instrumento A (25-75, ROSA) -> Debe rechazarse con ConflictError
+    with pytest.raises(ConflictError) as exc_info:
+        await billing.save_tariff(
+            TariffInput(
+                instrument_id=inst_a.id,
+                method_code="ROSA",
+                pricing_mode="FIXED",
+                min_workers=25,
+                max_workers=75,
+                price=Decimal("200.00"),
+                currency="PEN",
+                active=True,
+            ),
+            operator,
+        )
+    assert "superpone" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_10_autorizacion_de_versiones_politica_centralizada(session, monkeypatch):
+    """10. Política centralizada para autorizar o activar versiones de instrumentos (Requisito 2)."""
+    user_a, org_a, proj_a, _ = await _setup_company(session, "AlfaVerAuth", "owner-alfa-10@aurora.pe")
+    operator = await _create_test_user(session, "operator-10@aurora.pe", "operator_10")
+    await session.commit()
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", operator.id)
+
+    inst = Instrument(
+        project_id=proj_a.id,
+        owner_user_id=user_a.id,
+        organization_id=org_a.id,
+        name="Clima Alfa 10",
+        discipline="CLIMA_ORGANIZACIONAL",
+        status="DRAFT",
+    )
+    session.add(inst)
+    await session.commit()
+    await session.refresh(inst)
+
+    async def db_override():
+        yield session
+
+    app.dependency_overrides[get_db] = db_override
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 1. Tenant intenta crear una versión directamente en AUTHORIZED -> 422 o 403
+            res_create_auth = await client.post(
+                f"/api/v1/instruments/{inst.id}/versions",
+                json={"version_code": "v_auth", "status": "AUTHORIZED"},
+                headers=_auth_headers(user_a),
+            )
+            assert res_create_auth.status_code in (403, 422)
+
+            # Crear versión legítima en DRAFT
+            res_ver = await client.post(
+                f"/api/v1/instruments/{inst.id}/versions",
+                json={"version_code": "v1.0", "status": "DRAFT"},
+                headers=_auth_headers(user_a),
+            )
+            assert res_ver.status_code == 201
+            ver_id = res_ver.json()["id"]
+
+            # 2. Tenant intenta pasar su versión a AUTHORIZED -> 403
+            res_patch_tenant = await client.patch(
+                f"/api/v1/instrument-versions/{ver_id}",
+                json={"status": "AUTHORIZED"},
+                headers=_auth_headers(user_a),
+            )
+            assert res_patch_tenant.status_code == 403
+
+            # 3. Operador intenta autorizar versión sin configuración psicométrica completa -> 422
+            res_patch_op_incomplete = await client.patch(
+                f"/api/v1/instrument-versions/{ver_id}",
+                json={"status": "AUTHORIZED"},
+                headers=_auth_headers(operator),
+            )
+            assert res_patch_op_incomplete.status_code == 422, f"Got {res_patch_op_incomplete.status_code}: {res_patch_op_incomplete.text}"
+            assert "scoring_status=CONFIGURED" in res_patch_op_incomplete.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_11_rectificacion_administrativa_auditada_evaluaciones_cerradas(session, monkeypatch):
+    """11. Inmutabilidad metodológica y procedimiento auditado de rectificación administrativa (Requisito 3)."""
+    user_a, org_a, proj_a, study_a = await _setup_company(session, "AlfaRect", "owner-alfa-11@aurora.pe")
+    operator = await _create_test_user(session, "operator-11@aurora.pe", "operator_11")
+    await session.commit()
+    monkeypatch.setattr(get_settings(), "billing_operator_user_id", operator.id)
+
+    inst_a = Instrument(
+        project_id=proj_a.id,
+        owner_user_id=user_a.id,
+        organization_id=org_a.id,
+        name="Instrumento Alfa 11",
+        discipline="PSICOSOCIAL",
+        method_code="SUSESO_ISTAS21_BREVE",
+        author="Autor Original",
+        source_name="Fuente Original",
+        status="ACTIVE",
+    )
+    session.add(inst_a)
+    await session.flush()
+
+    ver_a = InstrumentVersion(
+        instrument_id=inst_a.id,
+        version_code="v1.0",
+        version_name="Versión Inicial",
+        edition="1ra Edición",
+        status="ACTIVE",
+        scoring_status="CONFIGURED",
+    )
+    session.add(ver_a)
+    await session.flush()
+
+    # Cerrar estudio vinculado
+    study_a.instrument_version_id = ver_a.id
+    study_a.status = "CLOSED"
+    await session.commit()
+
+    async def db_override():
+        yield session
+
+    app.dependency_overrides[get_db] = db_override
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 1. Modificar metadato documental sin justificación -> 409 Bloqueado
+            res_no_reason = await client.patch(
+                f"/api/v1/instruments/{inst_a.id}",
+                json={"author": "Autor Modificado Sin Razon"},
+                headers=_auth_headers(operator),
+            )
+            assert res_no_reason.status_code == 409
+            assert "EVALUATION_CLOSED_RETROACTIVE_LOCK" in res_no_reason.text
+
+            # 2. Tenant con justificación intenta rectificar -> 403 Sólo operador/admin central
+            res_tenant_rect = await client.patch(
+                f"/api/v1/instruments/{inst_a.id}",
+                json={"author": "Autor Modificado", "rectification_reason": "Corrección de fe de erratas"},
+                headers=_auth_headers(user_a),
+            )
+            assert res_tenant_rect.status_code == 403
+
+            # 3. Operador con justificación válida rectifica metadatos documentales de instrumento -> 200 OK
+            res_op_rect = await client.patch(
+                f"/api/v1/instruments/{inst_a.id}",
+                json={"author": "Autor Rectificado", "source_name": "Nueva Fuente Oficial", "rectification_reason": "Corrección de fe de erratas aprobada por comité"},
+                headers=_auth_headers(operator),
+            )
+            assert res_op_rect.status_code == 200
+            assert res_op_rect.json()["author"] == "Autor Rectificado"
+
+            # Verificar que los valores anteriores están preservados en el historial
+            inst_db = await session.get(Instrument, inst_a.id)
+            await session.refresh(inst_db)
+            rects = inst_db.metadata_.get("administrative_rectifications", [])
+            assert len(rects) == 1
+            assert rects[0]["previous_values"]["author"] == "Autor Original"
+            assert rects[0]["new_values"]["author"] == "Autor Rectificado"
+            assert rects[0]["reason"] == "Corrección de fe de erratas aprobada por comité"
+
+            # 4. Operador intenta modificar campos estructurales incluso con justificación -> 409 Bloqueo absoluto
+            res_struct_tamper = await client.patch(
+                f"/api/v1/instruments/{inst_a.id}",
+                json={"method_code": "OTRO_METODO", "rectification_reason": "Intento de cambiar metodología cerrada"},
+                headers=_auth_headers(operator),
+            )
+            assert res_struct_tamper.status_code == 409
+            assert "EVALUATION_CLOSED_RETROACTIVE_LOCK" in res_struct_tamper.text
+
+            # 5. Rectificación administrativa sobre la versión por el operador
+            res_ver_rect = await client.patch(
+                f"/api/v1/instrument-versions/{ver_a.id}",
+                json={"version_name": "Versión 1.0 (Rectificada)", "rectification_reason": "Clarificación de nomenclatura documental"},
+                headers=_auth_headers(operator),
+            )
+            assert res_ver_rect.status_code == 200
+            ver_db = await session.get(InstrumentVersion, ver_a.id)
+            await session.refresh(ver_db)
+            ver_rects = (ver_db.config or {}).get("administrative_rectifications", [])
+            assert len(ver_rects) == 1
+            assert ver_rects[0]["previous_values"]["version_name"] == "Versión Inicial"
+
+            # 6. Intento de modificar scoring o reglas metodológicas de versión cerrada -> 409
+            res_rules_tamper = await client.patch(
+                f"/api/v1/instrument-versions/{ver_a.id}",
+                json={"methodological_rules": {"new": "rule"}, "rectification_reason": "Intento alterar baremos cerrados"},
+                headers=_auth_headers(operator),
+            )
+            assert res_rules_tamper.status_code == 409
+            assert "EVALUATION_CLOSED_RETROACTIVE_LOCK" in res_rules_tamper.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_12_autenticacion_explicita_elimina_owner_user_id_fallback(session):
+    """12. Eliminación de recuperación implícita mediante owner_user_id y exigencia de autenticación explícita (Requisito 4)."""
+    user_a, org_a, proj_a, _ = await _setup_company(session, "AlfaNoBypass", "owner-alfa-12@aurora.pe")
+
+    async def db_override():
+        yield session
+
+    app.dependency_overrides[get_db] = db_override
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 1. Petición anónima a POST /api/v1/instruments con payload {owner_user_id: user_a.id} debe ser 401
+            res_anon_inst = await client.post(
+                "/api/v1/instruments",
+                json={"name": "Instrumento Hacker", "owner_user_id": user_a.id},
+            )
+            assert res_anon_inst.status_code == 401, f"Esperado 401, obtenido {res_anon_inst.status_code}"
+            assert res_anon_inst.json().get("error_code") == "AUTHENTICATION_ERROR"
+
+            # 2. Petición anónima a POST /api/v1/projects/{proj_id}/instruments debe ser 401
+            res_anon_proj_inst = await client.post(
+                f"/api/v1/projects/{proj_a.id}/instruments",
+                json={"name": "Instrumento Proyecto Hacker", "owner_user_id": user_a.id},
+            )
+            assert res_anon_proj_inst.status_code == 401
+            assert res_anon_proj_inst.json().get("error_code") == "AUTHENTICATION_ERROR"
+
+            # 3. Petición anónima a POST /api/v1/instruments/{id}/versions debe ser 401
+            inst_a = Instrument(project_id=proj_a.id, owner_user_id=user_a.id, organization_id=org_a.id, name="Inst Legítimo")
+            session.add(inst_a)
+            await session.commit()
+            await session.refresh(inst_a)
+
+            res_anon_ver = await client.post(
+                f"/api/v1/instruments/{inst_a.id}/versions",
+                json={"version_code": "v_hack"},
+            )
+            assert res_anon_ver.status_code == 401
+            assert res_anon_ver.json().get("error_code") == "AUTHENTICATION_ERROR"
+    finally:
+        app.dependency_overrides.clear()
+

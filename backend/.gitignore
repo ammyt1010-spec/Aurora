@@ -9,3 +9,4 @@ dist/
 *.egg-info/
 exports_storage/
 reports_storage/
+.tmp_pytest/

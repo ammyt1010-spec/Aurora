@@ -6,13 +6,17 @@ from app.core.security import create_access_token
 async def test_project_can_own_and_list_multiple_instruments(
     client: AsyncClient, seed_user, seed_project
 ) -> None:
+    token = create_access_token(seed_user.id)
+    headers = {"Authorization": f"Bearer {token}"}
     first = await client.post(
         f"/api/v1/projects/{seed_project.id}/instruments",
-        json={"owner_user_id": seed_user.id, "name": "Satisfacción académica"},
+        json={"name": "Satisfacción académica"},
+        headers=headers,
     )
     second = await client.post(
         f"/api/v1/projects/{seed_project.id}/instruments",
-        json={"owner_user_id": seed_user.id, "name": "Bienestar estudiantil"},
+        json={"name": "Bienestar estudiantil"},
+        headers=headers,
     )
 
     assert first.status_code == 201, first.text
@@ -20,7 +24,7 @@ async def test_project_can_own_and_list_multiple_instruments(
     assert first.json()["project_id"] == seed_project.id
     assert second.json()["project_id"] == seed_project.id
 
-    response = await client.get(f"/api/v1/projects/{seed_project.id}/instruments")
+    response = await client.get(f"/api/v1/projects/{seed_project.id}/instruments", headers=headers)
     assert response.status_code == 200, response.text
     assert {item["name"] for item in response.json()["items"]} == {
         "Satisfacción académica",
@@ -47,18 +51,21 @@ async def test_instrument_from_another_project_cannot_create_survey(
     instrument = (
         await client.post(
             f"/api/v1/projects/{other_project['id']}/instruments",
-            json={"owner_user_id": seed_user.id, "name": "Instrumento ajeno"},
+            json={"name": "Instrumento ajeno"},
+            headers=headers,
         )
     ).json()
     version = (
         await client.post(
             f"/api/v1/instruments/{instrument['id']}/versions",
             json={"version_code": "v1"},
+            headers=headers,
         )
     ).json()
     await client.post(
         f"/api/v1/instrument-versions/{version['id']}/items",
         json={"code": "P1", "question_text": "Pregunta", "question_type": "TEXT"},
+        headers=headers,
     )
 
     response = await client.post(
@@ -68,5 +75,6 @@ async def test_instrument_from_another_project_cannot_create_survey(
             "instrument_version_id": version["id"],
             "name": "No permitido",
         },
+        headers=headers,
     )
     assert response.status_code == 422

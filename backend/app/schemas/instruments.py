@@ -48,6 +48,11 @@ class InstrumentUpdate(BaseModel):
     method_code: str | None = None
     status: str | None = None
     metadata: dict | None = None
+    rectification_reason: str | None = Field(
+        None,
+        description="Justificación obligatoria para rectificaciones administrativas en instrumentos con evaluaciones concluidas.",
+    )
+
 
 
 class InstrumentRead(BaseModel):
@@ -101,6 +106,11 @@ class InstrumentVersionUpdate(BaseModel):
     validation_notes: str | None = None
     config: dict | None = None
     methodological_rules: dict | None = None
+    rectification_reason: str | None = Field(
+        None,
+        description="Justificación obligatoria para rectificaciones administrativas en versiones con evaluaciones concluidas.",
+    )
+
 
 
 class InstrumentVersionRead(BaseModel):

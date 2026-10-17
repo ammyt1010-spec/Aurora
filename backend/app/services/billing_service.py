@@ -60,17 +60,19 @@ class BillingService:
         tariff = await self.db.get(ReportTariff, tariff_id) if tariff_id else None
         if tariff_id and tariff is None:
             raise NotFoundError("Tramo tarifario no encontrado.")
-        # Reject overlapping enabled intervals, including open-ended tiers.
+        # Reject overlapping enabled intervals within the same instrument and methodology scope.
         if payload.active:
             for other in await self.list_tariffs():
                 if other.method_code != payload.method_code:
+                    continue
+                if other.instrument_id != payload.instrument_id:
                     continue
                 if tariff is not None and other.id == tariff.id:
                     continue
                 upper_a = payload.max_workers if payload.max_workers is not None else 10_000_000_001
                 upper_b = other.max_workers if other.max_workers is not None else 10_000_000_001
                 if payload.min_workers <= upper_b and other.min_workers <= upper_a:
-                    raise ConflictError("El tramo se superpone con otra tarifa activa.")
+                    raise ConflictError("El tramo se superpone con otra tarifa activa para este instrumento y metodología.")
         if tariff is None:
             tariff = ReportTariff(**payload.model_dump(), updated_by_user_id=user.id)
             self.db.add(tariff)

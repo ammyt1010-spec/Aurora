@@ -21,9 +21,14 @@ from __future__ import annotations
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import InstrumentLockedError
-from app.models.instrument import Instrument, InstrumentVersion
+from app.core.exceptions import (
+    AuthorizationError,
+    InstrumentLockedError,
+    ValidationDomainError,
+)
+from app.models.instrument import INSTRUMENT_VERSION_STATUSES, Instrument, InstrumentVersion
 from app.models.study import Study
+from app.models.user import User
 from app.schemas.instruments import EditableStatus
 
 _LOCKED_VERSION_STATUSES = ("USED", "CLOSED", "LOCKED")
@@ -123,6 +128,38 @@ class InstrumentEditPolicy:
                 editable=False,
                 reason=state.reason,
             )
+
+    @classmethod
+    def validate_version_status_transition(
+        cls,
+        instrument: Instrument,
+        version: InstrumentVersion | None,
+        target_status: str,
+        user: User | None,
+    ) -> None:
+        """Política centralizada para la transición de estado de una versión de instrumento."""
+        target = target_status.upper() if target_status else "DRAFT"
+        if target not in INSTRUMENT_VERSION_STATUSES:
+            raise ValidationDomainError(f"Estado de versión inválido: {target}")
+
+        if target in ("AUTHORIZED", "ACTIVE"):
+            from app.services.billing_service import is_platform_operator
+
+            is_operator = user is not None and is_platform_operator(user)
+            if not is_operator:
+                raise AuthorizationError(
+                    "Solo el operador central o comité metodológico puede autorizar o activar una versión de instrumento."
+                )
+            if version is not None:
+                is_sys = bool(getattr(instrument, "is_system", False))
+                if getattr(version, "scoring_status", None) != "CONFIGURED" and not is_sys:
+                    raise ValidationDomainError(
+                        "No se puede autorizar o activar una versión de instrumento sin configuración psicométrica completa (scoring_status=CONFIGURED)."
+                    )
+            else:
+                raise ValidationDomainError(
+                    "Una nueva versión de instrumento debe crearse en estado DRAFT o VALIDATING y completar la configuración psicométrica antes de ser autorizada."
+                )
 
     # Alias semánticos usados desde los distintos servicios de escritura
     # (§41): todos delegan en la misma regla de versión + estudios abiertos.
