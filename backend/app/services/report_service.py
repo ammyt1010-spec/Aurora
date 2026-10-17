@@ -632,7 +632,13 @@ class ReportService:
         readiness = bundle.get("methodological_status") or {}
         run_meta = getattr(report_run, "metadata_", {}) or {}
         is_sample = bool(run_meta.get("is_sample_preview") or bundle.get("is_sample_preview"))
-        badge = "VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL" if is_sample else "EXPEDIENTE TÉCNICO OFICIAL · AURORA PRO"
+        badge = (
+            "VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL"
+            if is_sample else
+            "INFORME OFICIAL · AURORA PROFESSIONAL"
+            if bundle.get("report_mode") == "OFFICIAL" else
+            "INFORME PRELIMINAR · SIN CARÁCTER OFICIAL"
+        )
 
         if readiness.get("is_censopas_instrument"):
             inst_label = "CENSOPAS-COPSOQ"
