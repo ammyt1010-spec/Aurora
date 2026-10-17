@@ -26,8 +26,15 @@ def render_report_docx(bundle: dict) -> bytes:
     document = Document()
     configure_page(document)
     register_styles(document)
-    add_header_band(document)
-    add_footer_band(document)
+    config = bundle.get("report_template") or {}
+    discipline = str(bundle.get("discipline") or "GENERAL").upper()
+    default_header = "AURORA PROFESSIONAL | CENSOPAS-COPSOQ" if bundle.get("is_censopas") else f"AURORA PROFESSIONAL | {discipline}"
+    title = config.get("header_title") or default_header
+    if not isinstance(title, str):
+        title = default_header
+    footer = f"AURORA PROFESSIONAL · {discipline} · resultados agregados · privacidad protegida"
+    add_header_band(document, title=title)
+    add_footer_band(document, text=footer)
 
     build_document_content(document, bundle)
 
