@@ -88,3 +88,77 @@ async def test_public_session_ignores_invitation_when_not_required(
 
     resp = await client.post(f"/api/v1/public/studies/{study['public_id']}/response-sessions")
     assert resp.status_code == 201, resp.text
+
+
+async def test_invitation_issuance_is_rejected_for_non_invitation_study(
+    client: AsyncClient, seed_user, seed_project, seed_instrument_draft
+) -> None:
+    study = await _build_study(
+        client, seed_user, seed_project, seed_instrument_draft, requires_invitation=False
+    )
+    response = await client.post(
+        f"/api/v1/studies/{study['id']}/invitations", json={"count": 1}
+    )
+    assert response.status_code == 409, response.text
+
+
+async def test_invitation_issuance_is_rejected_after_campaign_close(
+    client: AsyncClient, seed_user, seed_project, seed_instrument_draft
+) -> None:
+    study = await _build_study(
+        client, seed_user, seed_project, seed_instrument_draft, requires_invitation=True
+    )
+    closed = await client.post(f"/api/v1/studies/{study['id']}/close")
+    assert closed.status_code == 200, closed.text
+
+    response = await client.post(
+        f"/api/v1/studies/{study['id']}/invitations", json={"count": 1}
+    )
+    assert response.status_code == 409, response.text
+
+    summary = await client.get(f"/api/v1/studies/{study['id']}/invitations")
+    assert summary.status_code == 200
+    assert summary.json()["total"] == 0
+
+
+async def test_revoked_invitation_cannot_be_used_and_is_listed(
+    client: AsyncClient, seed_user, seed_project, seed_instrument_draft
+) -> None:
+    study = await _build_study(
+        client, seed_user, seed_project, seed_instrument_draft, requires_invitation=True
+    )
+    issued = await client.post(
+        f"/api/v1/studies/{study['id']}/invitations", json={"count": 1}
+    )
+    assert issued.status_code == 201, issued.text
+    token = issued.json()["tokens"][0]
+    listing = await client.get(f"/api/v1/studies/{study['id']}/invitations/list")
+    assert listing.status_code == 200, listing.text
+    invitation_id = listing.json()[0]["id"]
+
+    revoked = await client.post(
+        f"/api/v1/studies/{study['id']}/invitations/{invitation_id}/revoke",
+        params={"reason": "Duplicada"},
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["status"] == "REVOKED"
+
+    again = await client.post(
+        f"/api/v1/studies/{study['id']}/invitations/{invitation_id}/revoke",
+        params={"reason": "Duplicada"},
+    )
+    assert again.status_code == 200, again.text
+
+    denied = await client.post(
+        f"/api/v1/public/studies/{study['public_id']}/response-sessions",
+        json={"invitation_token": token},
+    )
+    assert denied.status_code == 404, denied.text
+    assert denied.json()["error_code"] == "PUBLIC_RESOURCE_UNAVAILABLE"
+
+    summary = await client.get(
+        f"/api/v1/studies/{study['id']}/invitations",
+        params={"include_revoked": "true"},
+    )
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["revoked"] == 1

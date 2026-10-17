@@ -2,28 +2,16 @@ import { useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  QrCode,
-  Send,
-  ShieldCheck,
-  Users,
-  Building2,
-  Lock,
-  Sparkles,
-  RefreshCcw,
-} from 'lucide-react';
+import { Copy, ExternalLink, QrCode, ShieldCheck, Users, Lock, RefreshCcw } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { apiRequest } from '../../../api/client.js';
 import { getProject } from '../../../api/projects.js';
-import { listStudies, openStudy, closeStudy } from '../../../api/studies.js';
+import { listStudies } from '../../../api/studies.js';
+import { canDistributeSurvey, selectCampaign } from '../../../utils/campaignAccess.js';
 
 import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
-import { Button } from '../../../components/ui/Button.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 
@@ -34,6 +22,8 @@ export default function ProjectLinkPage() {
   const qrContainerRef = useRef(null);
   const [invitationCount, setInvitationCount] = useState(10);
   const [issuedTokens, setIssuedTokens] = useState([]);
+  const [selectedStudyId, setSelectedStudyId] = useState('');
+  const [revocationReason, setRevocationReason] = useState('');
   useActiveProject(projectId);
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -48,9 +38,20 @@ export default function ProjectLinkPage() {
   });
 
   const studies = studiesData?.items ?? [];
-  const activeStudy = studies.find((s) => s.status === 'OPEN') || studies[0];
-  const publicId = activeStudy?.public_id || project?.censopas_study?.public_id;
-  const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
+  const activeStudy = selectCampaign(studies, selectedStudyId);
+  const canDistribute = canDistributeSurvey(activeStudy);
+  const publicId = activeStudy?.public_id;
+  const surveyUrl = canDistribute && publicId
+    ? `${window.location.origin}/encuesta/${publicId}`
+    : null;
+
+  const { data: invitations = [], isLoading: loadingInvitations, isError: failedInvitations } = useQuery({
+    queryKey: ['study-invitations', activeStudy?.id],
+    queryFn: () => apiRequest(`/studies/${activeStudy.id}/invitations/list`),
+    enabled: Boolean(activeStudy?.id && activeStudy?.requires_invitation),
+  });
+  const pendingInvitations = invitations.filter((item) => ['PENDING', 'SENT'].includes(item.status));
+  const consumedCount = invitations.filter((item) => item.status === 'CONSUMED').length;
 
   const downloadSurveyQr = () => {
     const svg = qrContainerRef.current?.querySelector('svg');
@@ -79,7 +80,20 @@ export default function ProjectLinkPage() {
       method: 'POST',
       body: { count: Number(invitationCount) },
     }),
-    onSuccess: (data) => setIssuedTokens(data.tokens || []),
+    onSuccess: (data) => {
+      setIssuedTokens(data.tokens || []);
+      queryClient.invalidateQueries({ queryKey: ['study-invitations', activeStudy.id] });
+    },
+  });
+
+  const revokeInvitation = useMutation({
+    mutationFn: (invitationId) => apiRequest(
+      `/studies/${activeStudy.id}/invitations/${invitationId}/revoke?reason=${encodeURIComponent(revocationReason.trim() || 'Revocada por el administrador')}`,
+      { method: 'POST' },
+    ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['study-invitations', activeStudy.id] });
+    },
   });
 
   if (isLoadingProject || isLoadingStudies) return <LoadingState label="Cargando enlace de evaluación..." />;
@@ -89,14 +103,43 @@ export default function ProjectLinkPage() {
     <div className="colmena-page space-y-6">
       <ProjectWorkspaceHeader activeTab="link" />
 
+      <Card className="p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-dark">Campaña de evaluación</h2>
+            <p className="text-xs text-muted">Selecciona la campaña antes de compartir accesos. Las campañas cerradas no admiten nuevas respuestas.</p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${canDistribute ? 'bg-emerald-500/10 text-emerald-600' : 'bg-surfaceSoft text-muted'}`}>
+            {activeStudy?.status || 'SIN CAMPAÑAS'}{activeStudy?.status === 'OPEN' && !canDistribute ? ' · VENCIDA' : ''}
+          </span>
+        </div>
+        <label htmlFor="campaign-select" className="block text-xs font-semibold text-muted">Estudio</label>
+        <select
+          id="campaign-select"
+          className="colmena-input w-full"
+          value={activeStudy?.id || ''}
+          onChange={(event) => {
+            setSelectedStudyId(event.target.value);
+            setIssuedTokens([]);
+            setRevocationReason('');
+          }}
+          disabled={!studies.length}
+        >
+          {!studies.length && <option value="">No existen campañas</option>}
+          {studies.map((study) => (
+            <option key={study.id} value={study.id}>{study.name} · {study.status}</option>
+          ))}
+        </select>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Survey Link Box */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-6 space-y-5 border-amber/30 bg-surface shadow-sm">
             <div className="flex items-center justify-between border-b border-border/80 pb-4">
               <div>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold uppercase tracking-wider">
-                  <ShieldCheck size={14} /> Encuesta Pública Habilitada
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${canDistribute ? 'bg-emerald-500/10 text-emerald-600' : 'bg-surfaceSoft text-muted'}`}>
+                  <ShieldCheck size={14} /> {canDistribute ? 'Encuesta habilitada' : 'Encuesta no disponible'}
                 </span>
                 <h2 className="text-xl font-bold text-dark mt-2">Enlace Oficial de Respuesta</h2>
                 <p className="text-xs text-muted mt-0.5">
@@ -142,12 +185,14 @@ export default function ProjectLinkPage() {
 
                   <span className="text-xs text-muted flex items-center gap-1">
                     <Users size={14} className="text-amber" />
-                    Respuestas Anónimas Protegidas por CENSOPAS
+                    Respuestas confidenciales según política del estudio
                   </span>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted">No se ha generado un enlace público aún.</p>
+              <p className="text-sm text-muted">
+                {activeStudy ? 'Esta campaña no está abierta o su plazo ha vencido. No difundas el enlace hasta habilitar una campaña vigente.' : 'Crea primero una campaña de evaluación.'}
+              </p>
             )}
           </Card>
 
@@ -175,13 +220,14 @@ export default function ProjectLinkPage() {
                   className="colmena-input w-36"
                 />
                 <button type="button" onClick={() => issueInvitations.mutate()}
-                  disabled={issueInvitations.isPending || Number(invitationCount) < 1 || Number(invitationCount) > 1000}
+                  disabled={!canDistribute || issueInvitations.isPending || Number(invitationCount) < 1 || Number(invitationCount) > 1000}
                   className="px-4 py-2 rounded-lg bg-amber text-dark font-bold text-xs">
                   {issueInvitations.isPending ? 'Generando…' : 'Emitir invitaciones'}
                 </button>
                 {issueInvitations.isError && (
                   <p role="alert" className="text-xs text-danger">{issueInvitations.error?.message}</p>
                 )}
+                {!canDistribute && <p className="text-xs text-muted">La emisión de invitaciones sólo está disponible para campañas abiertas y vigentes.</p>}
                 {issuedTokens.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs text-muted">Copia los códigos ahora: por seguridad no podrán recuperarse de la API después.</p>
@@ -194,6 +240,53 @@ export default function ProjectLinkPage() {
               </>
             ) : null}
           </Card>
+
+          {activeStudy?.requires_invitation && (
+            <Card className="p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-dark">Control de invitaciones</h3>
+                  <p className="text-xs text-muted">{pendingInvitations.length} disponibles · {consumedCount} utilizadas · {invitations.length} registradas</p>
+                </div>
+                <button type="button" className="inline-flex items-center gap-2 text-xs font-semibold text-muted hover:text-dark"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['study-invitations', activeStudy.id] })}>
+                  <RefreshCcw size={14} /> Actualizar
+                </button>
+              </div>
+              <label className="block text-xs font-semibold text-muted" htmlFor="revoke-reason">Motivo de revocación (opcional)</label>
+              <input id="revoke-reason" className="colmena-input w-full" maxLength={300}
+                placeholder="Ej. Invitación enviada por error"
+                value={revocationReason} onChange={(event) => setRevocationReason(event.target.value)} />
+              {loadingInvitations && <p className="text-xs text-muted">Consultando invitaciones…</p>}
+              {failedInvitations && <p role="alert" className="text-xs text-danger">No fue posible consultar las invitaciones. Reintenta la operación.</p>}
+              {revokeInvitation.isError && <p role="alert" className="text-xs text-danger">{revokeInvitation.error?.message || 'No se pudo revocar la invitación.'}</p>}
+              {!loadingInvitations && !failedInvitations && invitations.length === 0 && (
+                <p className="text-xs text-muted">No se han emitido invitaciones para esta campaña.</p>
+              )}
+              <div className="max-h-80 space-y-2 overflow-y-auto">
+                {invitations.map((invitation) => {
+                  const canRevoke = ['PENDING', 'SENT'].includes(invitation.status);
+                  return (
+                    <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
+                      <div>
+                        <p className="font-mono text-xs text-dark">Invitación #{invitation.id}</p>
+                        <p className="text-[11px] text-muted">{invitation.status === 'CONSUMED' ? 'Utilizada' : invitation.status === 'REVOKED' ? 'Revocada' : invitation.status === 'EXPIRED' ? 'Caducada' : 'Pendiente'}</p>
+                      </div>
+                      {canRevoke && (
+                        <button type="button"
+                          className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger/10 disabled:opacity-50"
+                          disabled={revokeInvitation.isPending}
+                          onClick={() => revokeInvitation.mutate(invitation.id)}>
+                          Revocar acceso
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted">Los códigos secretos no se recuperan del servidor después de emitirlos. La revocación impide su canje futuro.</p>
+            </Card>
+          )}
         </div>
 
         {/* QR Code & Information Sidebar */}

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, FileText, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
@@ -10,6 +10,7 @@ import { fetchProtectedBlob, downloadProtectedFile } from '../../../api/protecte
 import { getCensopasReadiness } from '../../../api/instruments.js';
 import {
   createReportPreview,
+  listReportTemplates,
   listStudyReports,
   getReportDownloadUrl,
   getReportPreviewPdfUrl,
@@ -23,6 +24,7 @@ import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 import StudySelector from '../../../components/colmena/StudySelector.jsx';
 import ReportBillingPanel from '../../../components/colmena/project/ReportBillingPanel.jsx';
+import ExecutiveReportDashboard from '../../../components/colmena/project/ExecutiveReportDashboard.jsx';
 import { getBillingPolicy, getOrders } from '../../../api/billing.js';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
 
@@ -49,19 +51,22 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   const [studyId, setStudyId] = useState(null);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [sections, setSections] = useState(SECTIONS.map((s) => s.key));
   const [reportMode, setReportMode] = useState('PROVISIONAL');
   const [outputFormat, setOutputFormat] = useState('PDF');
   const [previewState, setPreviewState] = useState('IDLE');
   const [preview, setPreview] = useState(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const pdfFrameRef = useRef(null);
   const [downloadError, setDownloadError] = useState(null);
   const [generatedConfig, setGeneratedConfig] = useState(null);
 
   // Logo state
   const fileInputRef = useRef(null);
   const [companyLogo, setCompanyLogo] = useState(() => {
-    return localStorage.getItem(`company_logo_${projectId}`) || null;
+    const savedLogo = localStorage.getItem(`company_logo_${projectId}`);
+    return savedLogo?.startsWith('data:image/png;base64,') ? savedLogo : null;
   });
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -76,6 +81,10 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   });
 
   const studies = studiesData?.items || [];
+  const { data: reportTemplates = [] } = useQuery({
+    queryKey: ['enterprise-report-templates'],
+    queryFn: () => listReportTemplates(),
+  });
   const { data: billingPolicy } = useQuery({ queryKey: ['billing-policy'], queryFn: getBillingPolicy });
   const isPaymentRequired = billingPolicy?.enforced !== false;
   const { data: previousReports = [] } = useQuery({
@@ -106,15 +115,18 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     enabled: Boolean(study?.instrument_version_id),
   });
 
-  const currentConfig = { studyId, sections: [...sections].sort(), reportMode, outputFormat, selectedOrderId };
+  const currentConfig = { studyId, sections: [...sections].sort(), reportMode, outputFormat, selectedOrderId, selectedTemplateId };
 
   const previewMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (sample = false) =>
       createReportPreview(studyId, {
-        report_mode: reportMode,
-        output_format: outputFormat,
+        report_mode: sample ? 'SAMPLE' : reportMode,
+        is_sample_preview: Boolean(sample),
+        report_template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+        company_logo_png: companyLogo?.startsWith('data:image/png;base64,') ? companyLogo : null,
+        output_format: sample ? 'PDF' : outputFormat,
         sections,
-        billing_order_id: isPaymentRequired ? selectedOrderId : null,
+        billing_order_id: sample ? null : (isPaymentRequired ? selectedOrderId : null),
       }),
     onMutate: () => setPreviewState('GENERATING'),
     onSuccess: (data) => {
@@ -154,16 +166,16 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   }, [studyId, billingPolicy?.enforced]);
 
   useEffect(() => {
-    if (previewState === 'READY' && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
+    if ((previewState === 'READY' || previewState === 'STALE') && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
       setPreviewState('STALE');
     }
-  }, [studyId, sections, reportMode, outputFormat, selectedOrderId]);
+  }, [studyId, sections, reportMode, outputFormat, selectedOrderId, selectedTemplateId]);
 
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert('El archivo no debe superar los 5MB.');
+    if (file.type !== 'image/png' || file.size > 600 * 1024) {
+      alert('Selecciona un logotipo PNG de hasta 600 KB.');
       return;
     }
     const reader = new FileReader();
@@ -171,6 +183,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
       const base64 = event.target?.result;
       if (typeof base64 === 'string') {
         setCompanyLogo(base64);
+        if (previewState === 'READY') setPreviewState('STALE');
         localStorage.setItem(`company_logo_${projectId}`, base64);
       }
     };
@@ -179,6 +192,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   const handleRemoveLogo = () => {
     setCompanyLogo(null);
+    if (previewState === 'READY') setPreviewState('STALE');
     localStorage.removeItem(`company_logo_${projectId}`);
   };
 
@@ -203,8 +217,10 @@ export default function ProjectReportsPage({ overrideProjectId }) {
       <PageHeader
         eyebrow="Reportes de evaluación — AURORA PRO"
         title={project.name}
-        description="Genera e imprime el Informe de Evaluación de Riesgos Psicosociales con membrete y logo institucional."
+        description="Configura informes técnicos de distintas disciplinas, revisa los indicadores empresariales y emite documentos con licencia."
       />
+
+      <ExecutiveReportDashboard studyId={studyId} />
 
       <div className="grid gap-6 md:grid-cols-[380px_1fr]">
         <div className="space-y-4">
@@ -225,7 +241,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             <input
               type="file"
               ref={fileInputRef}
-              accept="image/png, image/jpeg, image/svg+xml"
+              accept="image/png"
               onChange={handleLogoUpload}
               className="hidden"
             />
@@ -250,7 +266,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               >
                 <Upload size={20} className="text-amber" />
                 <span className="text-xs font-semibold text-dark">Subir Logo de la Empresa</span>
-                <span className="text-[10px] text-muted">PNG, JPG o SVG (Máx. 5MB)</span>
+                <span className="text-[10px] text-muted">PNG (máximo 600 KB). Se incluye en el DOCX/PDF.</span>
               </button>
             )}
           </Card>
@@ -289,7 +305,34 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                   resetPreview();
                 }}
               />
-              {studyId ? <CensopasReadinessPanel readiness={readiness} isLoading={isLoadingReadiness} /> : null}
+              {studyId && readiness?.is_censopas_instrument ? (
+                <CensopasReadinessPanel readiness={readiness} isLoading={isLoadingReadiness} />
+              ) : null}
+            </div>
+
+            <div>
+              <label htmlFor="report-template-selector" className="colmena-label mb-2 block">Plantilla profesional</label>
+              <select id="report-template-selector" className="colmena-input w-full"
+                value={selectedTemplateId}
+                onChange={(event) => {
+                  setSelectedTemplateId(event.target.value);
+                  const template = reportTemplates.find((item) => String(item.id) === event.target.value);
+                  const preferredSections = template?.template_config?.sections;
+                  if (Array.isArray(preferredSections) && preferredSections.length) {
+                    setSections(preferredSections);
+                  } else {
+                    setSections(SECTIONS.map((item) => item.key));
+                  }
+                  resetPreview();
+                }}>
+                <option value="">Plantilla por defecto del instrumento</option>
+                {reportTemplates.filter((template) => template.status === 'ACTIVE').map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} · {template.discipline}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">Las plantillas son gestionadas por el operador central y quedan asociadas al informe emitido.</p>
             </div>
 
             <div>
@@ -325,12 +368,14 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 </button>
                 <button
                   type="button"
-                  disabled={!readiness?.ready_for_official_reporting}
+                  disabled={Boolean(readiness?.is_censopas_instrument) && !readiness?.ready_for_official_reporting}
                   onClick={() => setReportMode('OFFICIAL')}
                   className={'rounded-xl border p-3 text-left transition ' + (reportMode === 'OFFICIAL' ? 'border-turquoise bg-turquoise/5 ring-1 ring-turquoise/30' : 'border-border bg-surface') + ' disabled:cursor-not-allowed disabled:opacity-50'}
                 >
                   <ShieldCheck size={16} className="mb-1.5 text-turquoise" />
-                  <span className="block text-xs font-semibold text-dark">Informe con equivalencia metodológica verificada</span>
+                  <span className="block text-xs font-semibold text-dark">
+                    {readiness?.is_censopas_instrument ? 'Informe con equivalencia metodológica verificada' : 'Informe profesional de la metodología autorizada'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -359,6 +404,15 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               <RefreshCw size={16} />
               Generar vista previa
             </Button>
+            <button type="button"
+              onClick={() => previewMutation.mutate(true)}
+              disabled={!studyId || previewState === 'GENERATING'}
+              className="w-full rounded-xl border border-border bg-surfaceSoft px-4 py-2.5 text-xs font-bold text-dark hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50">
+              Ver muestra PDF sin consumir licencia
+            </button>
+            <p className="text-[11px] text-muted">
+              La muestra lleva marca de agua, no tiene validez oficial y nunca habilita la descarga de un informe definitivo.
+            </p>
           </Card>
         </div>
 
@@ -387,18 +441,45 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                   Se modificaron parámetros. Haz clic en actualizar para regenerar la vista previa.
                 </p>
               ) : null}
+              {preview.is_sample && (
+                <p className="rounded-lg border border-amber/30 bg-amber/10 p-2 text-xs font-bold text-yellowDark">
+                  VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL · SIN CONSUMO DE LICENCIA
+                </p>
+              )}
               <div className="flex items-center justify-between text-xs text-muted">
                 <span>Páginas renderizadas: {preview.pages || '—'}</span>
                 {companyLogo ? (
                   <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Logo cargado localmente (no incorporado al informe)
+                    <CheckCircle2 size={12} /> Logo incorporado al informe generado
                   </span>
                 ) : null}
               </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surfaceSoft px-3 py-2">
+                <span className="text-xs font-semibold text-dark">Visor PDF · {preview.is_sample ? 'Muestra sin validez oficial' : 'Documento autorizado'}</span>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={!previewBlobUrl}
+                    onClick={() => { if (previewBlobUrl) window.open(previewBlobUrl, '_blank', 'noopener,noreferrer'); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
+                    <ExternalLink size={13} /> Abrir en otra pestaña
+                  </button>
+                  <button type="button" disabled={!previewBlobUrl}
+                    onClick={() => {
+                      const result = pdfFrameRef.current?.requestFullscreen?.();
+                      if (result && typeof result.catch === 'function') {
+                        result.catch(() => setDownloadError('El navegador no permitió ampliar el visor. Usa «Abrir en otra pestaña».'));
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
+                    <Maximize2 size={13} /> Pantalla completa
+                  </button>
+                </div>
+              </div>
               <iframe
-                title="Vista previa del reporte PDF"
+                ref={pdfFrameRef}
+                title="Visor PDF del informe de evaluación"
                 src={previewBlobUrl || 'about:blank'}
-                className="min-h-[580px] flex-1 rounded-xl border border-border shadow-inner"
+                allowFullScreen
+                className="min-h-[640px] w-full flex-1 rounded-xl border border-border bg-white shadow-inner"
               />
             </>
           ) : null}
@@ -411,9 +492,9 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 if (!preview) return;
                 setDownloadError(null);
                 try {
-                  const isPdf = outputFormat === 'PDF';
+                  const isPdf = Boolean(preview.is_sample) || outputFormat === 'PDF';
                   const url = isPdf ? getReportPreviewPdfUrl(preview.preview_id) : getReportDownloadUrl(preview.preview_id);
-                  await downloadProtectedFile(url, `aurora-reporte-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`);
+                  await downloadProtectedFile(url, `aurora-${preview.is_sample ? 'muestra-no-oficial' : 'reporte'}-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`);
                 } catch (error) {
                   setDownloadError(error.message);
                 }
@@ -423,7 +504,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               }`}
             >
               <Download size={16} />
-              Descargar {outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
+              Descargar {preview?.is_sample ? 'muestra PDF' : outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
             </button>
             {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p> : null}
           </div>

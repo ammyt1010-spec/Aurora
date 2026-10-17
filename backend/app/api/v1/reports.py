@@ -65,6 +65,10 @@ async def list_report_templates(
 ):
     service = ReportService(session)
     templates = await service.list_templates(discipline=discipline)
+    if current_user is None:
+        raise AuthorizationError("Debes iniciar sesión para consultar las plantillas.")
+    if not is_platform_operator(current_user):
+        templates = [template for template in templates if template.status == "ACTIVE"]
     return [
         ReportTemplateRead(
             id=t.id,
@@ -92,6 +96,10 @@ async def get_report_template(
     t = await service.repo.get_template(template_id)
     if t is None:
         raise NotFoundError(f"Plantilla {template_id} no encontrada.")
+    if current_user is None:
+        raise AuthorizationError("Debes iniciar sesión para consultar la plantilla.")
+    if t.status != "ACTIVE" and not is_platform_operator(current_user):
+        raise AuthorizationError("Esta plantilla todavía no está publicada.")
     return ReportTemplateRead(
         id=t.id,
         public_id=t.public_id,
@@ -181,11 +189,12 @@ async def generate_report_preview(
     session: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    is_sample = bool(payload.is_sample_preview or payload.report_mode == "SAMPLE")
-    if current_user is None and not is_sample:
+    # Sample previews are not paid reports, but they still contain enterprise
+    # data and always require the same authorization as official previews.
+    if current_user is None:
         if not is_authorized_synthetic_test(request):
             raise AuthorizationError("Debes iniciar sesión como administrador de la empresa.")
-    elif current_user is not None and not is_sample:
+    else:
         await BillingService(session)._organization_admin(study_id, current_user)
 
     service = ReportService(session)
@@ -225,7 +234,8 @@ async def download_report_preview(
     service = ReportService(session)
     report = await service.get_run(report_id)
     await _assert_study_access(session, report.study_id, current_user, request)
-    if get_settings().environment.lower() == "production" and report.billing_order_id is None:
+    is_watermarked_sample = bool((report.metadata_ or {}).get("is_sample_preview"))
+    if get_settings().environment.lower() == "production" and report.billing_order_id is None and not is_watermarked_sample:
         raise ConflictError("Informe anterior sin autorización de entrega. Contacta al administrador.")
     if report.status != "COMPLETED" or not report.storage_path or not report.storage_path.endswith(".docx"):
         raise NotFoundError(f"Reporte {report_id} no tiene una vista previa disponible todavía")
@@ -320,12 +330,14 @@ async def list_organization_reports_history(
     study_id: int | None = None,
     discipline: str | None = None,
     session: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    if current_user is not None and not is_platform_operator(current_user) and not getattr(current_user, "is_superuser", False):
+    # Defense in depth: never accept an anonymous request, even if the router
+    # is mounted without require_business_access in another application.
+    if not is_platform_operator(current_user):
         member = await session.get(OrganizationMembership, (organization_id, current_user.id))
-        if member is None:
-            raise AuthorizationError("No tienes acceso a los informes de esta organización.")
+        if member is None or member.role_code not in {"OWNER", "ADMIN"}:
+            raise AuthorizationError("No tienes permiso para consultar el historial de informes de esta organización.")
     service = ReportService(session)
     items = await service.get_organization_report_history(
         organization_id, study_id=study_id, discipline=discipline

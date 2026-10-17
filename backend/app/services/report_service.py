@@ -13,8 +13,11 @@ report_run`, harness).
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
+import struct
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.action_plan_status import compute_effective_status
 from app.core.config import get_settings
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationDomainError
 from app.services.billing_service import BillingService
 from app.models.analysis import AnalysisResult, AnalysisRun
 from app.models.audit import AuditLog
@@ -247,6 +250,7 @@ class ReportService:
                 report_mode=payload.report_mode,
                 sections=payload.sections,
                 report_run=report_run,
+                company_logo_png=payload.company_logo_png,
             )
 
             storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
@@ -267,7 +271,10 @@ class ReportService:
                 path = storage_dir / f"{report_run.public_id}.pdf"
                 path.write_bytes(file_bytes)
             else:
-                file_bytes = json.dumps(bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
+                # El logo sólo forma parte del render visual; nunca se expone
+                # como bytes serializados en la exportación JSON.
+                public_bundle = {key: value for key, value in bundle.items() if key != "brand_logo_png"}
+                file_bytes = json.dumps(public_bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
                 path = storage_dir / f"{report_run.public_id}.json"
                 path.write_bytes(file_bytes)
 
@@ -353,6 +360,7 @@ class ReportService:
                     report_mode="SAMPLE",
                     sections=payload.sections,
                     report_run=report_run,
+                    company_logo_png=payload.company_logo_png,
                 )
                 bundle["is_sample_preview"] = True
                 bundle["watermark"] = watermark_text
@@ -404,6 +412,27 @@ class ReportService:
             return report_run, count_pdf_pages(pdf_bytes)
 
 
+    @staticmethod
+    def _decode_company_logo(value: str | None) -> bytes | None:
+        """Validate ephemeral PNG payload before embedding in a DOCX document."""
+        if value is None:
+            return None
+        prefix = "data:image/png;base64,"
+        if not value.startswith(prefix):
+            raise ValidationDomainError("El logotipo debe ser un archivo PNG válido.")
+        try:
+            data = base64.b64decode(value[len(prefix):], validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValidationDomainError("Los datos del logotipo PNG no son válidos.") from exc
+        if not data.startswith(bytes.fromhex("89504e470d0a1a0a")) or len(data) < 33:
+            raise ValidationDomainError("El logotipo no tiene una cabecera PNG válida.")
+        if len(data) > 600 * 1024:
+            raise ValidationDomainError("El logotipo supera el máximo de 600 KB.")
+        width, height = struct.unpack(">II", data[16:24])
+        if not (0 < width <= 4096 and 0 < height <= 4096):
+            raise ValidationDomainError("Dimensiones del logotipo fuera del límite permitido.")
+        return data
+
     async def _build_bundle(
         self,
         study,
@@ -412,8 +441,13 @@ class ReportService:
         report_mode: str = "PROVISIONAL",
         sections: list[str] | None = None,
         report_run=None,
+        company_logo_png: str | None = None,
     ) -> dict:
         bundle: dict = {
+            "brand_logo_png": self._decode_company_logo(company_logo_png),
+            "discipline": "PSICOSOCIAL",
+            "is_censopas": False,
+            "report_template": {},
             "study": {
                 "id": study.id,
                 "public_id": str(study.public_id),
@@ -503,8 +537,10 @@ class ReportService:
             if inst_row and inst_row[0]:
                 discipline = str(inst_row[0]).upper()
                 is_psicosocial = discipline == "PSICOSOCIAL"
+            bundle["discipline"] = discipline
 
             readiness = await censopas_service.get_readiness(study.instrument_version_id)
+            bundle["is_censopas"] = bool(readiness.get("is_censopas_instrument"))
             bundle["methodological_status"] = readiness
             is_censopas = bool(readiness.get("is_censopas_instrument"))
             if is_censopas and report_mode == "OFFICIAL" and not readiness["ready_for_official_reporting"]:
@@ -514,6 +550,22 @@ class ReportService:
                 )
             overview = await ScoringService(self.session).get_overview(study.id)
             bundle["barem_results"] = overview.model_dump(mode="json")
+            if not bundle["is_censopas"]:
+                visible_results = [
+                    result for result in overview.results
+                    if not result.suppressed and result.mean_score is not None
+                ]
+                bundle["executive_summary"] = {
+                    "n_valid": bundle["data_quality"].get("valid_count"),
+                    "completion_rate": bundle["data_quality"].get("completion_rate"),
+                    "headline": (
+                        f"{len(visible_results)} constructos con resultados colectivos publicables. "
+                        "Las interpretaciones requieren sus baremos metodológicos."
+                        if visible_results else
+                        "No hay resultados colectivos publicables o puntuaciones disponibles para esta evaluación."
+                    ),
+                    "priority_dimensions": [],
+                }
 
         bundle["dimension_results"] = [
             r for r in bundle["censopas_results"] if r.get("construct_type") == _DIMENSION_TYPE
@@ -534,6 +586,31 @@ class ReportService:
         bundle["premium_analytics"] = self._build_premium_analytics(
             bundle["analysis_results"], study.min_publishable_n
         )
+        if not bundle["is_censopas"]:
+            limitations = bundle["premium_analytics"].get("limitations") or []
+            if limitations:
+                limitations[0] = "Los análisis complementarios no sustituyen el método ni el baremo propio del instrumento."
+        # The report template is part of the render input, not merely a
+        # label in report metadata. Validate discipline to prevent displaying
+        # one methodology with another methodology's title or template.
+        template_id = getattr(report_run, "report_template_id", None)
+        if template_id is not None:
+            template = await self.repo.get_template(template_id)
+            if template is None or template.status != "ACTIVE":
+                raise ConflictError("La plantilla seleccionada no está disponible o publicada.")
+            template_discipline = str((template.template_config or {}).get("discipline") or template.report_type or "").upper()
+            instrument_discipline = bundle["discipline"]
+            aliases = {"CLIMA_ORGANIZACIONAL": "CLIMA"}
+            if template_discipline and aliases.get(template_discipline, template_discipline) != aliases.get(instrument_discipline, instrument_discipline):
+                raise ConflictError("La disciplina de la plantilla no coincide con la metodología del instrumento.")
+            if template.instrument_version_id is not None and template.instrument_version_id != study.instrument_version_id:
+                raise ConflictError("La plantilla está vinculada a otra versión del instrumento.")
+            bundle["report_template"] = dict(template.template_config or {})
+            if not sections:
+                configured_sections = bundle["report_template"].get("sections")
+                if isinstance(configured_sections, list):
+                    bundle["sections"] = [part for part in configured_sections if isinstance(part, str)]
+
         bundle["cover"] = await self._build_cover(study, bundle, report_run)
         bundle["traceability"] = await self._build_traceability(
             study, bundle, report_run, analysis_run_id
@@ -559,7 +636,13 @@ class ReportService:
         readiness = bundle.get("methodological_status") or {}
         run_meta = getattr(report_run, "metadata_", {}) or {}
         is_sample = bool(run_meta.get("is_sample_preview") or bundle.get("is_sample_preview"))
-        badge = "VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL" if is_sample else "EXPEDIENTE TÉCNICO OFICIAL · AURORA PRO"
+        badge = (
+            "VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL"
+            if is_sample else
+            "INFORME OFICIAL · AURORA PROFESSIONAL"
+            if bundle.get("report_mode") == "OFFICIAL" else
+            "INFORME PRELIMINAR · SIN CARÁCTER OFICIAL"
+        )
 
         if readiness.get("is_censopas_instrument"):
             inst_label = "CENSOPAS-COPSOQ"
@@ -709,6 +792,22 @@ class ReportService:
         return entries
 
     def _build_conclusions(self, bundle: dict) -> list[str]:
+        if not bundle.get("is_censopas", True):
+            overview = bundle.get("barem_results") or {}
+            publicable = [
+                result for result in overview.get("results", [])
+                if not result.get("suppressed") and result.get("mean_score") is not None
+            ]
+            if not publicable:
+                return [
+                    "No se dispone de puntuaciones colectivas publicables. No es posible concluir que exista un nivel de riesgo favorable.",
+                    "La interpretación depende de la validez del instrumento y de su baremo específico."
+                ]
+            return [
+                f"Se presentan resultados colectivos para {len(publicable)} constructos con muestra publicable.",
+                "Las puntuaciones y categorías se interpretan exclusivamente según el instrumento y su baremo documentado.",
+                "Estos resultados describen grupos, no personas, y no justifican diagnósticos ni decisiones laborales individuales.",
+            ]
         """Fase 9: solo texto derivado de datos ya calculados en el bundle —
         ningún resultado concreto queda hardcodeado, se lee de
         `executive_summary`/`dimension_results`/`methodological_label`."""
@@ -1169,7 +1268,14 @@ class ReportService:
                 "GREEN": "Excelente clima organizacional: alto engagement y sentido de pertenencia en el colectivo evaluado.",
             },
         }
-        disc_key = discipline if discipline in recommendations_catalog else "PSICOSOCIAL"
+        recommendations_catalog["GENERAL"] = {
+            "RED": "Revisar el constructo de mayor riesgo con un profesional competente y definir acciones verificables.",
+            "AMBER": "Establecer seguimiento del indicador con criterios metodológicos adecuados.",
+            "GREEN": "Mantener el seguimiento periódico conforme a la metodología del instrumento.",
+        }
+        discipline_aliases = {"CLIMA_ORGANIZACIONAL": "CLIMA"}
+        normalized_discipline = discipline_aliases.get(discipline, discipline)
+        disc_key = normalized_discipline if normalized_discipline in recommendations_catalog else "GENERAL"
 
         construct_rankings = []
         high_risk_count = 0
@@ -1177,7 +1283,11 @@ class ReportService:
         low_risk_count = 0
 
         for r in scoring_overview.results:
-            score = float(r.mean_score) if r.mean_score is not None else (float(r.median_score) if r.median_score is not None else 50.0)
+            # Never turn suppressed or missing observations into an invented
+            # midpoint. Doing so could display a false reassuring GREEN result.
+            if r.suppressed or (r.mean_score is None and r.median_score is None):
+                continue
+            score = float(r.mean_score) if r.mean_score is not None else float(r.median_score)
 
             unfav_pct = None
             predominant_band = None
@@ -1198,11 +1308,18 @@ class ReportService:
             elif "MEDIO" in code_upper or "INTERMEDIO" in code_upper or "REVISION" in code_upper:
                 t_light = "AMBER"
                 medium_risk_count += 1
-            else:
+            elif any(label in code_upper for label in ("BAJO", "FAVORABLE", "ADECUADO")):
                 t_light = "GREEN"
                 low_risk_count += 1
+            else:
+                # No methodologically grounded band: never infer "favorable".
+                t_light = "GRAY"
 
-            recom = recommendations_catalog[disc_key].get(t_light, recommendations_catalog["PSICOSOCIAL"][t_light])
+            recom = (
+                "Sin categoría de riesgo verificable: revisar el baremo y la configuración metodológica antes de interpretar."
+                if t_light == "GRAY"
+                else recommendations_catalog[disc_key][t_light]
+            )
 
             construct_rankings.append({
                 "construct_code": r.construct_code,
@@ -1218,11 +1335,14 @@ class ReportService:
 
         construct_rankings.sort(key=lambda x: (x["severity_order"], -(x["score_0_100"] or 0)))
 
-        headline = (
-            f"{high_risk_count} constructo(s) en semáforo rojo requieren intervención prioritaria."
-            if high_risk_count > 0
-            else "Resultados favorables: ningún constructo evaluado presenta semáforo rojo de riesgo crítico."
-        )
+        if not construct_rankings:
+            headline = "No hay resultados colectivos publicables: muestra insuficiente o puntuaciones no disponibles."
+        elif high_risk_count > 0:
+            headline = f"{high_risk_count} constructo(s) en semáforo rojo requieren intervención prioritaria."
+        elif all(item["traffic_light"] == "GRAY" for item in construct_rankings):
+            headline = "Sin clasificación de riesgo verificable: revisar baremos antes de emitir conclusiones."
+        else:
+            headline = "No se identificaron alertas rojas en los constructos con clasificación verificable."
 
         signature_material = f"{study_id}:{scoring_overview.analysis_run_id}:{high_risk_count}:{telemetry.valid_count}"
         sig_hash = hashlib.sha256(signature_material.encode("utf-8")).hexdigest()
