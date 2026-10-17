@@ -13,8 +13,11 @@ report_run`, harness).
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
+import struct
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.action_plan_status import compute_effective_status
 from app.core.config import get_settings
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationDomainError
 from app.services.billing_service import BillingService
 from app.models.analysis import AnalysisResult, AnalysisRun
 from app.models.audit import AuditLog
@@ -247,6 +250,7 @@ class ReportService:
                 report_mode=payload.report_mode,
                 sections=payload.sections,
                 report_run=report_run,
+                company_logo_png=payload.company_logo_png,
             )
 
             storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
@@ -353,6 +357,7 @@ class ReportService:
                     report_mode="SAMPLE",
                     sections=payload.sections,
                     report_run=report_run,
+                    company_logo_png=payload.company_logo_png,
                 )
                 bundle["is_sample_preview"] = True
                 bundle["watermark"] = watermark_text
@@ -404,6 +409,27 @@ class ReportService:
             return report_run, count_pdf_pages(pdf_bytes)
 
 
+    @staticmethod
+    def _decode_company_logo(value: str | None) -> bytes | None:
+        """Validate ephemeral PNG payload before embedding in a DOCX document."""
+        if value is None:
+            return None
+        prefix = "data:image/png;base64,"
+        if not value.startswith(prefix):
+            raise ValidationDomainError("El logotipo debe ser un archivo PNG válido.")
+        try:
+            data = base64.b64decode(value[len(prefix):], validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValidationDomainError("Los datos del logotipo PNG no son válidos.") from exc
+        if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n") or len(data) < 33:
+            raise ValidationDomainError("El logotipo no tiene una cabecera PNG válida.")
+        if len(data) > 600 * 1024:
+            raise ValidationDomainError("El logotipo supera el máximo de 600 KB.")
+        width, height = struct.unpack(">II", data[16:24])
+        if not (0 < width <= 4096 and 0 < height <= 4096):
+            raise ValidationDomainError("Dimensiones del logotipo fuera del límite permitido.")
+        return data
+
     async def _build_bundle(
         self,
         study,
@@ -412,8 +438,10 @@ class ReportService:
         report_mode: str = "PROVISIONAL",
         sections: list[str] | None = None,
         report_run=None,
+        company_logo_png: str | None = None,
     ) -> dict:
         bundle: dict = {
+            "brand_logo_png": self._decode_company_logo(company_logo_png),
             "discipline": "PSICOSOCIAL",
             "is_censopas": False,
             "report_template": {},
