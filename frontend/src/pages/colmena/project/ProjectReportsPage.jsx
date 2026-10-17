@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, FileText, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
@@ -58,6 +58,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   const [previewState, setPreviewState] = useState('IDLE');
   const [preview, setPreview] = useState(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const pdfFrameRef = useRef(null);
   const [downloadError, setDownloadError] = useState(null);
   const [generatedConfig, setGeneratedConfig] = useState(null);
 
@@ -451,10 +452,32 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                   </span>
                 ) : null}
               </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surfaceSoft px-3 py-2">
+                <span className="text-xs font-semibold text-dark">Visor PDF · {preview.is_sample ? 'Muestra sin validez oficial' : 'Documento autorizado'}</span>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={!previewBlobUrl}
+                    onClick={() => { if (previewBlobUrl) window.open(previewBlobUrl, '_blank', 'noopener,noreferrer'); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
+                    <ExternalLink size={13} /> Abrir en otra pestaña
+                  </button>
+                  <button type="button" disabled={!previewBlobUrl}
+                    onClick={() => {
+                      const result = pdfFrameRef.current?.requestFullscreen?.();
+                      if (result && typeof result.catch === 'function') {
+                        result.catch(() => setDownloadError('El navegador no permitió ampliar el visor. Usa «Abrir en otra pestaña».'));
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
+                    <Maximize2 size={13} /> Pantalla completa
+                  </button>
+                </div>
+              </div>
               <iframe
-                title="Vista previa del reporte PDF"
+                ref={pdfFrameRef}
+                title="Visor PDF del informe de evaluación"
                 src={previewBlobUrl || 'about:blank'}
-                className="min-h-[580px] flex-1 rounded-xl border border-border shadow-inner"
+                allowFullScreen
+                className="min-h-[640px] w-full flex-1 rounded-xl border border-border bg-white shadow-inner"
               />
             </>
           ) : null}
