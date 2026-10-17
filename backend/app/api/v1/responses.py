@@ -8,6 +8,7 @@ from app.schemas.studies import ResponseSessionUnitsRead, ResponseSessionUnitsRe
 from app.schemas.responses import (
     ResponseRead,
     ResponseSessionCompleteRequest,
+    ResponseSessionProgressRead,
     ResponseSessionRead,
     ResponseUpsert,
 )
@@ -62,3 +63,31 @@ async def complete_response_session(
     service = ResponseService(session)
     response_session = await service.complete_session(session_id, payload)
     return ResponseSessionRead.model_validate(response_session)
+
+
+@router.get("/response-sessions/{session_id}", response_model=ResponseSessionRead)
+async def get_response_session(session_id: int, session: AsyncSession = Depends(get_db)):
+    service = ResponseService(session)
+    response_session = await service._get_session(session_id)
+    return ResponseSessionRead.model_validate(response_session)
+
+
+@router.get(
+    "/response-sessions/{session_id}/progress", response_model=ResponseSessionProgressRead
+)
+async def get_response_session_progress(
+    session_id: int, session: AsyncSession = Depends(get_db)
+):
+    service = ResponseService(session)
+    return await service.get_session_progress(session_id)
+
+
+@router.get(
+    "/response-sessions/{session_id}/responses", response_model=list[ResponseRead]
+)
+async def list_response_session_responses(
+    session_id: int, session: AsyncSession = Depends(get_db)
+):
+    service = ResponseService(session)
+    responses = await service.list_session_responses(session_id)
+    return [ResponseRead.model_validate(r) for r in responses]

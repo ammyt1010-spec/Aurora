@@ -1,6 +1,13 @@
-"""Instrumento protegido (harness §12, §56): CENSOPAS-COPSOQ is_system=True, ACTIVE."""
-
+import pytest
 from httpx import AsyncClient
+
+from app.core.security import create_access_token
+
+
+@pytest.fixture(autouse=True)
+def _auth_client(client: AsyncClient, seed_user):
+    token = create_access_token(seed_user.id)
+    client.headers["Authorization"] = f"Bearer {token}"
 
 
 async def test_locked_censopas_version_rejects_new_construct(

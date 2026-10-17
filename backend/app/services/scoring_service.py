@@ -575,7 +575,7 @@ class ScoringService:
 
         results: list[ConstructBaremResult] = []
         priority: list[tuple[float, int]] = []
-        suppress_groups = study.study_type == "CENSO"
+        suppress_groups = study.min_publishable_n > 1 or study.study_type == "CENSO"
         for construct_id, construct_scores in by_construct.items():
             construct = construct_scores[0].construct
             n_valid = len(construct_scores)

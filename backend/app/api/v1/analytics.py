@@ -26,6 +26,7 @@ from app.schemas.analytics import (
     FrequenciesRequest,
     KMeansRequest,
     LogisticRegressionRequest,
+    LongitudinalComparisonResponse,
     NormalityRequest,
     NormalityResponse,
     ReliabilityRequest,
@@ -226,3 +227,23 @@ async def get_analysis_run(run_id: int, session: AsyncSession = Depends(get_db))
     service = AnalysisService(session)
     run = await service.get_run(run_id)
     return AnalysisRunRead.model_validate(run)
+
+
+@router.get(
+    "/projects/{project_id}/analytics/longitudinal",
+    response_model=LongitudinalComparisonResponse,
+)
+async def project_longitudinal_comparison(
+    project_id: int,
+    study_ids: str | None = None,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    project = await session.get(Project, project_id)
+    if project is None:
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError(f"Proyecto {project_id} no encontrado")
+    await ProjectService(session).ensure_access(project, current_user, write=False)
+    parsed_ids = [int(sid.strip()) for sid in study_ids.split(",") if sid.strip()] if study_ids else None
+    service = AnalysisService(session)
+    return await service.get_longitudinal_comparison(project_id, parsed_ids)

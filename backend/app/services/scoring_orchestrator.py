@@ -53,6 +53,7 @@ async def run_canonical_scoring(
     run, summary = await ScoringService(session).run(
         study_id, require_explicit_scoring_rules=is_censopas
     )
-    if is_censopas:
+    session_units = await censopas_service._load_session_units(study_id)
+    if is_censopas or session_units:
         await censopas_service.build_unit_results(study_id, run.id)
     return run, summary

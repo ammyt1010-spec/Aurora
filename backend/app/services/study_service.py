@@ -330,6 +330,22 @@ class StudyService:
                 raise NotFoundError(
                     f"Versión de instrumento {study.instrument_version_id} no encontrada"
                 )
+            is_enterprise = bool(
+                study.settings.get("is_enterprise_evaluation")
+                or study.settings.get("enterprise_campaign")
+                or study.settings.get("is_enterprise")
+            )
+            if is_enterprise and not getattr(version.instrument, "is_system", False):
+                if version.status not in ("AUTHORIZED", "ACTIVE"):
+                    raise ValidationDomainError(
+                        f"No se puede abrir el estudio empresarial: la versión del instrumento '{version.version_code}' "
+                        f"no está en estado AUTHORIZED o ACTIVE (estado actual: {version.status})."
+                    )
+                if version.scoring_status != "CONFIGURED":
+                    raise ValidationDomainError(
+                        f"No se puede abrir el estudio empresarial: la versión del instrumento '{version.version_code}' "
+                        f"tiene scoring_status='{version.scoring_status}'. Debe estar en estado CONFIGURED."
+                    )
             snapshot_data["instrument_version"] = {
                 "id": version.id,
                 "version_code": version.version_code,
@@ -429,6 +445,46 @@ class StudyService:
                     for band in barem.bands
                 ],
             }
+
+        unit_types_stmt = (
+            select(StudyUnitType)
+            .where(StudyUnitType.study_id == study.id)
+            .order_by(StudyUnitType.sort_order, StudyUnitType.id)
+        )
+        unit_types = list((await self.session.execute(unit_types_stmt)).scalars().all())
+        unit_type_ids = [ut.id for ut in unit_types]
+        study_units: list[StudyUnit] = []
+        if unit_type_ids:
+            units_stmt = (
+                select(StudyUnit)
+                .where(StudyUnit.study_unit_type_id.in_(unit_type_ids))
+                .order_by(StudyUnit.study_unit_type_id, StudyUnit.name, StudyUnit.id)
+            )
+            study_units = list((await self.session.execute(units_stmt)).scalars().all())
+
+        snapshot_data["organizational_structure"] = {
+            "unit_types": [
+                {
+                    "id": ut.id,
+                    "code": ut.code,
+                    "name": ut.name,
+                    "is_sensitive": ut.is_sensitive,
+                    "sort_order": ut.sort_order,
+                }
+                for ut in unit_types
+            ],
+            "units": [
+                {
+                    "id": u.id,
+                    "study_unit_type_id": u.study_unit_type_id,
+                    "code": u.code,
+                    "name": u.name,
+                    "parent_id": u.parent_id,
+                    "is_active": u.is_active,
+                }
+                for u in study_units
+            ],
+        }
 
         payload_bytes = json.dumps(snapshot_data, sort_keys=True, default=str).encode("utf-8")
         sha256_hash = hashlib.sha256(payload_bytes).hexdigest()

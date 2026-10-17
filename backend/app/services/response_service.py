@@ -13,7 +13,11 @@ from app.models.study import StudyUnit, StudyUnitType
 from app.models.survey import SurveyQuestion
 from app.repositories.responses import ResponseRepository
 from app.repositories.studies import StudyRepository
-from app.schemas.responses import ResponseSessionCompleteRequest, ResponseUpsert
+from app.schemas.responses import (
+    ResponseSessionCompleteRequest,
+    ResponseSessionProgressRead,
+    ResponseUpsert,
+)
 from app.schemas.studies import ResponseSessionUnitsReplace
 from app.services.audit_service import AuditService
 from app.services.response_completion_policy import resolve_completion_policy
@@ -165,6 +169,12 @@ class ResponseService:
             raise ConflictError(
                 "La sesión ya fue completada; sus unidades organizacionales están congeladas."
             )
+        study = await self.study_repo.get(response_session.study_id)
+        if study and study.status != "OPEN":
+            raise ConflictError(
+                f"El estudio no admite modificaciones de asignación organizacional (estado: {study.status}).",
+                current_status=study.status,
+            )
         unit_ids = list(dict.fromkeys(payload.unit_ids))
         if len(unit_ids) != len(payload.unit_ids):
             raise ValidationDomainError("La asignación contiene unidades duplicadas.")
@@ -217,6 +227,15 @@ class ResponseService:
             raise ConflictError("La sesión ya fue completada; no admite más respuestas.")
 
         study = await self.study_repo.get(response_session.study_id)
+        if study.status != "OPEN":
+            raise ConflictError(
+                f"El estudio no admite nuevas respuestas (estado actual: {study.status}).",
+                current_status=study.status,
+            )
+        if study.end_at is not None:
+            end_at = study.end_at if study.end_at.tzinfo else study.end_at.replace(tzinfo=UTC)
+            if datetime.now(UTC) >= end_at:
+                raise ConflictError("El estudio ya alcanzó su fecha de cierre (end_at).")
         question = await self._get_question_in_survey(study.survey_id, question_id)
         selected_option = await self._resolve_option(question, payload)
         await self._validate_multi_options(question, payload)
@@ -318,3 +337,28 @@ class ResponseService:
         await self.session.commit()
         await self.session.refresh(response_session)
         return response_session
+
+    async def get_session_progress(self, response_session_id: int) -> ResponseSessionProgressRead:
+        response_session = await self._get_session(response_session_id)
+        study = await self.study_repo.get(response_session.study_id)
+        total_stmt = select(SurveyQuestion).where(SurveyQuestion.survey_id == study.survey_id)
+        total_questions = len((await self.session.execute(total_stmt)).scalars().all())
+        responses = await self.repo.list_by_session(response_session_id)
+        answered = sum(1 for r in responses if not r.is_missing)
+        completion_pct = round((answered / total_questions) * 100, 2) if total_questions else 0.0
+        can_resume = response_session.status != "COMPLETED" and study.status == "OPEN"
+        return ResponseSessionProgressRead(
+            response_session_id=response_session.id,
+            study_id=study.id,
+            status=response_session.status,
+            validation_status=response_session.validation_status,
+            total_questions=total_questions,
+            answered_questions=answered,
+            completion_pct=completion_pct,
+            is_completed=(response_session.status == "COMPLETED"),
+            can_resume=can_resume,
+        )
+
+    async def list_session_responses(self, response_session_id: int) -> list[Response]:
+        await self._get_session(response_session_id)
+        return await self.repo.list_by_session(response_session_id)

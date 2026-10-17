@@ -56,6 +56,9 @@ from app.schemas.analytics import (
     FrequenciesRequest,
     KMeansRequest,
     LogisticRegressionRequest,
+    LongitudinalComparisonResponse,
+    LongitudinalConstructTrend,
+    LongitudinalPoint,
     ReliabilityRequest,
 )
 from app.services.privacy_service import PrivacyService
@@ -849,4 +852,120 @@ class AnalysisService:
             n_valid=stats.get("n_valid"),
             numeric_value=stats.get("mean"),
             result_data=stats,
+        )
+
+    async def get_longitudinal_comparison(
+        self, project_id: int, study_ids: list[int] | None = None
+    ) -> LongitudinalComparisonResponse:
+        from collections import Counter
+        from app.models.study import Study
+        from app.services.scoring_service import ScoringService
+
+        stmt = select(Study).where(
+            Study.project_id == project_id, Study.instrument_version_id.is_not(None)
+        )
+        if study_ids:
+            stmt = stmt.where(Study.id.in_(study_ids))
+        stmt = stmt.order_by(Study.start_at.asc().nulls_last(), Study.id.asc())
+        studies = list((await self.session.execute(stmt)).scalars().all())
+
+        if not studies:
+            return LongitudinalComparisonResponse(
+                project_id=project_id,
+                total_studies_analyzed=0,
+                reference_signature=None,
+                constructs=[],
+            )
+
+        scoring_service = ScoringService(self.session)
+        study_overviews = []
+        for study in studies:
+            overview = await scoring_service.get_overview(study.id)
+            sig = f"{overview.instrument_version_id or 'none'}::{overview.barem_id or 'none'}"
+            study_overviews.append((study, overview, sig))
+
+        signatures = [sig for _, _, sig in study_overviews]
+        sig_counts = Counter(signatures)
+        reference_signature = sig_counts.most_common(1)[0][0] if sig_counts else None
+
+        construct_points: dict[str, dict] = {}
+        for study, overview, sig in study_overviews:
+            for res in overview.results:
+                code = res.construct_code or str(res.construct_id)
+                if code not in construct_points:
+                    construct_points[code] = {
+                        "id": res.construct_id,
+                        "code": code,
+                        "name": res.construct_name,
+                        "type": res.construct_type,
+                        "points": [],
+                    }
+                unfavorable_band = next(
+                    (b for b in res.bands if b.classification_code == "UNFAVORABLE"), None
+                )
+                favorable_band = next(
+                    (b for b in res.bands if b.classification_code == "FAVORABLE"), None
+                )
+                intermediate_band = next(
+                    (b for b in res.bands if b.classification_code == "INTERMEDIATE"), None
+                )
+                point = LongitudinalPoint(
+                    study_id=study.id,
+                    study_name=study.name,
+                    study_status=study.status,
+                    date=study.start_at,
+                    n_valid=res.n_valid,
+                    mean_score=res.mean_score,
+                    median_score=res.median_score,
+                    unfavorable_pct=unfavorable_band.pct if unfavorable_band else None,
+                    favorable_pct=favorable_band.pct if favorable_band else None,
+                    intermediate_pct=intermediate_band.pct if intermediate_band else None,
+                    suppressed=res.suppressed,
+                    signature=sig,
+                )
+                construct_points[code]["points"].append(point)
+
+        trends: list[LongitudinalConstructTrend] = []
+        for code, info in construct_points.items():
+            pts = info["points"]
+            comparable_pts = [p for p in pts if p.signature == reference_signature and not p.suppressed]
+            is_comparable = len(comparable_pts) >= 2
+            delta_unfavorable: float | None = None
+            delta_mean: float | None = None
+            trend_direction: str | None = None
+            if is_comparable:
+                first = comparable_pts[0]
+                last = comparable_pts[-1]
+                if last.unfavorable_pct is not None and first.unfavorable_pct is not None:
+                    delta_unfavorable = round(last.unfavorable_pct - first.unfavorable_pct, 4)
+                    if delta_unfavorable < -2.0:
+                        trend_direction = "IMPROVED"
+                    elif delta_unfavorable > 2.0:
+                        trend_direction = "WORSENED"
+                    else:
+                        trend_direction = "STABLE"
+                if last.mean_score is not None and first.mean_score is not None:
+                    delta_mean = round(last.mean_score - first.mean_score, 4)
+            else:
+                trend_direction = "NOT_COMPARABLE" if len(pts) > 1 else "BASELINE"
+
+            trends.append(
+                LongitudinalConstructTrend(
+                    construct_id=info["id"],
+                    construct_code=info["code"],
+                    construct_name=info["name"],
+                    construct_type=info["type"],
+                    points=pts,
+                    is_comparable=is_comparable,
+                    delta_unfavorable_pct=delta_unfavorable,
+                    delta_mean_score=delta_mean,
+                    trend_direction=trend_direction,
+                )
+            )
+
+        return LongitudinalComparisonResponse(
+            project_id=project_id,
+            total_studies_analyzed=len(studies),
+            reference_signature=reference_signature,
+            constructs=trends,
         )

@@ -88,3 +88,15 @@ class ResponseRead(BaseModel):
 
 class ResponseSessionCompleteRequest(BaseModel):
     exclusion_reason: str | None = None
+
+
+class ResponseSessionProgressRead(BaseModel):
+    response_session_id: int
+    study_id: int
+    status: str
+    validation_status: str | None = None
+    total_questions: int
+    answered_questions: int
+    completion_pct: float
+    is_completed: bool
+    can_resume: bool

@@ -745,7 +745,7 @@ class CensopasScoringService:
             .join(Construct, Construct.id == ConstructScore.construct_id)
             .where(
                 ConstructScore.analysis_run_id == analysis_run_id,
-                Construct.construct_type.in_(("DIMENSION", "SUBDIMENSION")),
+                Construct.construct_type.in_(("DIMENSION", "SUBDIMENSION", "FACTOR", "SCALE", "CONSTRUCT")),
             )
             .options(selectinload(ConstructScore.band))
         )
