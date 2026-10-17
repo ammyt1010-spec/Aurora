@@ -10,6 +10,7 @@ import { fetchProtectedBlob, downloadProtectedFile } from '../../../api/protecte
 import { getCensopasReadiness } from '../../../api/instruments.js';
 import {
   createReportPreview,
+  listReportTemplates,
   listStudyReports,
   getReportDownloadUrl,
   getReportPreviewPdfUrl,
@@ -23,6 +24,7 @@ import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 import StudySelector from '../../../components/colmena/StudySelector.jsx';
 import ReportBillingPanel from '../../../components/colmena/project/ReportBillingPanel.jsx';
+import ExecutiveReportDashboard from '../../../components/colmena/project/ExecutiveReportDashboard.jsx';
 import { getBillingPolicy, getOrders } from '../../../api/billing.js';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
 
@@ -49,6 +51,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   const [studyId, setStudyId] = useState(null);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [sections, setSections] = useState(SECTIONS.map((s) => s.key));
   const [reportMode, setReportMode] = useState('PROVISIONAL');
   const [outputFormat, setOutputFormat] = useState('PDF');
@@ -76,6 +79,10 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   });
 
   const studies = studiesData?.items || [];
+  const { data: reportTemplates = [] } = useQuery({
+    queryKey: ['enterprise-report-templates'],
+    queryFn: () => listReportTemplates(),
+  });
   const { data: billingPolicy } = useQuery({ queryKey: ['billing-policy'], queryFn: getBillingPolicy });
   const isPaymentRequired = billingPolicy?.enforced !== false;
   const { data: previousReports = [] } = useQuery({
@@ -106,15 +113,17 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     enabled: Boolean(study?.instrument_version_id),
   });
 
-  const currentConfig = { studyId, sections: [...sections].sort(), reportMode, outputFormat, selectedOrderId };
+  const currentConfig = { studyId, sections: [...sections].sort(), reportMode, outputFormat, selectedOrderId, selectedTemplateId };
 
   const previewMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (sample = false) =>
       createReportPreview(studyId, {
-        report_mode: reportMode,
-        output_format: outputFormat,
+        report_mode: sample ? 'SAMPLE' : reportMode,
+        is_sample_preview: Boolean(sample),
+        report_template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+        output_format: sample ? 'PDF' : outputFormat,
         sections,
-        billing_order_id: isPaymentRequired ? selectedOrderId : null,
+        billing_order_id: sample ? null : (isPaymentRequired ? selectedOrderId : null),
       }),
     onMutate: () => setPreviewState('GENERATING'),
     onSuccess: (data) => {
@@ -157,7 +166,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     if (previewState === 'READY' && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
       setPreviewState('STALE');
     }
-  }, [studyId, sections, reportMode, outputFormat, selectedOrderId]);
+  }, [studyId, sections, reportMode, outputFormat, selectedOrderId, selectedTemplateId]);
 
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
@@ -203,8 +212,10 @@ export default function ProjectReportsPage({ overrideProjectId }) {
       <PageHeader
         eyebrow="Reportes de evaluación — AURORA PRO"
         title={project.name}
-        description="Genera e imprime el Informe de Evaluación de Riesgos Psicosociales con membrete y logo institucional."
+        description="Configura informes técnicos de distintas disciplinas, revisa los indicadores empresariales y emite documentos con licencia."
       />
+
+      <ExecutiveReportDashboard studyId={studyId} />
 
       <div className="grid gap-6 md:grid-cols-[380px_1fr]">
         <div className="space-y-4">
@@ -289,7 +300,27 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                   resetPreview();
                 }}
               />
-              {studyId ? <CensopasReadinessPanel readiness={readiness} isLoading={isLoadingReadiness} /> : null}
+              {studyId && readiness?.is_censopas_instrument ? (
+                <CensopasReadinessPanel readiness={readiness} isLoading={isLoadingReadiness} />
+              ) : null}
+            </div>
+
+            <div>
+              <label htmlFor="report-template-selector" className="colmena-label mb-2 block">Plantilla profesional</label>
+              <select id="report-template-selector" className="colmena-input w-full"
+                value={selectedTemplateId}
+                onChange={(event) => {
+                  setSelectedTemplateId(event.target.value);
+                  resetPreview();
+                }}>
+                <option value="">Plantilla por defecto del instrumento</option>
+                {reportTemplates.filter((template) => template.status === 'ACTIVE').map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} · {template.discipline}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted">Las plantillas son gestionadas por el operador central y quedan asociadas al informe emitido.</p>
             </div>
 
             <div>
@@ -359,6 +390,15 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               <RefreshCw size={16} />
               Generar vista previa
             </Button>
+            <button type="button"
+              onClick={() => previewMutation.mutate(true)}
+              disabled={!studyId || previewState === 'GENERATING'}
+              className="w-full rounded-xl border border-border bg-surfaceSoft px-4 py-2.5 text-xs font-bold text-dark hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50">
+              Ver muestra PDF sin consumir licencia
+            </button>
+            <p className="text-[11px] text-muted">
+              La muestra lleva marca de agua, no tiene validez oficial y nunca habilita la descarga de un informe definitivo.
+            </p>
           </Card>
         </div>
 
@@ -387,6 +427,11 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                   Se modificaron parámetros. Haz clic en actualizar para regenerar la vista previa.
                 </p>
               ) : null}
+              {preview.is_sample && (
+                <p className="rounded-lg border border-amber/30 bg-amber/10 p-2 text-xs font-bold text-yellowDark">
+                  VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL · SIN CONSUMO DE LICENCIA
+                </p>
+              )}
               <div className="flex items-center justify-between text-xs text-muted">
                 <span>Páginas renderizadas: {preview.pages || '—'}</span>
                 {companyLogo ? (
@@ -411,9 +456,9 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 if (!preview) return;
                 setDownloadError(null);
                 try {
-                  const isPdf = outputFormat === 'PDF';
+                  const isPdf = Boolean(preview.is_sample) || outputFormat === 'PDF';
                   const url = isPdf ? getReportPreviewPdfUrl(preview.preview_id) : getReportDownloadUrl(preview.preview_id);
-                  await downloadProtectedFile(url, `aurora-reporte-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`);
+                  await downloadProtectedFile(url, `aurora-${preview.is_sample ? 'muestra-no-oficial' : 'reporte'}-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`);
                 } catch (error) {
                   setDownloadError(error.message);
                 }
@@ -423,7 +468,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               }`}
             >
               <Download size={16} />
-              Descargar {outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
+              Descargar {preview?.is_sample ? 'muestra PDF' : outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
             </button>
             {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p> : null}
           </div>
