@@ -368,12 +368,14 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 </button>
                 <button
                   type="button"
-                  disabled={!readiness?.ready_for_official_reporting}
+                  disabled={Boolean(readiness?.is_censopas_instrument) && !readiness?.ready_for_official_reporting}
                   onClick={() => setReportMode('OFFICIAL')}
                   className={'rounded-xl border p-3 text-left transition ' + (reportMode === 'OFFICIAL' ? 'border-turquoise bg-turquoise/5 ring-1 ring-turquoise/30' : 'border-border bg-surface') + ' disabled:cursor-not-allowed disabled:opacity-50'}
                 >
                   <ShieldCheck size={16} className="mb-1.5 text-turquoise" />
-                  <span className="block text-xs font-semibold text-dark">Informe con equivalencia metodológica verificada</span>
+                  <span className="block text-xs font-semibold text-dark">
+                    {readiness?.is_censopas_instrument ? 'Informe con equivalencia metodológica verificada' : 'Informe profesional de la metodología autorizada'}
+                  </span>
                 </button>
               </div>
             </div>
