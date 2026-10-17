@@ -16,6 +16,21 @@ async def operator_status(user: User = Depends(get_current_user)):
     return {"is_operator": is_platform_operator(user)}
 
 
+@router.get("/methods")
+async def list_methods(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
+    """Metodologías autorizadas para cotización y licenciamiento."""
+    from app.core.report_pricing import METHOD_LABELS, get_method_label
+    from app.models.billing import ReportTariff
+    from sqlalchemy import select
+
+    tariff_methods = (await db.execute(select(ReportTariff.method_code).where(ReportTariff.active.is_(True)).distinct())).scalars().all()
+    all_methods = dict(METHOD_LABELS)
+    for m in tariff_methods:
+        if m not in all_methods:
+            all_methods[m] = get_method_label(m)
+    return [{"code": k, "label": v} for k, v in all_methods.items()]
+
+
 @router.get("/tariffs", response_model=list[TariffRead])
 async def list_tariffs(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
     return await BillingService(db).list_tariffs()

@@ -9,7 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import metadata_field
 
-InstrumentVersionStatus = Literal["DRAFT", "TEST", "ACTIVE", "USED", "CLOSED", "LOCKED"]
+InstrumentVersionStatus = Literal[
+    "DRAFT", "VALIDATING", "AUTHORIZED", "TEST", "ACTIVE", "USED", "CLOSED", "LOCKED"
+]
+InstrumentStatus = Literal[
+    "DRAFT", "VALIDATING", "AUTHORIZED", "ACTIVE", "LOCKED", "ARCHIVED"
+]
 
 
 class InstrumentCreate(BaseModel):
@@ -19,11 +24,30 @@ class InstrumentCreate(BaseModel):
     code: str | None = None
     name: str = Field(min_length=1, max_length=255)
     instrument_type: str | None = None
+    discipline: str = "PSICOSOCIAL"
     description: str | None = None
+    author: str | None = None
     source_name: str | None = None
     source_url: str | None = None
+    reproduction_terms: str | None = None
+    method_code: str | None = None
     is_system: bool = False
+    status: str = "DRAFT"
     metadata: dict = Field(default_factory=dict)
+
+
+class InstrumentUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    instrument_type: str | None = None
+    discipline: str | None = None
+    description: str | None = None
+    author: str | None = None
+    source_name: str | None = None
+    source_url: str | None = None
+    reproduction_terms: str | None = None
+    method_code: str | None = None
+    status: str | None = None
+    metadata: dict | None = None
 
 
 class InstrumentRead(BaseModel):
@@ -35,9 +59,13 @@ class InstrumentRead(BaseModel):
     code: str | None
     name: str
     instrument_type: str | None
+    discipline: str = "PSICOSOCIAL"
     description: str | None
+    author: str | None = None
     source_name: str | None
     source_url: str | None
+    reproduction_terms: str | None = None
+    method_code: str | None = None
     is_system: bool
     status: str
     metadata: dict = metadata_field()
@@ -55,7 +83,10 @@ class InstrumentVersionCreate(BaseModel):
     valid_to: dt.date | None = None
     status: InstrumentVersionStatus = "DRAFT"
     source_reference: str | None = None
+    reproduction_restrictions: str | None = None
+    validation_notes: str | None = None
     config: dict = Field(default_factory=dict)
+    methodological_rules: dict = Field(default_factory=dict)
 
 
 class InstrumentVersionUpdate(BaseModel):
@@ -66,7 +97,10 @@ class InstrumentVersionUpdate(BaseModel):
     status: InstrumentVersionStatus | None = None
     scoring_status: str | None = None
     source_reference: str | None = None
+    reproduction_restrictions: str | None = None
+    validation_notes: str | None = None
     config: dict | None = None
+    methodological_rules: dict | None = None
 
 
 class InstrumentVersionRead(BaseModel):
@@ -81,11 +115,30 @@ class InstrumentVersionRead(BaseModel):
     status: str
     scoring_status: str
     source_reference: str | None
+    reproduction_restrictions: str | None = None
+    validation_notes: str | None = None
     config: dict
+    methodological_rules: dict = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MethodologicalValidationResult(BaseModel):
+    version_id: int
+    version_code: str
+    is_valid: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metrics: dict = Field(default_factory=dict)
+    status: str
+    scoring_status: str
+
+
+class InstrumentStatusUpdateRequest(BaseModel):
+    status: str
+    notes: str | None = None
 
 
 class EditableStatus(BaseModel):

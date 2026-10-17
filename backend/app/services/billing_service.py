@@ -105,7 +105,8 @@ class BillingService:
         return study, project, org
 
     async def _validate_method_for_study(self, study: Study, method_code: str) -> None:
-        """Prevent buying a cheaper method than the version actually evaluated."""
+        """Prevent buying a cheaper method than the version actually evaluated,
+        and verify that the instrument is authorized and configured methodologically."""
         if study.instrument_version_id is None:
             if get_settings().environment.lower() == "production":
                 raise ValidationDomainError("El estudio debe tener un instrumento versionado para cotizar.")
@@ -114,16 +115,43 @@ class BillingService:
         instrument = await self.db.get(Instrument, version.instrument_id) if version else None
         if instrument is None:
             raise ValidationDomainError("El instrumento del estudio no está disponible.")
+
+        # 1. Rechaza instrumentos no autorizados
+        if not instrument.is_system and getattr(instrument, "status", "DRAFT") not in {"AUTHORIZED", "ACTIVE"}:
+            raise ValidationDomainError("El instrumento seleccionado no cuenta con autorización corporativa para emisión de informes.")
+
+        # 2. Rechaza instrumentos que carezcan de configuración metodológica suficiente
+        scoring_status = getattr(version, "scoring_status", "NOT_CONFIGURED")
+        censopas_kind = (version.config or {}).get("censopas_version_kind")
+        if scoring_status not in {"CONFIGURED", "PARTIAL"} and not censopas_kind:
+            raise ValidationDomainError("El instrumento carece de configuración psicométrica/metodológica suficiente para ser evaluado.")
+
+        # 3. Resolución desacoplada de la metodología esperada
         code = (instrument.code or "").upper()
-        if code == "CENSOPAS_COPSOQ":
-            kind = str((version.config or {}).get("censopas_version_kind") or version.version_code).upper()
+        expected = None
+        if getattr(instrument, "method_code", None):
+            expected = instrument.method_code
+        elif (version.config or {}).get("method_code"):
+            expected = version.config["method_code"]
+        elif code == "CENSOPAS_COPSOQ":
+            kind = str(censopas_kind or version.version_code).upper()
             expected = "CENSOPAS_MEDIA" if kind in {"MEDIUM", "MEDIA"} else "CENSOPAS_CORTA" if kind in {"SHORT", "CORTA"} else None
         elif "SUSESO" in code or "ISTAS21" in code:
             expected = "SUSESO_ISTAS21_BREVE"
+        elif instrument.code:
+            expected = instrument.code
         else:
             raise ValidationDomainError("No existe un método tarifario autorizado para este instrumento.")
+
         if method_code != expected:
             raise ValidationDomainError("La metodología cotizada no corresponde al instrumento del estudio.")
+
+        # 4. Verificar que exista un tramo tarifario activo para el método
+        tariff_exists = (await self.db.execute(
+            select(ReportTariff.id).where(ReportTariff.method_code == expected, ReportTariff.active.is_(True)).limit(1)
+        )).scalar()
+        if not tariff_exists:
+            raise ValidationDomainError(f"No existe un tarifario activo autorizado por el operador para el método '{expected}'.")
 
     async def load_reference_tariffs(self, user: User) -> list[ReportTariff]:
         require_operator(user)
@@ -183,8 +211,13 @@ class BillingService:
         method_code: str = "SUSESO_ISTAS21_BREVE",
         headcount_source: str | None = None,
     ) -> ReportOrder:
-        if method_code not in METHOD_LABELS:
-            raise ValidationDomainError("Metodología de informe desconocida.")
+        is_known = method_code in METHOD_LABELS
+        if not is_known:
+            has_tariff = bool((await self.db.execute(
+                select(ReportTariff.id).where(ReportTariff.method_code == method_code, ReportTariff.active.is_(True)).limit(1)
+            )).scalar())
+            if not has_tariff:
+                raise ValidationDomainError("Metodología de informe desconocida.")
         if workers < 1:
             raise ValidationDomainError("La cantidad de trabajadores debe ser positiva.")
         study, project, org = await self._organization_admin(study_id, user)

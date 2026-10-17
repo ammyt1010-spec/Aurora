@@ -54,10 +54,15 @@ class InstrumentService:
             code=payload.code,
             name=payload.name,
             instrument_type=payload.instrument_type,
+            discipline=getattr(payload, "discipline", "PSICOSOCIAL") or "PSICOSOCIAL",
             description=payload.description,
+            author=getattr(payload, "author", None),
             source_name=payload.source_name,
             source_url=payload.source_url,
+            reproduction_terms=getattr(payload, "reproduction_terms", None),
+            method_code=getattr(payload, "method_code", None),
             is_system=payload.is_system,
+            status=getattr(payload, "status", "DRAFT") or "DRAFT",
             metadata_=payload.metadata,
         )
         instrument = await self.repo.create(instrument)
@@ -67,20 +72,49 @@ class InstrumentService:
         await self.session.commit()
         return instrument
 
-    async def get(self, instrument_id: int) -> Instrument:
+    async def get(
+        self, instrument_id: int, *, organization_id: int | None = None
+    ) -> Instrument:
         instrument = await self.repo.get(instrument_id)
         if instrument is None:
+            raise NotFoundError(f"Instrumento {instrument_id} no encontrado")
+        # Multi-tenant isolation: prevent cross-organization access to private instruments
+        if (
+            organization_id is not None
+            and instrument.organization_id is not None
+            and instrument.organization_id != organization_id
+            and not instrument.is_system
+        ):
             raise NotFoundError(f"Instrumento {instrument_id} no encontrado")
         return instrument
 
     async def list(
-        self, params: PageParams, *, project_id: int | None = None, owner_user_id: int | None = None
+        self,
+        params: PageParams,
+        *,
+        project_id: int | None = None,
+        owner_user_id: int | None = None,
+        organization_id: int | None = None,
+        discipline: str | None = None,
+        status: str | None = None,
+        search_query: str | None = None,
     ) -> Page[InstrumentRead]:
         if project_id is not None and await self.session.get(Project, project_id) is None:
             raise NotFoundError(f"Proyecto {project_id} no encontrado")
-        stmt = self.repo.list_stmt(project_id=project_id)
-        if project_id is None and owner_user_id is not None:
-            stmt = stmt.where(or_(Instrument.is_system.is_(True), Instrument.owner_user_id == owner_user_id))
+        stmt = self.repo.list_stmt(
+            project_id=project_id,
+            discipline=discipline,
+            status=status,
+            search_query=search_query,
+        )
+        if project_id is None:
+            conditions = [Instrument.is_system.is_(True)]
+            if organization_id is not None:
+                conditions.append(Instrument.organization_id == organization_id)
+                conditions.append(Instrument.organization_id.is_(None))
+            if owner_user_id is not None:
+                conditions.append(Instrument.owner_user_id == owner_user_id)
+            stmt = stmt.where(or_(*conditions))
         items, total = await paginate(self.session, stmt, params)
         return Page[InstrumentRead](
             items=[InstrumentRead.model_validate(item) for item in items],
@@ -89,12 +123,51 @@ class InstrumentService:
             total=total,
         )
 
+    async def update_instrument(
+        self, instrument_id: int, payload: Any, *, organization_id: int | None = None
+    ) -> Instrument:
+        instrument = await self.get(instrument_id, organization_id=organization_id)
+        data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else dict(payload)
+        for field, value in data.items():
+            if hasattr(instrument, field):
+                setattr(instrument, field, value)
+        await self.session.flush()
+        await self.audit.log(
+            action="INSTRUMENT_UPDATED",
+            entity_type="instrument",
+            entity_id=instrument.id,
+            after_data=data,
+        )
+        await self.session.commit()
+        await self.session.refresh(instrument)
+        return instrument
+
+    async def update_status(
+        self, instrument_id: int, status: str, notes: str | None = None, *, organization_id: int | None = None
+    ) -> Instrument:
+        instrument = await self.get(instrument_id, organization_id=organization_id)
+        instrument.status = status
+        if notes:
+            meta = dict(instrument.metadata_ or {})
+            meta["status_notes"] = notes
+            instrument.metadata_ = meta
+        await self.session.flush()
+        await self.audit.log(
+            action="INSTRUMENT_STATUS_CHANGED",
+            entity_type="instrument",
+            entity_id=instrument.id,
+            after_data={"status": status, "notes": notes},
+        )
+        await self.session.commit()
+        await self.session.refresh(instrument)
+        return instrument
+
     # --- Versions ------------------------------------------------------------
 
     async def create_version(
-        self, instrument_id: int, payload: InstrumentVersionCreate
+        self, instrument_id: int, payload: InstrumentVersionCreate, *, organization_id: int | None = None
     ) -> InstrumentVersion:
-        await self.get(instrument_id)
+        await self.get(instrument_id, organization_id=organization_id)
         version = InstrumentVersion(
             instrument_id=instrument_id,
             version_code=payload.version_code,
@@ -104,7 +177,10 @@ class InstrumentService:
             valid_to=payload.valid_to,
             status=payload.status,
             source_reference=payload.source_reference,
+            reproduction_restrictions=getattr(payload, "reproduction_restrictions", None),
+            validation_notes=getattr(payload, "validation_notes", None),
             config=payload.config,
+            methodological_rules=getattr(payload, "methodological_rules", {}) or {},
         )
         version = await self.repo.create_version(version)
         await self.audit.log(
@@ -115,20 +191,32 @@ class InstrumentService:
         await self.session.commit()
         return version
 
-    async def get_version(self, version_id: int) -> InstrumentVersion:
+    async def get_version(
+        self, version_id: int, *, organization_id: int | None = None
+    ) -> InstrumentVersion:
         version = await self.repo.get_version_with_instrument(version_id)
         if version is None:
             raise NotFoundError(f"Versión de instrumento {version_id} no encontrada")
+        if (
+            organization_id is not None
+            and version.instrument
+            and version.instrument.organization_id is not None
+            and version.instrument.organization_id != organization_id
+            and not version.instrument.is_system
+        ):
+            raise NotFoundError(f"Versión de instrumento {version_id} no encontrada")
         return version
 
-    async def list_versions(self, instrument_id: int) -> list[InstrumentVersion]:
-        await self.get(instrument_id)
+    async def list_versions(
+        self, instrument_id: int, *, organization_id: int | None = None
+    ) -> list[InstrumentVersion]:
+        await self.get(instrument_id, organization_id=organization_id)
         return await self.repo.list_versions(instrument_id)
 
     async def update_version(
-        self, version_id: int, payload: InstrumentVersionUpdate
+        self, version_id: int, payload: InstrumentVersionUpdate, *, organization_id: int | None = None
     ) -> InstrumentVersion:
-        version = await self.get_version(version_id)
+        version = await self.get_version(version_id, organization_id=organization_id)
         await InstrumentEditPolicy.can_edit_version(self.session, version.instrument, version)
 
         data = payload.model_dump(exclude_unset=True)
@@ -145,6 +233,22 @@ class InstrumentService:
         await self.session.commit()
         await self.session.refresh(version)
         return version
+
+    async def validate_version(
+        self, version_id: int, *, organization_id: int | None = None
+    ) -> MethodologicalValidationResult:
+        await self.get_version(version_id, organization_id=organization_id)
+        from app.services.methodology_validator import MethodologyValidator
+        validator = MethodologyValidator(self.session)
+        result = await validator.validate_version(version_id, persist_metrics=True)
+        await self.audit.log(
+            action="INSTRUMENT_VERSION_VALIDATED",
+            entity_type="instrument_version",
+            entity_id=version_id,
+            after_data={"is_valid": result.is_valid, "scoring_status": result.scoring_status},
+        )
+        await self.session.commit()
+        return result
 
     # --- Clonar / versionar (harness §13) -------------------------------------
 

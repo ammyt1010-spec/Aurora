@@ -18,6 +18,7 @@ import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
 import CustomInstrumentModal from '../../../components/colmena/instruments/CustomInstrumentModal.jsx';
+import MultidisciplinaryCatalog from '../../../components/colmena/instruments/MultidisciplinaryCatalog.jsx';
 
 const COUNT_BADGES = [
   ['question_count', 'preguntas'],
@@ -125,6 +126,7 @@ export default function ProjectInstrumentsPage() {
   const { projectId } = useParams();
   useActiveProject(projectId);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('multidisciplinary'); // 'multidisciplinary' | 'censopas'
 
   const { data: project, isLoading: isLoadingProject, error } = useQuery({
     queryKey: ['project', projectId],
@@ -150,46 +152,83 @@ export default function ProjectInstrumentsPage() {
   if (error) return <ErrorState message="No pudimos cargar el proyecto." />;
 
   const currentVersionId = Number(project?.metadata?.instrument_version_id || 0);
+  const currentStudyId = Number(project?.metadata?.study_id || 0);
   const currentVersionInCatalog = plans.some((plan) => plan.instrument_version_id === currentVersionId);
   const showUnlistedCurrentVersion =
     Boolean(currentVersionId) && !currentVersionInCatalog && activeInstrument?.versionId === currentVersionId;
 
   return (
-    <div className="colmena-page">
+    <div className="colmena-page space-y-6">
       <PageHeader
-        eyebrow="Instrumentos & Catálogo Metodológico"
-        title="Instrumentos de Medición Precargados"
-        description="Instrumentos estandarizados CENSOPAS-COPSOQ (Versiones corta y media) precargados y listos para la evaluación corporativa. Incluye soporte para nuevos factores extensibles."
+        eyebrow="Arquitectura Multidisciplinaria & Metodologías"
+        title="Catálogo de Instrumentos Empresariales"
+        description="Gestión integral de instrumentos multidisciplinarios: Ergonomía, Riesgos Psicosociales, Clima y Cultura, Seguridad Ocupacional y Burnout. Con auditoría metodológica y certificación de baremos."
         actions={
           <Button onClick={() => setIsModalOpen(true)} size="sm" type="button" className="bg-amber hover:bg-amber-dark">
-            <PlusCircle size={15} className="mr-1.5" /> Adaptar / Importar Nuevo Instrumento
+            <PlusCircle size={15} className="mr-1.5" /> Registrar Nuevo Instrumento
           </Button>
         }
       />
+
+      {/* Selector de Pestañas de Vista */}
+      <div className="flex border-b border-border">
+        <button
+          type="button"
+          onClick={() => setActiveTab('multidisciplinary')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold transition-colors ${
+            activeTab === 'multidisciplinary'
+              ? 'border-amber text-amber'
+              : 'border-transparent text-muted hover:text-dark'
+          }`}
+        >
+          <Sparkles size={16} /> Catálogo Multidisciplinario
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('censopas')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold transition-colors ${
+            activeTab === 'censopas'
+              ? 'border-amber text-amber'
+              : 'border-transparent text-muted hover:text-dark'
+          }`}
+        >
+          <ShieldCheck size={16} /> Planes Oficiales CENSOPAS
+        </button>
+      </div>
 
       {showUnlistedCurrentVersion ? (
         <CurrentVersionCard versionId={currentVersionId} versionCode={activeInstrument?.versionCode} />
       ) : null}
 
-      {isLoadingPlans ? (
-        <LoadingState label="Cargando planes disponibles..." />
-      ) : plans.length === 0 ? (
-        <Card>
-          <EmptyState
-            title="Todavía no hay planes oficiales publicados"
-            description="El backend no tiene ninguna versión CENSOPAS-COPSOQ activada. Ejecuta scripts/seed_censopas_official.py para publicar el Plan corto."
-          />
-        </Card>
+      {activeTab === 'multidisciplinary' ? (
+        <MultidisciplinaryCatalog
+          projectId={projectId}
+          currentStudyId={currentStudyId}
+          currentVersionId={currentVersionId}
+        />
       ) : (
-        <div className="flex flex-col gap-4">
-          {plans.map((plan) => (
-            <PlanCard
-              key={plan.instrument_version_id}
-              plan={plan}
-              isCurrent={plan.instrument_version_id === currentVersionId}
-            />
-          ))}
-        </div>
+        <>
+          {isLoadingPlans ? (
+            <LoadingState label="Cargando planes disponibles..." />
+          ) : plans.length === 0 ? (
+            <Card>
+              <EmptyState
+                title="Todavía no hay planes oficiales publicados"
+                description="El backend no tiene ninguna versión CENSOPAS-COPSOQ activada. Ejecuta scripts/seed_censopas_official.py para publicar el Plan corto."
+              />
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {plans.map((plan) => (
+                <PlanCard
+                  key={plan.instrument_version_id}
+                  plan={plan}
+                  isCurrent={plan.instrument_version_id === currentVersionId}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Banner de Extensibilidad Corporativa */}
@@ -202,12 +241,12 @@ export default function ProjectInstrumentsPage() {
             <div>
               <p className="font-bold text-dark">¿Necesitas medir otros factores de riesgo específicos?</p>
               <p className="text-xs text-muted">
-                Colmena 2.0 admite la incorporación de Burnout (MBI), Clima Ergonómico, Ciberestrés y escalas personalizadas.
+                AURORA Professional admite la incorporación de Burnout (MBI), Clima Ergonómico (ROSA/RULA), Seguridad Ocupacional y escalas personalizadas.
               </p>
             </div>
           </div>
           <Button size="sm" variant="secondary" onClick={() => setIsModalOpen(true)}>
-            Cargar Manifiesto
+            Importar Manifiesto
           </Button>
         </div>
       </Card>

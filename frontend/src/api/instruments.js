@@ -8,16 +8,46 @@ export function createProjectInstrument(projectId, payload) {
   return apiRequest(`/projects/${projectId}/instruments`, { method: 'POST', body: payload });
 }
 
-export function listInstruments({ page = 1, pageSize = 50 } = {}) {
-  return apiRequest(`/instruments?page=${page}&page_size=${pageSize}`);
+export function listDisciplines() {
+  return apiRequest('/instruments/disciplines');
 }
 
-export function listProjectInstruments(projectId, { page = 1, pageSize = 100 } = {}) {
-  return apiRequest(`/projects/${projectId}/instruments?page=${page}&page_size=${pageSize}`);
+export function listInstruments({ page = 1, pageSize = 50, discipline = null, status = null, query = null, organizationId = null } = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (discipline) params.append('discipline', discipline);
+  if (status) params.append('status', status);
+  if (query) params.append('query', query);
+  if (organizationId) params.append('organization_id', String(organizationId));
+  return apiRequest(`/instruments?${params.toString()}`);
 }
 
-export function getInstrument(instrumentId) {
-  return apiRequest(`/instruments/${instrumentId}`);
+export function listProjectInstruments(projectId, { page = 1, pageSize = 100, discipline = null, status = null, query = null } = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (discipline) params.append('discipline', discipline);
+  if (status) params.append('status', status);
+  if (query) params.append('query', query);
+  return apiRequest(`/projects/${projectId}/instruments?${params.toString()}`);
+}
+
+export function getInstrument(instrumentId, { organizationId = null } = {}) {
+  const params = organizationId ? `?organization_id=${organizationId}` : '';
+  return apiRequest(`/instruments/${instrumentId}${params}`);
+}
+
+export function updateInstrument(instrumentId, payload) {
+  return apiRequest(`/instruments/${instrumentId}`, { method: 'PATCH', body: payload });
+}
+
+export function updateInstrumentStatus(instrumentId, { status, notes = null }) {
+  return apiRequest(`/instruments/${instrumentId}/status`, { method: 'POST', body: { status, notes } });
+}
+
+export function validateInstrumentVersion(versionId) {
+  return apiRequest(`/instrument-versions/${versionId}/validate`, { method: 'POST' });
+}
+
+export function linkStudyInstrument(studyId, versionId) {
+  return apiRequest(`/studies/${studyId}/instruments/${versionId}`, { method: 'POST' });
 }
 
 export function createInstrumentVersion(instrumentId, payload) {
