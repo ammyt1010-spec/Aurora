@@ -32,13 +32,15 @@ def _isolated_synthetic_billing_test_gate(monkeypatch):
     monkeypatch.setattr(settings, "environment", "test")
     monkeypatch.setattr(settings, "allow_synthetic_test_bypass", True)
     monkeypatch.setattr(settings, "test_bypass_secret", _TEST_BYPASS_SECRET)
+    monkeypatch.setattr(settings, "billing_operator_user_id", None)
 
 from app.core.business_access import require_business_access, require_response_access
+from app.core.security import create_access_token, get_current_user, get_optional_current_user
 from app.main import app
 from app.models import Base
 from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
-from app.models.user import User
+from app.models.user import Organization, OrganizationMembership, User
 
 
 @pytest_asyncio.fixture
@@ -109,8 +111,15 @@ async def seed_user(session: AsyncSession) -> User:
 
 @pytest_asyncio.fixture
 async def seed_project(session: AsyncSession, seed_user: User) -> Project:
+    org = Organization(name="Empresa Principal", tax_id="20123456789")
+    session.add(org)
+    await session.flush()
+    session.add(
+        OrganizationMembership(organization_id=org.id, user_id=seed_user.id, role_code="OWNER")
+    )
     project = Project(
         owner_user_id=seed_user.id,
+        organization_id=org.id,
         name="Tesis de satisfacción académica",
         project_type="ACADEMIC",
         status="DRAFT",

@@ -7,6 +7,16 @@ METHOD_LABELS = {
     "CENSOPAS_CORTA": "CENSOPAS COPSOQ corta",
     "CENSOPAS_MEDIA": "CENSOPAS COPSOQ media",
 }
+
+
+def get_method_label(method_code: str) -> str:
+    """Retorna la etiqueta legible de cualquier metodología registrada o estándar."""
+    return METHOD_LABELS.get(method_code, method_code.replace("_", " ").title())
+
+
+def register_custom_method(method_code: str, label: str) -> None:
+    """Registra una nueva metodología autorizada en el catálogo en memoria."""
+    METHOD_LABELS[method_code] = label
 # (método, mínimo de trabajadores, máximo inclusivo, precio PEN o Cotizar)
 REFERENCE_WEB_TARIFFS = (
     ("SUSESO_ISTAS21_BREVE", 1, 100, "160.00"),

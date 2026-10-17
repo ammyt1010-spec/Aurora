@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.types import BigIntPK, JSONVariant
@@ -19,16 +19,22 @@ class ReportTariff(Base):
     )
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    instrument_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("instruments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     method_code: Mapped[str] = mapped_column(String(50), nullable=False, default="SUSESO_ISTAS21_BREVE")
     pricing_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="FIXED")
     min_workers: Mapped[int] = mapped_column(Integer, nullable=False)
     max_workers: Mapped[int | None] = mapped_column(Integer)
     price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="PEN")
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
     active: Mapped[bool] = mapped_column(nullable=False, default=True)
     updated_by_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    instrument = relationship("Instrument")
 
 
 class ReportOrder(Base):

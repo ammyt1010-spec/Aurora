@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from datetime import UTC, datetime
+
+from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import NotFoundError
+from app.core.config import get_settings
+from app.core.exceptions import AuthorizationError, InstrumentLockedError, NotFoundError, ValidationDomainError
 from app.core.pagination import Page, PageParams, paginate
 from app.models.construct import Construct, ConstructItem
-from app.models.instrument import Instrument, InstrumentVersion
+from app.models.instrument import INSTRUMENT_STATUSES, Instrument, InstrumentVersion
 from app.models.option_set import OptionSet, OptionSetOption
 from app.models.project import Project
 from app.models.question import Question
 from app.models.scoring import ScoringRule
+from app.models.study import Study
+from app.models.user import User
 from app.models.variable import Variable
 from app.repositories.instruments import InstrumentRepository
 from app.schemas.instruments import (
@@ -28,6 +33,7 @@ from app.schemas.instruments import (
     InstrumentVersionUpdate,
 )
 from app.services.audit_service import AuditService
+from app.services.billing_service import is_platform_operator
 from app.services.instrument_edit_policy import InstrumentEditPolicy
 
 
@@ -54,10 +60,15 @@ class InstrumentService:
             code=payload.code,
             name=payload.name,
             instrument_type=payload.instrument_type,
+            discipline=getattr(payload, "discipline", "PSICOSOCIAL") or "PSICOSOCIAL",
             description=payload.description,
+            author=getattr(payload, "author", None),
             source_name=payload.source_name,
             source_url=payload.source_url,
+            reproduction_terms=getattr(payload, "reproduction_terms", None),
+            method_code=getattr(payload, "method_code", None),
             is_system=payload.is_system,
+            status=getattr(payload, "status", "DRAFT") or "DRAFT",
             metadata_=payload.metadata,
         )
         instrument = await self.repo.create(instrument)
@@ -67,20 +78,49 @@ class InstrumentService:
         await self.session.commit()
         return instrument
 
-    async def get(self, instrument_id: int) -> Instrument:
+    async def get(
+        self, instrument_id: int, *, organization_id: int | None = None
+    ) -> Instrument:
         instrument = await self.repo.get(instrument_id)
         if instrument is None:
+            raise NotFoundError(f"Instrumento {instrument_id} no encontrado")
+        # Multi-tenant isolation: prevent cross-organization access to private instruments
+        if (
+            organization_id is not None
+            and instrument.organization_id is not None
+            and instrument.organization_id != organization_id
+            and not instrument.is_system
+        ):
             raise NotFoundError(f"Instrumento {instrument_id} no encontrado")
         return instrument
 
     async def list(
-        self, params: PageParams, *, project_id: int | None = None, owner_user_id: int | None = None
+        self,
+        params: PageParams,
+        *,
+        project_id: int | None = None,
+        owner_user_id: int | None = None,
+        organization_id: int | None = None,
+        discipline: str | None = None,
+        status: str | None = None,
+        search_query: str | None = None,
     ) -> Page[InstrumentRead]:
         if project_id is not None and await self.session.get(Project, project_id) is None:
             raise NotFoundError(f"Proyecto {project_id} no encontrado")
-        stmt = self.repo.list_stmt(project_id=project_id)
-        if project_id is None and owner_user_id is not None:
-            stmt = stmt.where(or_(Instrument.is_system.is_(True), Instrument.owner_user_id == owner_user_id))
+        stmt = self.repo.list_stmt(
+            project_id=project_id,
+            discipline=discipline,
+            status=status,
+            search_query=search_query,
+        )
+        if project_id is None:
+            conditions = [Instrument.is_system.is_(True)]
+            if organization_id is not None:
+                conditions.append(Instrument.organization_id == organization_id)
+                conditions.append(Instrument.organization_id.is_(None))
+            if owner_user_id is not None:
+                conditions.append(Instrument.owner_user_id == owner_user_id)
+            stmt = stmt.where(or_(*conditions))
         items, total = await paginate(self.session, stmt, params)
         return Page[InstrumentRead](
             items=[InstrumentRead.model_validate(item) for item in items],
@@ -89,12 +129,168 @@ class InstrumentService:
             total=total,
         )
 
+    async def update_instrument(
+        self,
+        instrument_id: int,
+        payload: Any,
+        *,
+        organization_id: int | None = None,
+        user: User | None = None,
+    ) -> Instrument:
+        instrument = await self.get(instrument_id, organization_id=organization_id)
+
+        # Bloqueo retroactivo P0: si alguna versión del instrumento fue utilizada en evaluaciones concluidas
+        stmt_closed = select(exists().where(
+            Study.instrument_version_id == InstrumentVersion.id,
+            InstrumentVersion.instrument_id == instrument_id,
+            Study.status.in_(("CLOSED", "ARCHIVED")),
+        ))
+        has_closed = bool((await self.session.execute(stmt_closed)).scalar())
+
+        data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else dict(payload)
+        rectification_reason = data.pop("rectification_reason", None)
+        is_rectification = False
+        rectification_entry = None
+
+        if has_closed:
+            structural_fields = {"method_code", "discipline", "is_system", "status"}
+            tampered = set(data.keys()) & structural_fields
+            if tampered:
+                raise InstrumentLockedError(
+                    f"No se pueden modificar los campos estructurales {tampered} de un instrumento con evaluaciones concluidas.",
+                    editable=False,
+                    reason="EVALUATION_CLOSED_RETROACTIVE_LOCK",
+                )
+            if data:
+                if not rectification_reason or len(rectification_reason.strip()) < 5:
+                    raise InstrumentLockedError(
+                        "Los metadatos documentales de un instrumento con evaluaciones concluidas están bloqueados. Requiere una rectificación administrativa justificada ('rectification_reason').",
+                        editable=False,
+                        reason="EVALUATION_CLOSED_RETROACTIVE_LOCK",
+                    )
+                is_operator = user is not None and is_platform_operator(user)
+                if not is_operator:
+                    raise AuthorizationError(
+                        "Solo un operador central o administrador autorizado puede rectificar metadatos documentales de un instrumento con evaluaciones concluidas."
+                    )
+                is_rectification = True
+                meta = dict(instrument.metadata_ or {})
+                history = list(meta.get("administrative_rectifications", []))
+                previous_values = {field: getattr(instrument, field, None) for field in data.keys()}
+                rectification_entry = {
+                    "rectified_at": datetime.now(UTC).isoformat(),
+                    "rectified_by_user_id": user.id if user else None,
+                    "reason": rectification_reason.strip(),
+                    "previous_values": previous_values,
+                    "new_values": dict(data),
+                }
+                history.append(rectification_entry)
+                meta["administrative_rectifications"] = history
+                instrument.metadata_ = meta
+
+        if "status" in data:
+            new_status = (data["status"] or "DRAFT").upper()
+            is_operator = user is not None and is_platform_operator(user)
+            if new_status == "AUTHORIZED" and not is_operator:
+                raise AuthorizationError("Solo el operador central o comité metodológico puede autorizar un instrumento.")
+
+        for field, value in data.items():
+            if hasattr(instrument, field):
+                setattr(instrument, field, value)
+        await self.session.flush()
+        if is_rectification:
+            await self.audit.log(
+                action="INSTRUMENT_ADMINISTRATIVE_RECTIFICATION",
+                entity_type="instrument",
+                entity_id=instrument.id,
+                user_id=user.id if user else None,
+                after_data=rectification_entry,
+            )
+        else:
+            await self.audit.log(
+                action="INSTRUMENT_UPDATED",
+                entity_type="instrument",
+                entity_id=instrument.id,
+                user_id=user.id if user else None,
+                after_data=data,
+            )
+        await self.session.commit()
+        await self.session.refresh(instrument)
+        return instrument
+
+    async def update_status(
+        self,
+        instrument_id: int,
+        status: str,
+        notes: str | None = None,
+        *,
+        organization_id: int | None = None,
+        user: User | None = None,
+    ) -> Instrument:
+        instrument = await self.get(instrument_id, organization_id=organization_id)
+
+        # Bloqueo retroactivo P0
+        stmt_closed = select(exists().where(
+            Study.instrument_version_id == InstrumentVersion.id,
+            InstrumentVersion.instrument_id == instrument_id,
+            Study.status.in_(("CLOSED", "ARCHIVED")),
+        ))
+        has_closed = bool((await self.session.execute(stmt_closed)).scalar())
+        if has_closed:
+            raise InstrumentLockedError(
+                "No se puede alterar el estado de un instrumento con evaluaciones concluidas.",
+                editable=False,
+                reason="EVALUATION_CLOSED_RETROACTIVE_LOCK",
+            )
+
+        is_operator = user is not None and is_platform_operator(user)
+
+        target_status = status.upper() if status else "DRAFT"
+        if target_status not in INSTRUMENT_STATUSES:
+            raise ValidationDomainError(f"Estado de instrumento inválido: {target_status}")
+
+        if target_status == "AUTHORIZED":
+            if not is_operator:
+                raise AuthorizationError("Solo el operador central o comité metodológico puede autorizar un instrumento.")
+            stmt_versions = select(InstrumentVersion).where(InstrumentVersion.instrument_id == instrument_id)
+            versions = (await self.session.execute(stmt_versions)).scalars().all()
+            if not any(v.scoring_status == "CONFIGURED" for v in versions) and not instrument.is_system:
+                raise ValidationDomainError(
+                    "No se puede autorizar un instrumento cuyas versiones carezcan de configuración psicométrica completa (scoring_status=CONFIGURED)."
+                )
+
+        instrument.status = target_status
+        if notes:
+            meta = dict(instrument.metadata_ or {})
+            meta["status_notes"] = notes
+            instrument.metadata_ = meta
+        await self.session.flush()
+        await self.audit.log(
+            action="INSTRUMENT_STATUS_CHANGED",
+            entity_type="instrument",
+            entity_id=instrument.id,
+            after_data={"status": target_status, "notes": notes},
+        )
+        await self.session.commit()
+        await self.session.refresh(instrument)
+        return instrument
+
     # --- Versions ------------------------------------------------------------
 
     async def create_version(
-        self, instrument_id: int, payload: InstrumentVersionCreate
+        self,
+        instrument_id: int,
+        payload: InstrumentVersionCreate,
+        *,
+        organization_id: int | None = None,
+        user: User | None = None,
     ) -> InstrumentVersion:
-        await self.get(instrument_id)
+        instrument = await self.get(instrument_id, organization_id=organization_id)
+        target_status = (payload.status or "DRAFT").upper()
+        if user is not None and target_status in ("AUTHORIZED", "ACTIVE"):
+            InstrumentEditPolicy.validate_version_status_transition(
+                instrument, None, target_status, user
+            )
         version = InstrumentVersion(
             instrument_id=instrument_id,
             version_code=payload.version_code,
@@ -102,54 +298,182 @@ class InstrumentService:
             edition=payload.edition,
             valid_from=payload.valid_from,
             valid_to=payload.valid_to,
-            status=payload.status,
+            status=target_status,
             source_reference=payload.source_reference,
+            reproduction_restrictions=getattr(payload, "reproduction_restrictions", None),
+            validation_notes=getattr(payload, "validation_notes", None),
             config=payload.config,
+            methodological_rules=getattr(payload, "methodological_rules", {}) or {},
         )
         version = await self.repo.create_version(version)
         await self.audit.log(
             action="INSTRUMENT_VERSION_CREATED",
             entity_type="instrument_version",
             entity_id=version.id,
+            user_id=user.id if user else None,
         )
         await self.session.commit()
         return version
 
-    async def get_version(self, version_id: int) -> InstrumentVersion:
+    async def get_version(
+        self, version_id: int, *, organization_id: int | None = None
+    ) -> InstrumentVersion:
         version = await self.repo.get_version_with_instrument(version_id)
         if version is None:
             raise NotFoundError(f"Versión de instrumento {version_id} no encontrada")
+        if (
+            organization_id is not None
+            and version.instrument
+            and version.instrument.organization_id is not None
+            and version.instrument.organization_id != organization_id
+            and not version.instrument.is_system
+        ):
+            raise NotFoundError(f"Versión de instrumento {version_id} no encontrada")
         return version
 
-    async def list_versions(self, instrument_id: int) -> list[InstrumentVersion]:
-        await self.get(instrument_id)
+    async def list_versions(
+        self, instrument_id: int, *, organization_id: int | None = None
+    ) -> list[InstrumentVersion]:
+        await self.get(instrument_id, organization_id=organization_id)
         return await self.repo.list_versions(instrument_id)
 
     async def update_version(
-        self, version_id: int, payload: InstrumentVersionUpdate
+        self,
+        version_id: int,
+        payload: InstrumentVersionUpdate,
+        *,
+        organization_id: int | None = None,
+        user: User | None = None,
     ) -> InstrumentVersion:
-        version = await self.get_version(version_id)
-        await InstrumentEditPolicy.can_edit_version(self.session, version.instrument, version)
+        version = await self.get_version(version_id, organization_id=organization_id)
+
+        stmt_closed = select(exists().where(
+            Study.instrument_version_id == version_id,
+            Study.status.in_(("CLOSED", "ARCHIVED")),
+        ))
+        has_closed = bool((await self.session.execute(stmt_closed)).scalar())
 
         data = payload.model_dump(exclude_unset=True)
+        rectification_reason = data.pop("rectification_reason", None)
+        is_rectification = False
+        rectification_entry = None
+
+        if has_closed:
+            structural_fields = {"version_code", "config", "methodological_rules", "scoring_status", "status"}
+            tampered_structural = set(data.keys()) & structural_fields
+            if tampered_structural:
+                raise InstrumentLockedError(
+                    f"No se pueden modificar reglas metodológicas o configuraciones psicométricas {tampered_structural} de una versión con evaluaciones concluidas.",
+                    editable=False,
+                    reason="EVALUATION_CLOSED_RETROACTIVE_LOCK",
+                )
+            if data:
+                if not rectification_reason or len(rectification_reason.strip()) < 5:
+                    raise InstrumentLockedError(
+                        "Los metadatos documentales de una versión con evaluaciones concluidas están bloqueados. Requiere una rectificación administrativa justificada ('rectification_reason').",
+                        editable=False,
+                        reason="EVALUATION_CLOSED_RETROACTIVE_LOCK",
+                    )
+                is_operator = user is not None and is_platform_operator(user)
+                if not is_operator:
+                    raise AuthorizationError(
+                        "Solo un operador central o administrador autorizado puede rectificar metadatos documentales de una versión con evaluaciones concluidas."
+                    )
+                is_rectification = True
+                cfg = dict(version.config or {})
+                history = list(cfg.get("administrative_rectifications", []))
+                previous_values = {}
+                for field in data.keys():
+                    val = getattr(version, field, None)
+                    previous_values[field] = val.isoformat() if hasattr(val, "isoformat") else val
+                new_values = {}
+                for field, val in data.items():
+                    new_values[field] = val.isoformat() if hasattr(val, "isoformat") else val
+
+                rectification_entry = {
+                    "rectified_at": datetime.now(UTC).isoformat(),
+                    "rectified_by_user_id": user.id if user else None,
+                    "reason": rectification_reason.strip(),
+                    "previous_values": previous_values,
+                    "new_values": new_values,
+                }
+                history.append(rectification_entry)
+                cfg["administrative_rectifications"] = history
+                version.config = cfg
+        else:
+            await InstrumentEditPolicy.can_edit_version(self.session, version.instrument, version)
+
+            if "status" in data:
+                InstrumentEditPolicy.validate_version_status_transition(
+                    version.instrument, version, data["status"], user
+                )
+
+            if "scoring_status" in data:
+                is_operator = user is not None and is_platform_operator(user)
+                if not is_operator:
+                    raise AuthorizationError(
+                        "El estado de puntuación no puede asignarse manualmente; se determina mediante validación metodológica autorizada."
+                    )
+
         for field, value in data.items():
             setattr(version, field, value)
 
         await self.session.flush()
-        await self.audit.log(
-            action="INSTRUMENT_VERSION_UPDATED",
-            entity_type="instrument_version",
-            entity_id=version.id,
-            after_data=data,
-        )
+        if is_rectification:
+            await self.audit.log(
+                action="INSTRUMENT_VERSION_ADMINISTRATIVE_RECTIFICATION",
+                entity_type="instrument_version",
+                entity_id=version.id,
+                user_id=user.id if user else None,
+                after_data=rectification_entry,
+            )
+        else:
+            await self.audit.log(
+                action="INSTRUMENT_VERSION_UPDATED",
+                entity_type="instrument_version",
+                entity_id=version.id,
+                user_id=user.id if user else None,
+                after_data=data,
+            )
         await self.session.commit()
         await self.session.refresh(version)
         return version
 
+    async def validate_version(
+        self,
+        version_id: int,
+        *,
+        organization_id: int | None = None,
+        user: User | None = None,
+    ) -> MethodologicalValidationResult:
+        await self.get_version(version_id, organization_id=organization_id)
+        from app.services.methodology_validator import MethodologyValidator
+        validator = MethodologyValidator(self.session)
+        has_closed = await InstrumentEditPolicy._has_closed_study(self.session, version_id)
+        result = await validator.validate_version(version_id, persist_metrics=not has_closed)
+        if has_closed:
+            result.warnings.append(
+                "Esta versión pertenece a evaluaciones concluidas y sus metadatos históricos permanecen inmutables (EVALUATION_CLOSED_RETROACTIVE_LOCK)."
+            )
+            result.metrics["historical_version_locked"] = True
+        await self.audit.log(
+            action="INSTRUMENT_VERSION_VALIDATED",
+            entity_type="instrument_version",
+            entity_id=version_id,
+            after_data={"is_valid": result.is_valid, "scoring_status": result.scoring_status, "historical_locked": has_closed},
+        )
+        await self.session.commit()
+        return result
+
     # --- Clonar / versionar (harness §13) -------------------------------------
 
     async def clone_version(
-        self, instrument_id: int, version_id: int, payload: InstrumentVersionCloneRequest
+        self,
+        instrument_id: int,
+        version_id: int,
+        payload: InstrumentVersionCloneRequest,
+        *,
+        organization_id: int | None = None,
     ) -> InstrumentVersion:
         """Clona una versión completa generando IDs nuevos.
 
@@ -158,7 +482,7 @@ class InstrumentService:
         destruir la versión anterior (§13, §56). Transaccional (§49): si algo
         falla a mitad de copia, se hace rollback completo.
         """
-        source = await self.get_version(version_id)
+        source = await self.get_version(version_id, organization_id=organization_id)
         if source.instrument_id != instrument_id:
             raise NotFoundError("La versión no pertenece a este instrumento")
 

@@ -6,8 +6,30 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, PublicIdMixin, TimestampMixin
 from app.models.types import BigIntPK, JSONVariant
 
-# Estados válidos de instrument_version (harness §42): DRAFT, TEST, ACTIVE, USED, CLOSED, LOCKED.
-INSTRUMENT_VERSION_STATUSES = ("DRAFT", "TEST", "ACTIVE", "USED", "CLOSED", "LOCKED")
+# Disciplinas soportadas para la arquitectura multidisciplinaria (PR #13)
+INSTRUMENT_DISCIPLINES = (
+    "PSICOSOCIAL",
+    "ERGONOMIA",
+    "CLIMA_ORGANIZACIONAL",
+    "SEGURIDAD_SALUD",
+    "LIDERAZGO_BURNOUT",
+    "OTRO",
+)
+
+# Estados del instrumento en catálogo empresarial
+INSTRUMENT_STATUSES = ("DRAFT", "VALIDATING", "AUTHORIZED", "ACTIVE", "LOCKED", "ARCHIVED")
+
+# Estados válidos de instrument_version (harness §42): DRAFT, VALIDATING, AUTHORIZED, TEST, ACTIVE, USED, CLOSED, LOCKED.
+INSTRUMENT_VERSION_STATUSES = (
+    "DRAFT",
+    "VALIDATING",
+    "AUTHORIZED",
+    "TEST",
+    "ACTIVE",
+    "USED",
+    "CLOSED",
+    "LOCKED",
+)
 
 
 class Instrument(Base, PublicIdMixin, TimestampMixin):
@@ -19,14 +41,20 @@ class Instrument(Base, PublicIdMixin, TimestampMixin):
     )
     owner_user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"))
     organization_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("organizations.id")
+        BigInteger, ForeignKey("organizations.id"), index=True
     )
     code: Mapped[str | None] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     instrument_type: Mapped[str | None] = mapped_column(String(80))
+    discipline: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="PSICOSOCIAL"
+    )
     description: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(255))
     source_name: Mapped[str | None] = mapped_column(String(255))
     source_url: Mapped[str | None] = mapped_column(Text)
+    reproduction_terms: Mapped[str | None] = mapped_column(Text)
+    method_code: Mapped[str | None] = mapped_column(String(50))
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT")
     metadata_: Mapped[dict] = mapped_column(
@@ -62,7 +90,12 @@ class InstrumentVersion(Base, PublicIdMixin, TimestampMixin):
     dimension_count: Mapped[int | None] = mapped_column()
     subdimension_count: Mapped[int] = mapped_column(nullable=False, default=0)
     source_reference: Mapped[str | None] = mapped_column(Text)
+    reproduction_restrictions: Mapped[str | None] = mapped_column(Text)
+    validation_notes: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict] = mapped_column(JSONVariant, nullable=False, default=dict)
+    methodological_rules: Mapped[dict] = mapped_column(
+        JSONVariant, nullable=False, default=dict
+    )
 
     instrument: Mapped[Instrument] = relationship(back_populates="versions")
     questions: Mapped[list["Question"]] = relationship(  # noqa: F821

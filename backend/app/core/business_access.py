@@ -28,6 +28,7 @@ from app.models.study import Study, StudyUnitType
 from app.models.survey import Survey
 from app.models.user import OrganizationMembership, User
 from app.models.variable import Variable
+from app.services.billing_service import is_platform_operator
 from app.services.project_service import ProjectService
 
 
@@ -49,6 +50,8 @@ async def _study(db: AsyncSession, study_id: int, user: User, write: bool) -> No
 
 
 async def _instrument(db: AsyncSession, instrument_id: int, user: User, write: bool) -> None:
+    if is_platform_operator(user):
+        return
     item = await _get(db, Instrument, instrument_id)
     if item.project_id is not None:
         await _project(db, item.project_id, user, write)
@@ -57,8 +60,6 @@ async def _instrument(db: AsyncSession, instrument_id: int, user: User, write: b
         if write:
             raise AuthorizationError("Los instrumentos del sistema son de solo lectura.")
         return
-    if item.owner_user_id == user.id:
-        return
     if item.organization_id is not None:
         membership = (await db.execute(select(OrganizationMembership).where(
             OrganizationMembership.organization_id == item.organization_id,
@@ -66,6 +67,9 @@ async def _instrument(db: AsyncSession, instrument_id: int, user: User, write: b
         ))).scalar_one_or_none()
         if membership is not None and (not write or membership.role_code in {"OWNER", "ADMIN"}):
             return
+        raise AuthorizationError("No tienes acceso a este instrumento de otra empresa.")
+    if item.owner_user_id == user.id:
+        return
     raise AuthorizationError("No tienes acceso a este instrumento.")
 
 
@@ -197,6 +201,15 @@ async def validate_payload_references(
             if field in {"owner_user_id", "created_by_user_id", "requested_by_user_id"}:
                 if int(value) != user.id:
                     raise AuthorizationError("No puedes asignar otro usuario como autor.")
+            elif field == "project_id":
+                await _project(db, int(value), user, write=True)
+            elif field == "organization_id":
+                membership = (await db.execute(select(OrganizationMembership).where(
+                    OrganizationMembership.organization_id == int(value),
+                    OrganizationMembership.user_id == user.id,
+                ))).scalar_one_or_none()
+                if membership is None or (write and membership.role_code not in {"OWNER", "ADMIN"}):
+                    raise AuthorizationError("No tienes permisos suficientes en esta organización.")
             elif field in _REFERENCE_MODEL:
                 await check_ref(field, int(value))
             elif field in _REFERENCE_COLLECTION and isinstance(value, list):
@@ -219,7 +232,22 @@ async def require_business_access(
     """Fail closed for unknown resource IDs; never trust ids in the request body."""
     p = request.path_params
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
-    if "study_id" in p:
+    if "study_id" in p and "version_id" in p:
+        study = await _get(db, Study, int(p["study_id"]))
+        await _study(db, study.id, user, write)
+        version = await _get(db, InstrumentVersion, int(p["version_id"]))
+        instrument = await _get(db, Instrument, version.instrument_id)
+        if not instrument.is_system:
+            project = await _get(db, Project, study.project_id)
+            if instrument.project_id is not None and instrument.project_id != study.project_id:
+                raise AuthorizationError("El instrumento pertenece a otro proyecto.")
+            if instrument.organization_id is not None and project.organization_id is not None and instrument.organization_id != project.organization_id:
+                raise AuthorizationError("El instrumento pertenece a otra empresa.")
+        await _version(db, version.id, user, write=False)
+    elif "instrument_id" in p and "version_id" in p:
+        await _instrument(db, int(p["instrument_id"]), user, write)
+        await _version(db, int(p["version_id"]), user, write=False)
+    elif "study_id" in p:
         await _study(db, int(p["study_id"]), user, write)
     elif "project_id" in p:
         await _project(db, int(p["project_id"]), user, write)
@@ -245,7 +273,10 @@ async def require_business_access(
     elif "version_id" in p:
         await _version(db, int(p["version_id"]), user, write)
     elif "instrument_id" in p:
-        await _instrument(db, int(p["instrument_id"]), user, write)
+        if request.url.path.endswith("/status") and is_platform_operator(user):
+            pass
+        else:
+            await _instrument(db, int(p["instrument_id"]), user, write)
     elif "construct_id" in p:
         await _version(db, (await _get(db, Construct, int(p["construct_id"]))).instrument_version_id, user, write)
     elif "barem_id" in p:

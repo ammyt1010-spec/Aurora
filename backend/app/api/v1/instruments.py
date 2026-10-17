@@ -1,21 +1,30 @@
-from __future__ import annotations
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.security import get_optional_current_user
-from app.models.user import User
+from app.core.exceptions import AuthenticationError, AuthorizationError, ConflictError, NotFoundError
+from app.core.security import get_current_user, get_optional_current_user
+from app.core.business_access import _project, _study
+from app.models.instrument import INSTRUMENT_DISCIPLINES, INSTRUMENT_STATUSES, Instrument, InstrumentVersion
+from app.models.project import Project
+from app.models.study import Study
+from app.models.user import OrganizationMembership, User
+from sqlalchemy.orm import selectinload
 from app.core.pagination import Page, PageParams, page_params
 from app.schemas.instruments import (
     ConstructMatrix,
     InstrumentCreate,
     InstrumentRead,
+    InstrumentStatusUpdateRequest,
     InstrumentTree,
+    InstrumentUpdate,
     InstrumentVersionCloneRequest,
     InstrumentVersionCreate,
     InstrumentVersionRead,
     InstrumentVersionUpdate,
+    MethodologicalValidationResult,
 )
 from app.schemas.questions import (
     OptionSetCreate,
@@ -26,20 +35,89 @@ from app.schemas.questions import (
     QuestionRead,
     QuestionUpdate,
 )
+from app.services.billing_service import is_platform_operator
 from app.services.instrument_service import InstrumentService
 from app.services.question_service import QuestionService
 
 router = APIRouter(tags=["instruments"])
 
 
+async def _resolve_user_org_id(session: AsyncSession, user: User | None, explicit_org_id: int | None = None) -> int | None:
+    if user is None:
+        return None
+    is_operator = is_platform_operator(user)
+    if explicit_org_id is not None:
+        if is_operator:
+            return explicit_org_id
+        stmt = select(OrganizationMembership).where(
+            OrganizationMembership.user_id == user.id,
+            OrganizationMembership.organization_id == explicit_org_id,
+        )
+        membership = (await session.execute(stmt)).scalar_one_or_none()
+        if membership is None:
+            raise AuthorizationError("No tienes acceso a la organización solicitada.")
+        return explicit_org_id
+
+    stmt = select(OrganizationMembership.organization_id).where(OrganizationMembership.user_id == user.id).limit(1)
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+# --- Catálogo multidisciplinario y disciplinas ----------------------------------
+
+
+@router.get("/instruments/disciplines")
+async def list_disciplines():
+    """Catálogo oficial de disciplinas metodológicas soportadas por AURORA."""
+    labels = {
+        "PSICOSOCIAL": "Riesgos Psicosociales (CENSOPAS / SUSESO / ISTAS21)",
+        "ERGONOMIA": "Ergonomía y Factores Físicos (ROSA, RULA, REBA)",
+        "CLIMA_ORGANIZACIONAL": "Clima Organizacional y Cultura",
+        "SEGURIDAD_SALUD": "Seguridad y Salud en el Trabajo (NOSACQ-50)",
+        "LIDERAZGO_BURNOUT": "Liderazgo, Engagement y Burnout (MBI)",
+        "OTRO": "Otras Escalas Corporativas",
+    }
+    return [
+        {"code": code, "name": labels.get(code, code.replace("_", " ").title())}
+        for code in INSTRUMENT_DISCIPLINES
+    ]
+
+
 # --- Instruments ---------------------------------------------------------------
 
 
 @router.post("/instruments", response_model=InstrumentRead, status_code=201)
-async def create_instrument(payload: InstrumentCreate, session: AsyncSession = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
+async def create_instrument(
+    payload: InstrumentCreate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     service = InstrumentService(session)
-    safe_payload = payload if current_user is None else payload.model_copy(update={"owner_user_id": current_user.id, "project_id": None, "organization_id": None, "is_system": False})
-    instrument = await service.create(safe_payload)
+    is_operator = is_platform_operator(current_user)
+
+    resolved_project_id = payload.project_id
+    if resolved_project_id is not None:
+        project = await session.get(Project, resolved_project_id)
+        if project is None:
+            raise NotFoundError(f"Proyecto {resolved_project_id} no encontrado")
+        await _project(session, resolved_project_id, current_user, write=True)
+        user_org_id = project.organization_id
+    else:
+        user_org_id = await _resolve_user_org_id(session, current_user, payload.organization_id)
+
+    initial_status = (payload.status or "DRAFT").upper()
+    if initial_status == "AUTHORIZED" and not is_operator:
+        raise AuthorizationError("Solo el operador central o comité metodológico puede autorizar un instrumento.")
+
+    safe_payload = payload.model_copy(
+        update={
+            "owner_user_id": current_user.id,
+            "project_id": resolved_project_id,
+            "organization_id": user_org_id,
+            "is_system": payload.is_system if is_operator else False,
+            "status": initial_status,
+        }
+    )
+    instrument = await service.create(safe_payload, project_id=resolved_project_id)
     return InstrumentRead.model_validate(instrument)
 
 
@@ -47,37 +125,171 @@ async def create_instrument(payload: InstrumentCreate, session: AsyncSession = D
     "/projects/{project_id}/instruments", response_model=InstrumentRead, status_code=201
 )
 async def create_project_instrument(
-    project_id: int, payload: InstrumentCreate, session: AsyncSession = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)
+    project_id: int,
+    payload: InstrumentCreate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise NotFoundError(f"Proyecto {project_id} no encontrado")
+
+    await _project(session, project_id, current_user, write=True)
+
+    is_operator = is_platform_operator(current_user)
+
+    initial_status = (payload.status or "DRAFT").upper()
+    if initial_status == "AUTHORIZED" and not is_operator:
+        raise AuthorizationError("Solo el operador central o comité metodológico puede autorizar un instrumento.")
+
     service = InstrumentService(session)
-    safe_payload = payload if current_user is None else payload.model_copy(update={"owner_user_id": current_user.id, "project_id": project_id, "is_system": False})
+    safe_payload = payload.model_copy(
+        update={
+            "owner_user_id": current_user.id,
+            "project_id": project_id,
+            "organization_id": project.organization_id,
+            "is_system": False,
+            "status": initial_status,
+        }
+    )
     instrument = await service.create(safe_payload, project_id=project_id)
     return InstrumentRead.model_validate(instrument)
 
 
 @router.get("/instruments", response_model=Page[InstrumentRead])
 async def list_instruments(
-    params: PageParams = Depends(page_params), session: AsyncSession = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)
+    discipline: str | None = Query(None, description="Filtrar por disciplina metodológica"),
+    status: str | None = Query(None, description="Filtrar por estado del instrumento"),
+    query: str | None = Query(None, description="Buscar por nombre, código o autor"),
+    organization_id: int | None = Query(None, description="Id de organización para aislamiento multiempresa"),
+    params: PageParams = Depends(page_params),
+    session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
 ):
     service = InstrumentService(session)
-    return await service.list(params, owner_user_id=current_user.id if current_user else None)
+    user_org_id = await _resolve_user_org_id(session, current_user, organization_id)
+    return await service.list(
+        params,
+        owner_user_id=current_user.id if current_user else None,
+        organization_id=user_org_id,
+        discipline=discipline,
+        status=status,
+        search_query=query,
+    )
 
 
 @router.get("/projects/{project_id}/instruments", response_model=Page[InstrumentRead])
 async def list_project_instruments(
     project_id: int,
+    discipline: str | None = Query(None),
+    status: str | None = Query(None),
+    query: str | None = Query(None),
     params: PageParams = Depends(page_params),
     session: AsyncSession = Depends(get_db),
 ):
     service = InstrumentService(session)
-    return await service.list(params, project_id=project_id)
+    return await service.list(
+        params, project_id=project_id, discipline=discipline, status=status, search_query=query
+    )
 
 
 @router.get("/instruments/{instrument_id}", response_model=InstrumentRead)
-async def get_instrument(instrument_id: int, session: AsyncSession = Depends(get_db)):
+async def get_instrument(
+    instrument_id: int,
+    organization_id: int | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
     service = InstrumentService(session)
-    instrument = await service.get(instrument_id)
+    user_org_id = await _resolve_user_org_id(session, current_user, organization_id)
+    instrument = await service.get(instrument_id, organization_id=user_org_id)
     return InstrumentRead.model_validate(instrument)
+
+
+@router.patch("/instruments/{instrument_id}", response_model=InstrumentRead)
+async def update_instrument(
+    instrument_id: int,
+    payload: InstrumentUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = InstrumentService(session)
+    user_org_id = await _resolve_user_org_id(session, current_user)
+    instrument = await service.update_instrument(
+        instrument_id, payload, organization_id=user_org_id, user=current_user
+    )
+    return InstrumentRead.model_validate(instrument)
+
+
+@router.post("/instruments/{instrument_id}/status", response_model=InstrumentRead)
+async def update_instrument_status(
+    instrument_id: int,
+    payload: InstrumentStatusUpdateRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = InstrumentService(session)
+    user_org_id = await _resolve_user_org_id(session, current_user)
+    instrument = await service.update_status(
+        instrument_id, payload.status, payload.notes, organization_id=user_org_id, user=current_user
+    )
+    return InstrumentRead.model_validate(instrument)
+
+
+# --- Asociación a Estudios -----------------------------------------------------
+
+
+@router.post("/studies/{study_id}/instruments/{version_id}")
+async def link_study_instrument(
+    study_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Vincula una versión de instrumento a un estudio empresarial."""
+    await _study(session, study_id, current_user, write=True)
+    study = await session.get(Study, study_id)
+    if study is None:
+        raise NotFoundError("Estudio no encontrado")
+    if study.status in ("CLOSED", "ARCHIVED"):
+        raise ConflictError("No se puede vincular un instrumento a un estudio concluido o archivado.")
+
+    stmt = (
+        select(InstrumentVersion)
+        .where(InstrumentVersion.id == version_id)
+        .options(selectinload(InstrumentVersion.instrument))
+    )
+    version = (await session.execute(stmt)).scalar_one_or_none()
+    if version is None:
+        raise NotFoundError("Versión de instrumento no encontrada")
+
+    instrument = version.instrument
+    if not instrument.is_system:
+        project = await session.get(Project, study.project_id)
+        if instrument.project_id is not None and instrument.project_id != study.project_id:
+            raise AuthorizationError("El instrumento pertenece a otro proyecto y no puede ser vinculado.")
+        if (
+            instrument.organization_id is not None
+            and project.organization_id is not None
+            and instrument.organization_id != project.organization_id
+        ):
+            raise AuthorizationError("El instrumento pertenece a otra empresa y no puede ser vinculado.")
+
+    if instrument.status == "LOCKED":
+        raise ConflictError("No se puede vincular un instrumento bloqueado.")
+    if instrument.status == "DRAFT":
+        raise ConflictError("No se puede vincular un instrumento en borrador. Debe someterse primero a validación.")
+    if version.status in ("LOCKED", "ARCHIVED"):
+        raise ConflictError("La versión seleccionada está bloqueada.")
+
+    study.instrument_version_id = version.id
+    await session.commit()
+    return {
+        "status": "success",
+        "study_id": study_id,
+        "instrument_version_id": version.id,
+        "version_code": version.version_code,
+    }
 
 
 # --- Versions --------------------------------------------------------------------
@@ -92,9 +304,13 @@ async def create_instrument_version(
     instrument_id: int,
     payload: InstrumentVersionCreate,
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     service = InstrumentService(session)
-    version = await service.create_version(instrument_id, payload)
+    user_org_id = await _resolve_user_org_id(session, current_user)
+    version = await service.create_version(
+        instrument_id, payload, organization_id=user_org_id, user=current_user
+    )
     return InstrumentVersionRead.model_validate(version)
 
 
@@ -117,18 +333,40 @@ async def get_instrument_version(
     service = InstrumentService(session)
     version = await service.get_version(version_id)
     if version.instrument_id != instrument_id:
-        from app.core.exceptions import NotFoundError
         raise NotFoundError("La versión no pertenece al instrumento indicado")
     return InstrumentVersionRead.model_validate(version)
 
 
 @router.patch("/instrument-versions/{version_id}", response_model=InstrumentVersionRead)
 async def update_instrument_version(
-    version_id: int, payload: InstrumentVersionUpdate, session: AsyncSession = Depends(get_db)
+    version_id: int,
+    payload: InstrumentVersionUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     service = InstrumentService(session)
-    version = await service.update_version(version_id, payload)
+    user_org_id = await _resolve_user_org_id(session, current_user)
+    version = await service.update_version(
+        version_id, payload, organization_id=user_org_id, user=current_user
+    )
     return InstrumentVersionRead.model_validate(version)
+
+
+@router.post(
+    "/instrument-versions/{version_id}/validate",
+    response_model=MethodologicalValidationResult,
+)
+async def validate_instrument_version(
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ejecuta la auditoría psicométrica y de baremos de una versión de instrumento."""
+    service = InstrumentService(session)
+    user_org_id = await _resolve_user_org_id(session, current_user)
+    return await service.validate_version(
+        version_id, organization_id=user_org_id, user=current_user
+    )
 
 
 @router.post(
@@ -141,9 +379,13 @@ async def clone_instrument_version(
     version_id: int,
     payload: InstrumentVersionCloneRequest,
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     service = InstrumentService(session)
-    new_version = await service.clone_version(instrument_id, version_id, payload)
+    user_org_id = await _resolve_user_org_id(session, current_user)
+    new_version = await service.clone_version(
+        instrument_id, version_id, payload, organization_id=user_org_id
+    )
     return InstrumentVersionRead.model_validate(new_version)
 
 

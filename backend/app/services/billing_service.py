@@ -60,17 +60,19 @@ class BillingService:
         tariff = await self.db.get(ReportTariff, tariff_id) if tariff_id else None
         if tariff_id and tariff is None:
             raise NotFoundError("Tramo tarifario no encontrado.")
-        # Reject overlapping enabled intervals, including open-ended tiers.
+        # Reject overlapping enabled intervals within the same instrument and methodology scope.
         if payload.active:
             for other in await self.list_tariffs():
                 if other.method_code != payload.method_code:
+                    continue
+                if other.instrument_id != payload.instrument_id:
                     continue
                 if tariff is not None and other.id == tariff.id:
                     continue
                 upper_a = payload.max_workers if payload.max_workers is not None else 10_000_000_001
                 upper_b = other.max_workers if other.max_workers is not None else 10_000_000_001
                 if payload.min_workers <= upper_b and other.min_workers <= upper_a:
-                    raise ConflictError("El tramo se superpone con otra tarifa activa.")
+                    raise ConflictError("El tramo se superpone con otra tarifa activa para este instrumento y metodología.")
         if tariff is None:
             tariff = ReportTariff(**payload.model_dump(), updated_by_user_id=user.id)
             self.db.add(tariff)
@@ -105,7 +107,8 @@ class BillingService:
         return study, project, org
 
     async def _validate_method_for_study(self, study: Study, method_code: str) -> None:
-        """Prevent buying a cheaper method than the version actually evaluated."""
+        """Prevent buying a cheaper method than the version actually evaluated,
+        and verify that the instrument is authorized and configured methodologically."""
         if study.instrument_version_id is None:
             if get_settings().environment.lower() == "production":
                 raise ValidationDomainError("El estudio debe tener un instrumento versionado para cotizar.")
@@ -114,16 +117,43 @@ class BillingService:
         instrument = await self.db.get(Instrument, version.instrument_id) if version else None
         if instrument is None:
             raise ValidationDomainError("El instrumento del estudio no está disponible.")
+
+        # 1. Rechaza instrumentos no autorizados
+        if not instrument.is_system and getattr(instrument, "status", "DRAFT") not in {"AUTHORIZED", "ACTIVE"}:
+            raise ValidationDomainError("El instrumento seleccionado no cuenta con autorización corporativa para emisión de informes.")
+
+        # 2. Rechaza instrumentos que carezcan de configuración metodológica completa
+        scoring_status = getattr(version, "scoring_status", "NOT_CONFIGURED")
+        censopas_kind = (version.config or {}).get("censopas_version_kind")
+        if scoring_status != "CONFIGURED" and not censopas_kind:
+            raise ValidationDomainError("El instrumento carece de configuración psicométrica/metodológica suficiente (scoring_status=CONFIGURED) para ser evaluado.")
+
+        # 3. Resolución desacoplada de la metodología esperada
         code = (instrument.code or "").upper()
-        if code == "CENSOPAS_COPSOQ":
-            kind = str((version.config or {}).get("censopas_version_kind") or version.version_code).upper()
+        expected = None
+        if getattr(instrument, "method_code", None):
+            expected = instrument.method_code
+        elif (version.config or {}).get("method_code"):
+            expected = version.config["method_code"]
+        elif code == "CENSOPAS_COPSOQ":
+            kind = str(censopas_kind or version.version_code).upper()
             expected = "CENSOPAS_MEDIA" if kind in {"MEDIUM", "MEDIA"} else "CENSOPAS_CORTA" if kind in {"SHORT", "CORTA"} else None
         elif "SUSESO" in code or "ISTAS21" in code:
             expected = "SUSESO_ISTAS21_BREVE"
+        elif instrument.code:
+            expected = instrument.code
         else:
             raise ValidationDomainError("No existe un método tarifario autorizado para este instrumento.")
+
         if method_code != expected:
             raise ValidationDomainError("La metodología cotizada no corresponde al instrumento del estudio.")
+
+        # 4. Verificar que exista un tramo tarifario activo para el método
+        tariff_exists = (await self.db.execute(
+            select(ReportTariff.id).where(ReportTariff.method_code == expected, ReportTariff.active.is_(True)).limit(1)
+        )).scalar()
+        if not tariff_exists:
+            raise ValidationDomainError(f"No existe un tarifario activo autorizado por el operador para el método '{expected}'.")
 
     async def load_reference_tariffs(self, user: User) -> list[ReportTariff]:
         require_operator(user)
@@ -183,8 +213,13 @@ class BillingService:
         method_code: str = "SUSESO_ISTAS21_BREVE",
         headcount_source: str | None = None,
     ) -> ReportOrder:
-        if method_code not in METHOD_LABELS:
-            raise ValidationDomainError("Metodología de informe desconocida.")
+        is_known = method_code in METHOD_LABELS
+        if not is_known:
+            has_tariff = bool((await self.db.execute(
+                select(ReportTariff.id).where(ReportTariff.method_code == method_code, ReportTariff.active.is_(True)).limit(1)
+            )).scalar())
+            if not has_tariff:
+                raise ValidationDomainError("Metodología de informe desconocida.")
         if workers < 1:
             raise ValidationDomainError("La cantidad de trabajadores debe ser positiva.")
         study, project, org = await self._organization_admin(study_id, user)
@@ -241,11 +276,41 @@ class BillingService:
             study.settings = study_settings
             await self.db.flush()
 
-        tariffs = [t for t in await self.list_tariffs()
-                   if t.method_code == method_code and t.min_workers <= workers and (t.max_workers is None or workers <= t.max_workers)]
-        if len(tariffs) != 1:
-            raise ValidationDomainError("No existe un tramo tarifario válido para esta cantidad de trabajadores.")
-        tariff = tariffs[0]
+        # Resolver instrumento del estudio para vinculación estricta de tarifas
+        current_instrument_id = None
+        if study.instrument_version_id:
+            version = await self.db.get(InstrumentVersion, study.instrument_version_id)
+            if version:
+                current_instrument_id = version.instrument_id
+
+        all_tariffs = await self.list_tariffs()
+        matching_tariffs = [
+            t for t in all_tariffs
+            if t.method_code == method_code
+            and t.min_workers <= workers
+            and (t.max_workers is None or workers <= t.max_workers)
+        ]
+
+        # Evita utilizar una tarifa vinculada a otro instrumento aunque coincida el código metodológico
+        compatible_tariffs = [
+            t for t in matching_tariffs
+            if t.instrument_id is None or (current_instrument_id is not None and t.instrument_id == current_instrument_id)
+        ]
+
+        # Si existen tarifas específicamente asignadas a este instrumento, tienen prioridad estricta
+        specific_tariffs = [
+            t for t in compatible_tariffs
+            if t.instrument_id == current_instrument_id and current_instrument_id is not None
+        ]
+        candidates = specific_tariffs if specific_tariffs else [t for t in compatible_tariffs if t.instrument_id is None]
+
+        if len(candidates) != 1:
+            if any(t.instrument_id is not None and t.instrument_id != current_instrument_id for t in matching_tariffs):
+                raise ValidationDomainError(
+                    "La tarifa existente para esta metodología pertenece a otro instrumento específico y no puede ser utilizada."
+                )
+            raise ValidationDomainError("No existe un tramo tarifario válido para esta cantidad de trabajadores e instrumento.")
+        tariff = candidates[0]
 
         # 2. Fotografía inmutable de tarifa, metodología, empresa, estudio, trabajadores e importe (Req 4)
         snapshot = {
@@ -253,11 +318,16 @@ class BillingService:
             "tariff": {
                 "id": tariff.id,
                 "method_code": tariff.method_code,
+                "instrument_id": tariff.instrument_id,
                 "pricing_mode": tariff.pricing_mode,
                 "min_workers": tariff.min_workers,
                 "max_workers": tariff.max_workers,
                 "price": str(tariff.price) if tariff.price is not None else None,
                 "currency": tariff.currency,
+            },
+            "instrument": {
+                "id": current_instrument_id,
+                "version_id": study.instrument_version_id,
             },
             "method": {
                 "code": method_code,

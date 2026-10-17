@@ -6,17 +6,20 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-MethodCode = Literal["SUSESO_ISTAS21_BREVE", "CENSOPAS_CORTA", "CENSOPAS_MEDIA"]
+# MethodCode base para compatibilidad y extensibilidad multidisciplinaria (PR #13)
+MethodCode = str
 HeadcountSource = Literal["ESTUDIO_DECLARADO", "PLANILLA_OFICIAL_EMPRESA", "AUDITORIA_RRHH"]
 
 
 class TariffInput(BaseModel):
-    method_code: MethodCode = "SUSESO_ISTAS21_BREVE"
+    instrument_id: int | None = None
+    method_code: str = Field(default="SUSESO_ISTAS21_BREVE", min_length=2, max_length=50)
     pricing_mode: Literal["FIXED", "QUOTE"] = "FIXED"
     min_workers: int = Field(ge=1, le=10_000_000)
     max_workers: int | None = Field(default=None, ge=1, le=10_000_000)
     price: Decimal | None = Field(default=None, gt=0, decimal_places=2, max_digits=14)
     currency: Literal["PEN"] = "PEN"
+    notes: str | None = None
     active: bool = True
 
     @model_validator(mode="after")
@@ -38,7 +41,7 @@ class TariffRead(TariffInput):
 
 class QuoteCreate(BaseModel):
     workers: int = Field(ge=1, le=10_000_000)
-    method_code: MethodCode = "SUSESO_ISTAS21_BREVE"
+    method_code: str = "SUSESO_ISTAS21_BREVE"
     headcount_source: HeadcountSource | None = None
 
 
@@ -49,7 +52,7 @@ class OrderRead(BaseModel):
     workers: int
     headcount_source: str = "ESTUDIO_DECLARADO"
     snapshot_data: dict | None = None
-    method_code: MethodCode
+    method_code: str
     pricing_mode: Literal["FIXED", "QUOTE"]
     tariff_min_workers: int
     tariff_max_workers: int | None

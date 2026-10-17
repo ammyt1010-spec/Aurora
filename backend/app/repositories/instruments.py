@@ -14,10 +14,32 @@ class InstrumentRepository:
     async def get(self, instrument_id: int) -> Instrument | None:
         return await self.session.get(Instrument, instrument_id)
 
-    def list_stmt(self, project_id: int | None = None) -> Select:
+    def list_stmt(
+        self,
+        project_id: int | None = None,
+        discipline: str | None = None,
+        status: str | None = None,
+        search_query: str | None = None,
+    ) -> Select:
+        from sqlalchemy import or_
+
         stmt = select(Instrument)
         if project_id is not None:
             stmt = stmt.where(Instrument.project_id == project_id)
+        if discipline is not None and discipline.upper() != "ALL":
+            stmt = stmt.where(Instrument.discipline == discipline)
+        if status is not None and status.upper() != "ALL":
+            stmt = stmt.where(Instrument.status == status)
+        if search_query and search_query.strip():
+            term = f"%{search_query.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Instrument.name.ilike(term),
+                    Instrument.code.ilike(term),
+                    Instrument.author.ilike(term),
+                    Instrument.description.ilike(term),
+                )
+            )
         return stmt.order_by(Instrument.created_at.desc())
 
     async def create(self, instrument: Instrument) -> Instrument:
