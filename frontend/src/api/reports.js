@@ -4,6 +4,10 @@ export function createReportTemplate(payload) {
   return apiRequest('/report-templates', { method: 'POST', body: payload });
 }
 
+export function updateReportTemplate(templateId, payload) {
+  return apiRequest(`/report-templates/${templateId}`, { method: 'PUT', body: payload });
+}
+
 export function createReport(studyId, payload) {
   return apiRequest(`/studies/${studyId}/reports`, { method: 'POST', body: payload });
 }
