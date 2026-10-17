@@ -64,7 +64,8 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   // Logo state
   const fileInputRef = useRef(null);
   const [companyLogo, setCompanyLogo] = useState(() => {
-    return localStorage.getItem(`company_logo_${projectId}`) || null;
+    const savedLogo = localStorage.getItem(`company_logo_${projectId}`);
+    return savedLogo?.startsWith('data:image/png;base64,') ? savedLogo : null;
   });
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -121,6 +122,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
         report_mode: sample ? 'SAMPLE' : reportMode,
         is_sample_preview: Boolean(sample),
         report_template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+        company_logo_png: companyLogo?.startsWith('data:image/png;base64,') ? companyLogo : null,
         output_format: sample ? 'PDF' : outputFormat,
         sections,
         billing_order_id: sample ? null : (isPaymentRequired ? selectedOrderId : null),
@@ -171,8 +173,8 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert('El archivo no debe superar los 5MB.');
+    if (file.type !== 'image/png' || file.size > 600 * 1024) {
+      alert('Selecciona un logotipo PNG de hasta 600 KB.');
       return;
     }
     const reader = new FileReader();
@@ -236,7 +238,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             <input
               type="file"
               ref={fileInputRef}
-              accept="image/png, image/jpeg, image/svg+xml"
+              accept="image/png"
               onChange={handleLogoUpload}
               className="hidden"
             />
@@ -261,7 +263,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               >
                 <Upload size={20} className="text-amber" />
                 <span className="text-xs font-semibold text-dark">Subir Logo de la Empresa</span>
-                <span className="text-[10px] text-muted">PNG, JPG o SVG (Máx. 5MB)</span>
+                <span className="text-[10px] text-muted">PNG (máximo 600 KB). Se incluye en el DOCX/PDF.</span>
               </button>
             )}
           </Card>
@@ -436,7 +438,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 <span>Páginas renderizadas: {preview.pages || '—'}</span>
                 {companyLogo ? (
                   <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Logo cargado localmente (no incorporado al informe)
+                    <CheckCircle2 size={12} /> Logo incorporado al informe generado
                   </span>
                 ) : null}
               </div>
