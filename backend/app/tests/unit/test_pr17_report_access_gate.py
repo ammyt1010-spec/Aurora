@@ -89,3 +89,22 @@ async def test_report_history_access_requires_matching_enterprise_admin(
     )
     with pytest.raises(AuthorizationError):
         await require_business_access(denied, db=session, user=seed_user)
+
+
+@pytest.mark.asyncio
+async def test_anonymous_sample_preview_is_rejected_before_rendering(session, monkeypatch):
+    from app.api.v1.reports import generate_report_preview
+    from app.schemas.reports import ReportRunCreate
+
+    # No synthetic test credential: una vista de muestra siempre necesita
+    # autorización de empresa, aunque no consuma un crédito comercial.
+    monkeypatch.setattr(get_settings(), "allow_synthetic_test_bypass", False)
+    request = route_request("POST", "/api/v1/studies/98765/reports/preview", study_id=98765)
+    with pytest.raises(AuthorizationError):
+        await generate_report_preview(
+            study_id=98765,
+            payload=ReportRunCreate(is_sample_preview=True, output_format="PDF"),
+            request=request,
+            session=session,
+            current_user=None,
+        )
