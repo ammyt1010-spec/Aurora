@@ -181,11 +181,12 @@ async def generate_report_preview(
     session: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    is_sample = bool(payload.is_sample_preview or payload.report_mode == "SAMPLE")
-    if current_user is None and not is_sample:
+    # Sample previews are not paid reports, but they still contain enterprise
+    # data and always require the same authorization as official previews.
+    if current_user is None:
         if not is_authorized_synthetic_test(request):
             raise AuthorizationError("Debes iniciar sesión como administrador de la empresa.")
-    elif current_user is not None and not is_sample:
+    else:
         await BillingService(session)._organization_admin(study_id, current_user)
 
     service = ReportService(session)
@@ -225,7 +226,8 @@ async def download_report_preview(
     service = ReportService(session)
     report = await service.get_run(report_id)
     await _assert_study_access(session, report.study_id, current_user, request)
-    if get_settings().environment.lower() == "production" and report.billing_order_id is None:
+    is_watermarked_sample = bool((report.metadata_ or {}).get("is_sample_preview"))
+    if get_settings().environment.lower() == "production" and report.billing_order_id is None and not is_watermarked_sample:
         raise ConflictError("Informe anterior sin autorización de entrega. Contacta al administrador.")
     if report.status != "COMPLETED" or not report.storage_path or not report.storage_path.endswith(".docx"):
         raise NotFoundError(f"Reporte {report_id} no tiene una vista previa disponible todavía")
