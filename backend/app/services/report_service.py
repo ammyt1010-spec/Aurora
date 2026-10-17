@@ -414,6 +414,9 @@ class ReportService:
         report_run=None,
     ) -> dict:
         bundle: dict = {
+            "discipline": "PSICOSOCIAL",
+            "is_censopas": False,
+            "report_template": {},
             "study": {
                 "id": study.id,
                 "public_id": str(study.public_id),
@@ -503,8 +506,10 @@ class ReportService:
             if inst_row and inst_row[0]:
                 discipline = str(inst_row[0]).upper()
                 is_psicosocial = discipline == "PSICOSOCIAL"
+            bundle["discipline"] = discipline
 
             readiness = await censopas_service.get_readiness(study.instrument_version_id)
+            bundle["is_censopas"] = bool(readiness.get("is_censopas_instrument"))
             bundle["methodological_status"] = readiness
             is_censopas = bool(readiness.get("is_censopas_instrument"))
             if is_censopas and report_mode == "OFFICIAL" and not readiness["ready_for_official_reporting"]:
@@ -534,6 +539,27 @@ class ReportService:
         bundle["premium_analytics"] = self._build_premium_analytics(
             bundle["analysis_results"], study.min_publishable_n
         )
+        # The report template is part of the render input, not merely a
+        # label in report metadata. Validate discipline to prevent displaying
+        # one methodology with another methodology's title or template.
+        template_id = getattr(report_run, "report_template_id", None)
+        if template_id is not None:
+            template = await self.repo.get_template(template_id)
+            if template is None or template.status != "ACTIVE":
+                raise ConflictError("La plantilla seleccionada no está disponible o publicada.")
+            template_discipline = str((template.template_config or {}).get("discipline") or template.report_type or "").upper()
+            instrument_discipline = bundle["discipline"]
+            aliases = {"CLIMA_ORGANIZACIONAL": "CLIMA"}
+            if template_discipline and aliases.get(template_discipline, template_discipline) != aliases.get(instrument_discipline, instrument_discipline):
+                raise ConflictError("La disciplina de la plantilla no coincide con la metodología del instrumento.")
+            if template.instrument_version_id is not None and template.instrument_version_id != study.instrument_version_id:
+                raise ConflictError("La plantilla está vinculada a otra versión del instrumento.")
+            bundle["report_template"] = dict(template.template_config or {})
+            if not sections:
+                configured_sections = bundle["report_template"].get("sections")
+                if isinstance(configured_sections, list):
+                    bundle["sections"] = [part for part in configured_sections if isinstance(part, str)]
+
         bundle["cover"] = await self._build_cover(study, bundle, report_run)
         bundle["traceability"] = await self._build_traceability(
             study, bundle, report_run, analysis_run_id
