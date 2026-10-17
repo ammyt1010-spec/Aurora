@@ -53,11 +53,11 @@ try {
     & git -C $root log -1 --format="%h %s"
     & git -C $root status --short
 
-    Run-Step "Backend unitarias + integración" $backend $python @("-m", "pytest", "app/tests/unit", "app/tests/integration", "-q")
-    Run-Step "Estado migraciones Alembic (solo lectura)" $backend $python @("-m", "alembic", "current")
-    Run-Step "Frontend Vitest" $frontend $npm @("test")
-    Run-Step "Frontend ESLint" $frontend $npm @("run", "lint")
-    Run-Step "Frontend Vite build" $frontend $npm @("run", "build")
+    Run-Step -Name "Backend unitarias + integración" -Directory $backend -Executable $python -CommandArguments @("-m", "pytest", "app/tests/unit", "app/tests/integration", "-q")
+    Run-Step -Name "Estado migraciones Alembic (solo lectura)" -Directory $backend -Executable $python -CommandArguments @("-m", "alembic", "current")
+    Run-Step -Name "Frontend Vitest" -Directory $frontend -Executable $npm -CommandArguments @("test")
+    Run-Step -Name "Frontend ESLint" -Directory $frontend -Executable $npm -CommandArguments @("run", "lint")
+    Run-Step -Name "Frontend Vite build" -Directory $frontend -Executable $npm -CommandArguments @("run", "build")
 
     if ($CheckRunningUI) {
         Write-Host "==== HTTP smoke ====" -ForegroundColor Cyan
