@@ -115,3 +115,57 @@ def test_multidisciplinary_docx_uses_template_and_suppresses_private_scores():
     assert "61.50" in body
     assert "CENSOPAS-COPSOQ" not in body + header + footer
     assert "Resultados por dimensión (D1-D6)" not in body
+
+
+def _small_valid_png() -> bytes:
+    import struct
+    import zlib
+
+    def chunk(name: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + name
+            + payload
+            + struct.pack(">I", zlib.crc32(name + payload) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    rgb_scanline = bytes.fromhex("00ff0000")
+    return (
+        bytes.fromhex("89504e470d0a1a0a")
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(rgb_scanline))
+        + chunk(b"IEND", b"")
+    )
+
+
+def test_company_logo_is_validated_and_embedded_in_docx():
+    import base64
+    import copy
+    from app.services.report_service import ReportService
+
+    logo = _small_valid_png()
+    encoded = "data:image/png;base64," + base64.b64encode(logo).decode("ascii")
+    validated = ReportService._decode_company_logo(encoded)
+    assert validated == logo
+
+    bundle = copy.deepcopy(_BUNDLE)
+    bundle["brand_logo_png"] = validated
+    document = Document(io.BytesIO(render_report_docx(bundle)))
+    assert len(document.inline_shapes) == 1
+
+
+def test_company_logo_rejects_unsupported_and_oversize_inputs():
+    import base64
+    import pytest
+    from app.core.exceptions import ValidationDomainError
+    from app.services.report_service import ReportService
+
+    with pytest.raises(ValidationDomainError):
+        ReportService._decode_company_logo("data:image/svg+xml;base64,PHN2Zy8+")
+    with pytest.raises(ValidationDomainError):
+        ReportService._decode_company_logo("data:image/png;base64,%%%")
+    oversized = _small_valid_png() + b"0" * (600 * 1024)
+    payload = "data:image/png;base64," + base64.b64encode(oversized).decode("ascii")
+    with pytest.raises(ValidationDomainError):
+        ReportService._decode_company_logo(payload)
