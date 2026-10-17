@@ -27,3 +27,20 @@ export function getReportPreviewPdfUrl(reportId) {
 export function listStudyReports(studyId) {
   return apiRequest(`/studies/${studyId}/reports`);
 }
+
+export function listReportTemplates(discipline = null) {
+  const filter = discipline ? `?discipline=${encodeURIComponent(discipline)}` : '';
+  return apiRequest(`/report-templates${filter}`);
+}
+
+export function getExecutiveDashboard(studyId) {
+  return apiRequest(`/studies/${studyId}/reports/executive-dashboard`);
+}
+
+export function getOrganizationReportHistory(organizationId, { studyId, discipline } = {}) {
+  const query = new URLSearchParams();
+  if (studyId) query.set('study_id', String(studyId));
+  if (discipline) query.set('discipline', discipline);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiRequest(`/organizations/${organizationId}/reports/history${suffix}`);
+}
