@@ -44,7 +44,7 @@ def add_page_field(paragraph, field_code: str) -> None:
     run.font.color.rgb = RGBColor.from_string(COLMENA["muted"])
 
 
-def add_header_band(document, *, title: str = "AURORA PROFESSIONAL") -> None:
+def add_header_band(document, *, title: str = "AURORA PROFESSIONAL", background: str = COLMENA["navy"], accent: str = COLMENA["gold"]) -> None:
     """Franja navy con el nombre de marca y una línea dorada parcial debajo
     — nunca debe parecer una tabla.
 
@@ -66,7 +66,7 @@ def add_header_band(document, *, title: str = "AURORA PROFESSIONAL") -> None:
     set_column_widths_mm(band, [CONTENT_WIDTH_MM])
     band.rows[0].height = Mm(10)
     cell = band.rows[0].cells[0]
-    shade_cell(cell, COLMENA["navy"])
+    shade_cell(cell, background)
     set_cell_margins(cell, top=90, bottom=90, start=int(Mm(6).twips), end=100)
     set_cell_vertical_center(cell)
     remove_table_borders(band)
@@ -89,7 +89,7 @@ def add_header_band(document, *, title: str = "AURORA PROFESSIONAL") -> None:
     set_column_widths_mm(rule, [40])
     rule.rows[0].height = Mm(1.3)
     rule_cell = rule.rows[0].cells[0]
-    shade_cell(rule_cell, COLMENA["gold"])
+    shade_cell(rule_cell, accent)
     remove_table_borders(rule)
 
 
