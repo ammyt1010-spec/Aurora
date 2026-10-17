@@ -1177,7 +1177,11 @@ class ReportService:
         low_risk_count = 0
 
         for r in scoring_overview.results:
-            score = float(r.mean_score) if r.mean_score is not None else (float(r.median_score) if r.median_score is not None else 50.0)
+            # Never turn suppressed or missing observations into an invented
+            # midpoint. Doing so could display a false reassuring GREEN result.
+            if r.suppressed or (r.mean_score is None and r.median_score is None):
+                continue
+            score = float(r.mean_score) if r.mean_score is not None else float(r.median_score)
 
             unfav_pct = None
             predominant_band = None
@@ -1198,11 +1202,18 @@ class ReportService:
             elif "MEDIO" in code_upper or "INTERMEDIO" in code_upper or "REVISION" in code_upper:
                 t_light = "AMBER"
                 medium_risk_count += 1
-            else:
+            elif any(label in code_upper for label in ("BAJO", "FAVORABLE", "ADECUADO")):
                 t_light = "GREEN"
                 low_risk_count += 1
+            else:
+                # No methodologically grounded band: never infer "favorable".
+                t_light = "GRAY"
 
-            recom = recommendations_catalog[disc_key].get(t_light, recommendations_catalog["PSICOSOCIAL"][t_light])
+            recom = (
+                "Sin categoría de riesgo verificable: revisar el baremo y la configuración metodológica antes de interpretar."
+                if t_light == "GRAY"
+                else recommendations_catalog[disc_key][t_light]
+            )
 
             construct_rankings.append({
                 "construct_code": r.construct_code,
@@ -1218,11 +1229,14 @@ class ReportService:
 
         construct_rankings.sort(key=lambda x: (x["severity_order"], -(x["score_0_100"] or 0)))
 
-        headline = (
-            f"{high_risk_count} constructo(s) en semáforo rojo requieren intervención prioritaria."
-            if high_risk_count > 0
-            else "Resultados favorables: ningún constructo evaluado presenta semáforo rojo de riesgo crítico."
-        )
+        if not construct_rankings:
+            headline = "No hay resultados colectivos publicables: muestra insuficiente o puntuaciones no disponibles."
+        elif high_risk_count > 0:
+            headline = f"{high_risk_count} constructo(s) en semáforo rojo requieren intervención prioritaria."
+        elif all(item["traffic_light"] == "GRAY" for item in construct_rankings):
+            headline = "Sin clasificación de riesgo verificable: revisar baremos antes de emitir conclusiones."
+        else:
+            headline = "No se identificaron alertas rojas en los constructos con clasificación verificable."
 
         signature_material = f"{study_id}:{scoring_overview.analysis_run_id}:{high_risk_count}:{telemetry.valid_count}"
         sig_hash = hashlib.sha256(signature_material.encode("utf-8")).hexdigest()
