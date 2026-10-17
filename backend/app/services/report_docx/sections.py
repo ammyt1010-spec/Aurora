@@ -64,7 +64,7 @@ def build_document_content(document, bundle: dict) -> None:
         return not selected or bool(selected.intersection(keys))
 
     if include("portada"):
-        _add_cover(document, cover, study, is_censopas=is_censopas, template=template)
+        _add_cover(document, cover, study, is_censopas=is_censopas, template=template, logo_png=bundle.get("brand_logo_png"))
     if include("resumen_ejecutivo"):
         _add_executive_summary(document, next(numbering), bundle.get("executive_summary"))
     if is_censopas and include("trazabilidad", "ficha_tecnica"):
@@ -164,11 +164,17 @@ def _section_numbering():
 # Portada
 # ---------------------------------------------------------------------------
 
-def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, template: dict | None = None) -> None:
+def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, template: dict | None = None, logo_png: bytes | None = None) -> None:
     template = template or {}
     badge_text = cover.get("badge_text") or "EXPEDIENTE TÉCNICO · BORRADOR CONTROLADO"
     add_centered_badge(document, badge_text[:110], width_mm=110, height_mm=9)
     document.add_paragraph().paragraph_format.space_after = Pt(10)
+
+    if logo_png:
+        logo_paragraph = document.add_paragraph()
+        logo_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_paragraph.add_run().add_picture(io.BytesIO(logo_png), width=Cm(3.8))
+        logo_paragraph.paragraph_format.space_after = Pt(12)
 
     add_cover_title(document, str(template.get("header_title") or study.get("name") or "Reporte")[:180])
 
