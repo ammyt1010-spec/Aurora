@@ -3,6 +3,8 @@
 
 from httpx import AsyncClient
 
+from app.core.security import create_access_token
+
 
 async def _build_study(
     client: AsyncClient, seed_user, seed_project, seed_instrument_draft, *, requires_invitation: bool
@@ -136,9 +138,11 @@ async def test_revoked_invitation_cannot_be_used_and_is_listed(
     assert listing.status_code == 200, listing.text
     invitation_id = listing.json()[0]["id"]
 
+    auth_headers = {"Authorization": f"Bearer {create_access_token(seed_user.id)}"}
     revoked = await client.post(
         f"/api/v1/studies/{study['id']}/invitations/{invitation_id}/revoke",
         params={"reason": "Duplicada"},
+        headers=auth_headers,
     )
     assert revoked.status_code == 200, revoked.text
     assert revoked.json()["status"] == "REVOKED"
@@ -146,6 +150,7 @@ async def test_revoked_invitation_cannot_be_used_and_is_listed(
     again = await client.post(
         f"/api/v1/studies/{study['id']}/invitations/{invitation_id}/revoke",
         params={"reason": "Duplicada"},
+        headers=auth_headers,
     )
     assert again.status_code == 200, again.text
 

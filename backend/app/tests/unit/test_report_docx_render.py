@@ -150,9 +150,10 @@ def test_company_logo_is_validated_and_embedded_in_docx():
     assert validated == logo
 
     bundle = copy.deepcopy(_BUNDLE)
+    base_document = Document(io.BytesIO(render_report_docx(bundle)))
     bundle["brand_logo_png"] = validated
     document = Document(io.BytesIO(render_report_docx(bundle)))
-    assert len(document.inline_shapes) == 1
+    assert len(document.inline_shapes) == len(base_document.inline_shapes) + 1
 
 
 def test_company_logo_rejects_unsupported_and_oversize_inputs():

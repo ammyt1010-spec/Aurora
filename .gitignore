@@ -19,6 +19,8 @@ diagnostico-colmena.txt
 .audit_credentials.json
 .backup_*/
 .pytest_temp/
+.pytest_tmp/
+backend/.pytest_tmp/
 playwright_reports/
 run_audit_playwright.py
 .db_backups/

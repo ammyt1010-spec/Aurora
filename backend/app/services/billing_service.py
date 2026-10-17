@@ -137,7 +137,12 @@ class BillingService:
             expected = version.config["method_code"]
         elif code == "CENSOPAS_COPSOQ":
             kind = str(censopas_kind or version.version_code).upper()
-            expected = "CENSOPAS_MEDIA" if kind in {"MEDIUM", "MEDIA"} else "CENSOPAS_CORTA" if kind in {"SHORT", "CORTA"} else None
+            if any(k in kind for k in ("MEDIUM", "MEDIA")):
+                expected = "CENSOPAS_MEDIA"
+            elif any(k in kind for k in ("SHORT", "CORTA")):
+                expected = "CENSOPAS_CORTA"
+            else:
+                expected = None
         elif "SUSESO" in code or "ISTAS21" in code:
             expected = "SUSESO_ISTAS21_BREVE"
         elif instrument.code:
