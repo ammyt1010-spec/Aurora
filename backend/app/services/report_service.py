@@ -421,7 +421,7 @@ class ReportService:
             data = base64.b64decode(value[len(prefix):], validate=True)
         except (binascii.Error, ValueError) as exc:
             raise ValidationDomainError("Los datos del logotipo PNG no son válidos.") from exc
-        if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n") or len(data) < 33:
+        if not data.startswith(bytes.fromhex("89504e470d0a1a0a")) or len(data) < 33:
             raise ValidationDomainError("El logotipo no tiene una cabecera PNG válida.")
         if len(data) > 600 * 1024:
             raise ValidationDomainError("El logotipo supera el máximo de 600 KB.")
