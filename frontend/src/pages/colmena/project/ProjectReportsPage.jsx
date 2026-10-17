@@ -165,7 +165,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   }, [studyId, billingPolicy?.enforced]);
 
   useEffect(() => {
-    if (previewState === 'READY' && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
+    if ((previewState === 'READY' || previewState === 'STALE') && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
       setPreviewState('STALE');
     }
   }, [studyId, sections, reportMode, outputFormat, selectedOrderId, selectedTemplateId]);
@@ -182,6 +182,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
       const base64 = event.target?.result;
       if (typeof base64 === 'string') {
         setCompanyLogo(base64);
+        if (previewState === 'READY') setPreviewState('STALE');
         localStorage.setItem(`company_logo_${projectId}`, base64);
       }
     };
@@ -190,6 +191,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   const handleRemoveLogo = () => {
     setCompanyLogo(null);
+    if (previewState === 'READY') setPreviewState('STALE');
     localStorage.removeItem(`company_logo_${projectId}`);
   };
 
@@ -313,6 +315,13 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 value={selectedTemplateId}
                 onChange={(event) => {
                   setSelectedTemplateId(event.target.value);
+                  const template = reportTemplates.find((item) => String(item.id) === event.target.value);
+                  const preferredSections = template?.template_config?.sections;
+                  if (Array.isArray(preferredSections) && preferredSections.length) {
+                    setSections(preferredSections);
+                  } else {
+                    setSections(SECTIONS.map((item) => item.key));
+                  }
                   resetPreview();
                 }}>
                 <option value="">Plantilla por defecto del instrumento</option>
