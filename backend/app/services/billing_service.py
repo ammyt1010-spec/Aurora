@@ -120,11 +120,11 @@ class BillingService:
         if not instrument.is_system and getattr(instrument, "status", "DRAFT") not in {"AUTHORIZED", "ACTIVE"}:
             raise ValidationDomainError("El instrumento seleccionado no cuenta con autorización corporativa para emisión de informes.")
 
-        # 2. Rechaza instrumentos que carezcan de configuración metodológica suficiente
+        # 2. Rechaza instrumentos que carezcan de configuración metodológica completa
         scoring_status = getattr(version, "scoring_status", "NOT_CONFIGURED")
         censopas_kind = (version.config or {}).get("censopas_version_kind")
-        if scoring_status not in {"CONFIGURED", "PARTIAL"} and not censopas_kind:
-            raise ValidationDomainError("El instrumento carece de configuración psicométrica/metodológica suficiente para ser evaluado.")
+        if scoring_status != "CONFIGURED" and not censopas_kind:
+            raise ValidationDomainError("El instrumento carece de configuración psicométrica/metodológica suficiente (scoring_status=CONFIGURED) para ser evaluado.")
 
         # 3. Resolución desacoplada de la metodología esperada
         code = (instrument.code or "").upper()
@@ -274,11 +274,41 @@ class BillingService:
             study.settings = study_settings
             await self.db.flush()
 
-        tariffs = [t for t in await self.list_tariffs()
-                   if t.method_code == method_code and t.min_workers <= workers and (t.max_workers is None or workers <= t.max_workers)]
-        if len(tariffs) != 1:
-            raise ValidationDomainError("No existe un tramo tarifario válido para esta cantidad de trabajadores.")
-        tariff = tariffs[0]
+        # Resolver instrumento del estudio para vinculación estricta de tarifas
+        current_instrument_id = None
+        if study.instrument_version_id:
+            version = await self.db.get(InstrumentVersion, study.instrument_version_id)
+            if version:
+                current_instrument_id = version.instrument_id
+
+        all_tariffs = await self.list_tariffs()
+        matching_tariffs = [
+            t for t in all_tariffs
+            if t.method_code == method_code
+            and t.min_workers <= workers
+            and (t.max_workers is None or workers <= t.max_workers)
+        ]
+
+        # Evita utilizar una tarifa vinculada a otro instrumento aunque coincida el código metodológico
+        compatible_tariffs = [
+            t for t in matching_tariffs
+            if t.instrument_id is None or (current_instrument_id is not None and t.instrument_id == current_instrument_id)
+        ]
+
+        # Si existen tarifas específicamente asignadas a este instrumento, tienen prioridad estricta
+        specific_tariffs = [
+            t for t in compatible_tariffs
+            if t.instrument_id == current_instrument_id and current_instrument_id is not None
+        ]
+        candidates = specific_tariffs if specific_tariffs else [t for t in compatible_tariffs if t.instrument_id is None]
+
+        if len(candidates) != 1:
+            if any(t.instrument_id is not None and t.instrument_id != current_instrument_id for t in matching_tariffs):
+                raise ValidationDomainError(
+                    "La tarifa existente para esta metodología pertenece a otro instrumento específico y no puede ser utilizada."
+                )
+            raise ValidationDomainError("No existe un tramo tarifario válido para esta cantidad de trabajadores e instrumento.")
+        tariff = candidates[0]
 
         # 2. Fotografía inmutable de tarifa, metodología, empresa, estudio, trabajadores e importe (Req 4)
         snapshot = {
@@ -286,11 +316,16 @@ class BillingService:
             "tariff": {
                 "id": tariff.id,
                 "method_code": tariff.method_code,
+                "instrument_id": tariff.instrument_id,
                 "pricing_mode": tariff.pricing_mode,
                 "min_workers": tariff.min_workers,
                 "max_workers": tariff.max_workers,
                 "price": str(tariff.price) if tariff.price is not None else None,
                 "currency": tariff.currency,
+            },
+            "instrument": {
+                "id": current_instrument_id,
+                "version_id": study.instrument_version_id,
             },
             "method": {
                 "code": method_code,
