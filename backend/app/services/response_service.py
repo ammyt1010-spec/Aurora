@@ -175,6 +175,10 @@ class ResponseService:
                 f"El estudio no admite modificaciones de asignación organizacional (estado: {study.status}).",
                 current_status=study.status,
             )
+        if study and study.end_at is not None:
+            end_at = study.end_at if study.end_at.tzinfo else study.end_at.replace(tzinfo=UTC)
+            if datetime.now(UTC) >= end_at:
+                raise ConflictError("El estudio ya alcanzó su fecha de cierre (end_at).")
         unit_ids = list(dict.fromkeys(payload.unit_ids))
         if len(unit_ids) != len(payload.unit_ids):
             raise ValidationDomainError("La asignación contiene unidades duplicadas.")
@@ -285,6 +289,17 @@ class ResponseService:
             return response_session
 
         study = await self.study_repo.get_with_instrument_version(response_session.study_id)
+        if study is None:
+            raise NotFoundError(f"Estudio {response_session.study_id} no encontrado")
+        if study.status != "OPEN":
+            raise ConflictError(
+                f"El estudio no admite completar sesiones (estado actual: {study.status}).",
+                current_status=study.status,
+            )
+        if study.end_at is not None:
+            end_at = study.end_at if study.end_at.tzinfo else study.end_at.replace(tzinfo=UTC)
+            if datetime.now(UTC) >= end_at:
+                raise ConflictError("El estudio ya alcanzó su fecha de cierre (end_at).")
 
         total_stmt = select(SurveyQuestion).where(SurveyQuestion.survey_id == study.survey_id)
         total_questions = len((await self.session.execute(total_stmt)).scalars().all())

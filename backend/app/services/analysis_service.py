@@ -881,7 +881,8 @@ class AnalysisService:
         study_overviews = []
         for study in studies:
             overview = await scoring_service.get_overview(study.id)
-            sig = f"{overview.instrument_version_id or 'none'}::{overview.barem_id or 'none'}"
+            algo = study.algorithm_version or "default"
+            sig = f"v:{overview.instrument_version_id or 'none'}|algo:{algo}|barem:{overview.barem_id or 'none'}"
             study_overviews.append((study, overview, sig))
 
         signatures = [sig for _, _, sig in study_overviews]
@@ -909,30 +910,49 @@ class AnalysisService:
                 intermediate_band = next(
                     (b for b in res.bands if b.classification_code == "INTERMEDIATE"), None
                 )
+                # Privacidad: Si está suprimido, no revelar medias, medianas ni porcentajes
+                mean_val = res.mean_score if not res.suppressed else None
+                median_val = res.median_score if not res.suppressed else None
+                unfav_pct = unfavorable_band.pct if (unfavorable_band and not res.suppressed) else None
+                fav_pct = favorable_band.pct if (favorable_band and not res.suppressed) else None
+                inter_pct = intermediate_band.pct if (intermediate_band and not res.suppressed) else None
+
                 point = LongitudinalPoint(
                     study_id=study.id,
                     study_name=study.name,
                     study_status=study.status,
                     date=study.start_at,
                     n_valid=res.n_valid,
-                    mean_score=res.mean_score,
-                    median_score=res.median_score,
-                    unfavorable_pct=unfavorable_band.pct if unfavorable_band else None,
-                    favorable_pct=favorable_band.pct if favorable_band else None,
-                    intermediate_pct=intermediate_band.pct if intermediate_band else None,
+                    mean_score=mean_val,
+                    median_score=median_val,
+                    unfavorable_pct=unfav_pct,
+                    favorable_pct=fav_pct,
+                    intermediate_pct=inter_pct,
                     suppressed=res.suppressed,
                     signature=sig,
                 )
                 construct_points[code]["points"].append(point)
 
         trends: list[LongitudinalConstructTrend] = []
+        notes: list[str] = []
+
         for code, info in construct_points.items():
             pts = info["points"]
+            reasons: list[str] = []
             comparable_pts = [p for p in pts if p.signature == reference_signature and not p.suppressed]
-            is_comparable = len(comparable_pts) >= 2
+
+            if any(p.signature != reference_signature for p in pts):
+                reasons.append("METHODOLOGICAL_INCOMPATIBILITY_SIGNATURE_MISMATCH")
+            if any(p.suppressed for p in pts):
+                reasons.append("SUPPRESSED_DUE_TO_PRIVACY_THRESHOLD")
+
+            is_comparable = len(comparable_pts) >= 2 and len(comparable_pts) == len(pts)
+            methodological_eq = (len(reasons) == 0) and (len(pts) >= 2)
+
             delta_unfavorable: float | None = None
             delta_mean: float | None = None
             trend_direction: str | None = None
+
             if is_comparable:
                 first = comparable_pts[0]
                 last = comparable_pts[-1]
@@ -941,13 +961,19 @@ class AnalysisService:
                     if delta_unfavorable < -2.0:
                         trend_direction = "IMPROVED"
                     elif delta_unfavorable > 2.0:
-                        trend_direction = "WORSENED"
+                        trend_direction = "DETERIORATED"
                     else:
                         trend_direction = "STABLE"
                 if last.mean_score is not None and first.mean_score is not None:
                     delta_mean = round(last.mean_score - first.mean_score, 4)
             else:
-                trend_direction = "NOT_COMPARABLE" if len(pts) > 1 else "BASELINE"
+                if len(pts) <= 1:
+                    trend_direction = "BASELINE"
+                    reasons.append("INSUFFICIENT_HISTORICAL_POINTS")
+                elif any(p.suppressed for p in pts):
+                    trend_direction = "INSUFFICIENT_SAMPLE"
+                else:
+                    trend_direction = "NOT_COMPARABLE"
 
             trends.append(
                 LongitudinalConstructTrend(
@@ -960,6 +986,8 @@ class AnalysisService:
                     delta_unfavorable_pct=delta_unfavorable,
                     delta_mean_score=delta_mean,
                     trend_direction=trend_direction,
+                    methodological_equivalence=methodological_eq,
+                    incomparability_reasons=reasons,
                 )
             )
 

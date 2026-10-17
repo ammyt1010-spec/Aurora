@@ -257,6 +257,8 @@ class LongitudinalConstructTrend(BaseModel):
     delta_unfavorable_pct: float | None = None
     delta_mean_score: float | None = None
     trend_direction: str | None = None
+    methodological_equivalence: bool = True
+    incomparability_reasons: list[str] = Field(default_factory=list)
 
 
 class LongitudinalComparisonResponse(BaseModel):
@@ -264,3 +266,4 @@ class LongitudinalComparisonResponse(BaseModel):
     total_studies_analyzed: int
     reference_signature: str | None
     constructs: list[LongitudinalConstructTrend]
+    methodological_notes: list[str] = Field(default_factory=list)

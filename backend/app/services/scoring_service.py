@@ -30,6 +30,7 @@ from app.repositories.instruments import InstrumentRepository
 from app.repositories.responses import valid_session_ids
 from app.repositories.studies import StudyRepository
 from app.analytics.censopas.classification import summarize_trichotomy
+from app.analytics.methodology_dispatcher import dispatch_construct_aggregation
 from app.services.censopas_methodology import (
     resolve_censopas_methodological_status,
     resolve_official_equivalence_enabled,
@@ -443,9 +444,26 @@ class ScoringService:
                             (score_0_100, band.classification_code if band else None)
                         )
 
+            version = study.instrument_version
+            instrument = version.instrument if version else None
+            discipline = instrument.discipline if instrument else None
+            method_code = instrument.method_code if instrument else None
+            methodological_rules = version.methodological_rules if version else None
+
             for construct in scored_constructs:
                 values = aggregate_values[construct.id]
-                summary = summarize_trichotomy(values)
+                summary = dispatch_construct_aggregation(
+                    values,
+                    discipline=discipline,
+                    method_code=method_code,
+                    barem=barem,
+                    study_algorithm_version=study.algorithm_version,
+                    methodological_rules=methodological_rules,
+                )
+                meta = {
+                    "band_counts": dict(Counter(category for _, category in values if category is not None)),
+                    **summary.get("metadata", {}),
+                }
                 self.session.add(
                     ConstructResult(
                         study_id=study_id,
@@ -462,10 +480,8 @@ class ScoringService:
                         classification=summary["classification"],
                         classification_status="BAREMED" if barem else "UNCLASSIFIED",
                         barem_id=barem.id if barem else None,
-                        algorithm_version=ALGORITHM_VERSION,
-                        metadata_={
-                            "band_counts": dict(Counter(category for _, category in values))
-                        },
+                        algorithm_version=summary["algorithm_version"],
+                        metadata_=meta,
                     )
                 )
 
