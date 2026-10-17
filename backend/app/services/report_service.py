@@ -519,6 +519,22 @@ class ReportService:
                 )
             overview = await ScoringService(self.session).get_overview(study.id)
             bundle["barem_results"] = overview.model_dump(mode="json")
+            if not bundle["is_censopas"]:
+                visible_results = [
+                    result for result in overview.results
+                    if not result.suppressed and result.mean_score is not None
+                ]
+                bundle["executive_summary"] = {
+                    "n_valid": bundle["data_quality"].get("valid_count"),
+                    "completion_rate": bundle["data_quality"].get("completion_rate"),
+                    "headline": (
+                        f"{len(visible_results)} constructos con resultados colectivos publicables. "
+                        "Las interpretaciones requieren sus baremos metodológicos."
+                        if visible_results else
+                        "No hay resultados colectivos publicables o puntuaciones disponibles para esta evaluación."
+                    ),
+                    "priority_dimensions": [],
+                }
 
         bundle["dimension_results"] = [
             r for r in bundle["censopas_results"] if r.get("construct_type") == _DIMENSION_TYPE
@@ -735,6 +751,22 @@ class ReportService:
         return entries
 
     def _build_conclusions(self, bundle: dict) -> list[str]:
+        if not bundle.get("is_censopas", True):
+            overview = bundle.get("barem_results") or {}
+            publicable = [
+                result for result in overview.get("results", [])
+                if not result.get("suppressed") and result.get("mean_score") is not None
+            ]
+            if not publicable:
+                return [
+                    "No se dispone de puntuaciones colectivas publicables. No es posible concluir que exista un nivel de riesgo favorable.",
+                    "La interpretación depende de la validez del instrumento y de su baremo específico."
+                ]
+            return [
+                f"Se presentan resultados colectivos para {len(publicable)} constructos con muestra publicable.",
+                "Las puntuaciones y categorías se interpretan exclusivamente según el instrumento y su baremo documentado.",
+                "Estos resultados describen grupos, no personas, y no justifican diagnósticos ni decisiones laborales individuales.",
+            ]
         """Fase 9: solo texto derivado de datos ya calculados en el bundle —
         ningún resultado concreto queda hardcodeado, se lee de
         `executive_summary`/`dimension_results`/`methodological_label`."""
