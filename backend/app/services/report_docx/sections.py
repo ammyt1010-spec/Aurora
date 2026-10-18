@@ -54,37 +54,45 @@ def build_document_content(document, bundle: dict) -> None:
     traceability = bundle.get("traceability") or {}
     min_publishable_n = (traceability.get("privacy") or {}).get("min_publishable_n")
     version_kind = cover.get("version_kind")
+    is_censopas = bundle.get("is_censopas", True)
+    template = bundle.get("report_template") or {}
+    if not study.get("instrument_name") and cover.get("instrument_label"):
+        study = {**study, "instrument_name": cover["instrument_label"]}
     selected = set(bundle.get("sections") or [])
 
     def include(*keys: str) -> bool:
         return not selected or bool(selected.intersection(keys))
 
     if include("portada"):
-        _add_cover(document, cover, study)
+        _add_cover(document, cover, study, is_censopas=is_censopas, template=template, logo_png=bundle.get("brand_logo_png"))
     if include("resumen_ejecutivo"):
         _add_executive_summary(document, next(numbering), bundle.get("executive_summary"))
-    if include("trazabilidad", "ficha_tecnica"):
+    if is_censopas and include("trazabilidad", "ficha_tecnica"):
         _add_methodological_status(document, bundle.get("methodological_status"), bundle.get("methodological_label"))
     if include("ficha_tecnica"):
         _add_ficha_tecnica(
             document, next(numbering), study, bundle.get("data_quality"),
             bundle.get("methodological_label"), traceability.get("barem"), min_publishable_n,
+            is_censopas=is_censopas,
         )
     if include("calidad_datos"):
         _add_data_quality_section(document, next(numbering), bundle.get("data_quality"))
     if include("variables_descriptivas"):
         _add_sociolaboral_section(document, next(numbering), bundle.get("sociolaboral_profile") or [])
 
-    if include("dimensiones", "resultados_globales"):
-        add_section_header(document, next(numbering), "Resultados por dimensión (D1-D6)")
-        _add_trichotomy_section(document, bundle.get("dimension_results") or [], min_publishable_n)
-    if version_kind == "MEDIUM" and include("subdimensiones"):
-        add_section_header(document, next(numbering), "Resultados por subdimensión (S1-S20)")
-        _add_trichotomy_section(document, bundle.get("subdimension_results") or [], min_publishable_n, compact=True)
-
-    if include("dimensiones", "resultados_globales", "subdimensiones"):
-        _add_interpretation_section(document, bundle.get("interpretation") or [])
-        _add_priority_ranking_section(document, next(numbering), bundle.get("priority_ranking") or [])
+    if is_censopas:
+        if include("dimensiones", "resultados_globales"):
+            add_section_header(document, next(numbering), "Resultados por dimensión (D1-D6)")
+            _add_trichotomy_section(document, bundle.get("dimension_results") or [], min_publishable_n)
+        if version_kind == "MEDIUM" and include("subdimensiones"):
+            add_section_header(document, next(numbering), "Resultados por subdimensión (S1-S20)")
+            _add_trichotomy_section(document, bundle.get("subdimension_results") or [], min_publishable_n, compact=True)
+        if include("dimensiones", "resultados_globales", "subdimensiones"):
+            _add_interpretation_section(document, bundle.get("interpretation") or [])
+            _add_priority_ranking_section(document, next(numbering), bundle.get("priority_ranking") or [])
+    elif include("dimensiones", "resultados_globales", "subdimensiones"):
+        add_section_header(document, next(numbering), "Resultados por constructo")
+        _add_generic_construct_section(document, bundle.get("barem_results") or {})
 
     if include("hallazgos_premium") and (bundle.get("analysis_results") or bundle.get("premium_analytics")):
         add_section_header(document, next(numbering), "Analítica")
@@ -102,6 +110,49 @@ def build_document_content(document, bundle: dict) -> None:
         _add_signatures_section(document, next(numbering))
 
 
+def _add_generic_construct_section(document, barem_results: dict) -> None:
+    """Render multidisciplinario desde el overview privado, sin tricotomía CENSOPAS.
+
+    La API de scoring ya suprime puntuaciones y bandas para grupos con n
+    insuficiente; el render no debe reconstruir esos valores desde respuestas.
+    """
+    results = barem_results.get("results") or []
+    if not results:
+        add_body(document, "No hay resultados colectivos publicables o no se ha ejecutado el análisis.")
+        return
+    rows = []
+    for result in results:
+        suppressed = bool(result.get("suppressed"))
+        bands = result.get("bands") or []
+        if suppressed:
+            score_label = "Suprimido"
+            category_label = "No publicable"
+            n_label = "—"
+        else:
+            score = result.get("mean_score")
+            score_label = f"{float(score):.2f}" if score is not None else "Sin puntuación"
+            n_label = str(result.get("n_valid") or "—")
+            active_bands = [band for band in bands if band.get("pct") is not None]
+            if active_bands:
+                top = max(active_bands, key=lambda band: float(band.get("pct") or 0))
+                category_label = f"{top.get('label') or top.get('classification_code') or 'Categoría'} ({float(top['pct']):.1f} %)"
+            else:
+                category_label = "Sin clasificación verificable"
+        rows.append([
+            str(result.get("construct_name") or result.get("construct_code") or "—"),
+            n_label,
+            score_label,
+            category_label,
+        ])
+    add_colmena_table(
+        document,
+        ["Constructo", "n válido", "Media", "Categoría predominante"],
+        rows,
+        widths_mm=[63, 21, 25, 69],
+    )
+    add_muted(document, "Las categorías son descriptivas y dependen del baremo específico. Los resultados suprimidos no se publican.")
+
+
 def _section_numbering():
     n = 0
     while True:
@@ -113,22 +164,33 @@ def _section_numbering():
 # Portada
 # ---------------------------------------------------------------------------
 
-def _add_cover(document, cover: dict, study: dict) -> None:
-    add_centered_badge(document, "EXPEDIENTE TÉCNICO · BORRADOR CONTROLADO", width_mm=78, height_mm=9)
+def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, template: dict | None = None, logo_png: bytes | None = None) -> None:
+    template = template or {}
+    badge_text = cover.get("badge_text") or "EXPEDIENTE TÉCNICO · BORRADOR CONTROLADO"
+    add_centered_badge(document, badge_text[:110], width_mm=110, height_mm=9)
     document.add_paragraph().paragraph_format.space_after = Pt(10)
 
-    add_cover_title(document, study.get("name") or "Reporte")
+    if logo_png:
+        logo_paragraph = document.add_paragraph()
+        logo_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_paragraph.add_run().add_picture(io.BytesIO(logo_png), width=Cm(3.8))
+        logo_paragraph.paragraph_format.space_after = Pt(12)
+
+    add_cover_title(document, str(template.get("header_title") or study.get("name") or "Reporte")[:180])
 
     org = cover.get("organization_name")
     if org:
         add_cover_org(document, org)
 
     label = cover.get("methodological_label") or {}
-    mode_label = (
-        f"{label.get('label', 'Baremo de referencia')} — "
-        + ("Equivalente al resultado oficial CENSOPAS-COPSOQ" if label.get("official_equivalence")
-           else "Reporte provisional — datos sintéticos y sin equivalencia oficial")
-    )
+    if is_censopas:
+        mode_label = (
+            f"{label.get('label', 'Baremo de referencia')} — "
+            + ("Equivalente al resultado oficial CENSOPAS-COPSOQ" if label.get("official_equivalence")
+               else "Resultados sin equivalencia oficial CENSOPAS-COPSOQ")
+        )
+    else:
+        mode_label = f"Instrumento: {cover.get('instrument_label') or study.get('instrument_name') or 'Evaluación profesional'}"
     add_cover_subtitle(document, mode_label)
 
     pairs = [
@@ -187,13 +249,13 @@ def _add_methodological_status(document, readiness: dict | None, methodological_
     document.add_page_break()
 
 
-def _add_ficha_tecnica(document, number, study, data_quality, methodological_label, barem, min_publishable_n) -> None:
+def _add_ficha_tecnica(document, number, study, data_quality, methodological_label, barem, min_publishable_n, *, is_censopas=True) -> None:
     add_section_header(document, number, "Ficha técnica")
     data_quality = data_quality or {}
     label = methodological_label or {}
     period = " – ".join(filter(None, [_format_datetime(study.get("period_start")), _format_datetime(study.get("period_end"))])) or "—"
     pairs = [
-        ("Instrumento", study.get("instrument_name") or "CENSOPAS-COPSOQ"),
+        ("Instrumento", study.get("instrument_name") or ("CENSOPAS-COPSOQ" if is_censopas else "Instrumento de evaluación")),
         ("Versión del instrumento", study.get("instrument_version_code") or "—"),
         ("Estudio", study.get("name") or "—"),
         ("Tipo de estudio", study.get("study_type") or "—"),
@@ -205,7 +267,7 @@ def _add_ficha_tecnica(document, number, study, data_quality, methodological_lab
         ("Tasa válida", _format_percentage(data_quality.get("completion_rate"))),
         ("Período", period),
         ("Baremo aplicado", (barem or {}).get("name") or "—"),
-        ("Equivalencia oficial", "Habilitada" if label.get("official_equivalence") else "No habilitada"),
+        ("Equivalencia oficial", ("Habilitada" if label.get("official_equivalence") else "No habilitada") if is_censopas else "No aplica"),
         ("N mínimo publicable", str(min_publishable_n) if min_publishable_n is not None else "—"),
     ]
     add_key_value_grid(document, pairs, widths_mm=[38, 51, 38, 51])

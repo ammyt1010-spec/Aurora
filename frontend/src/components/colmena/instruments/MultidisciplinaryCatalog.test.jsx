@@ -101,7 +101,8 @@ describe('MultidisciplinaryCatalog', () => {
       <MultidisciplinaryCatalog projectId={1} currentStudyId={100} currentVersionId={10} />
     );
 
-    const ergoButton = await screen.findByRole('button', { name: /Ergonomía/i });
+    expect(await screen.findByText('CENSOPAS-COPSOQ Versión Corta', {}, { timeout: 10000 })).toBeInTheDocument();
+    const ergoButton = await screen.findByRole('button', { name: /Ergonomía/i }, { timeout: 10000 });
     fireEvent.click(ergoButton);
 
     expect(listInstruments).toHaveBeenCalledWith(

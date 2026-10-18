@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.user import User
 from app.core.pagination import Page, PageParams, page_params
 from app.schemas.datasets import DataDictionary, LongDataset, WideDataset
 from app.schemas.invitations import (
@@ -218,6 +220,9 @@ async def revoke_study_invitation(
     invitation_id: int,
     reason: str | None = None,
     session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    invitation = await InvitationService(session).revoke(study_id, invitation_id, reason)
+    invitation = await InvitationService(session).revoke(
+        study_id, invitation_id, reason, user_id=user.id
+    )
     return InvitationRead.model_validate(invitation)

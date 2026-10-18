@@ -22,11 +22,11 @@ from app.models.instrument import Instrument, InstrumentVersion
 from app.models.option_set import OptionSet
 from app.models.project import Project
 from app.models.question import Question
-from app.models.report import ReportRun
+from app.models.report import ReportRun, ReportTemplate
 from app.models.response import ResponseSession
 from app.models.study import Study, StudyUnitType
 from app.models.survey import Survey
-from app.models.user import OrganizationMembership, User
+from app.models.user import Organization, OrganizationMembership, User
 from app.models.variable import Variable
 from app.services.billing_service import is_platform_operator
 from app.services.project_service import ProjectService
@@ -253,6 +253,18 @@ async def require_business_access(
         await _project(db, int(p["project_id"]), user, write)
     elif "report_id" in p:
         await _study(db, (await _get(db, ReportRun, int(p["report_id"]))).study_id, user, write)
+    elif "template_id" in p:
+        template = await _get(db, ReportTemplate, int(p["template_id"]))
+        if write and not is_platform_operator(user):
+            raise AuthorizationError("Sólo el operador central puede modificar plantillas de informes.")
+        if not write and template.status != "ACTIVE" and not is_platform_operator(user):
+            raise AuthorizationError("La plantilla solicitada no está publicada.")
+    elif "organization_id" in p:
+        await _get(db, Organization, int(p["organization_id"]))
+        if not is_platform_operator(user):
+            membership = await db.get(OrganizationMembership, (int(p["organization_id"]), user.id))
+            if membership is None or membership.role_code not in {"OWNER", "ADMIN"}:
+                raise AuthorizationError("No puedes consultar el historial de informes de esta empresa.")
     elif "export_id" in p:
         await _study(db, (await _get(db, Export, int(p["export_id"]))).study_id, user, write)
     elif "run_id" in p:

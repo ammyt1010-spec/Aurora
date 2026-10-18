@@ -53,6 +53,8 @@ class ReportRunCreate(BaseModel):
     report_mode: Literal["PROVISIONAL", "OFFICIAL", "SAMPLE"] = "PROVISIONAL"
     is_sample_preview: bool = False
     sections: list[str] = Field(default_factory=list)
+    # Logo PNG de uso efímero para renderizado; nunca guardar como metadata/BD.
+    company_logo_png: str | None = Field(default=None, max_length=850000)
 
 
 class ReportPreviewRead(BaseModel):
