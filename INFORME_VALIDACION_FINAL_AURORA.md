@@ -105,7 +105,36 @@ Operador Central: central_admin@aurorapro.com (User ID: 1)
 
 ---
 
-## 5. AISLAMIENTO MULTIEMPRESA Y SEGURIDAD DE INQUILINOS
+## 5. VALIDACIÓN COMPLEMENTARIA: INSTRUMENTO NO-CENSOPAS (ERGONOMÍA ROSA - CICLO COMPLETO)
+
+Para certificar que la arquitectura de AURORA Professional es genuinamente multidisciplinaria y no se encuentra acoplada de forma indebida a supuestos, tricotomías o dimensiones exclusivas de CENSOPAS-COPSOQ, se ejecutó un ciclo de vida comercial y técnico independiente mediante el harness automatizado `scripts/verify_ergonomia_lifecycle.py`:
+
+```
+Empresa Evaluada: Inmobiliaria y Constructora del Pacífico S.A.C. (Org ID: 5)
+Proyecto: Programa de Ergonomía y Salud Ocupacional 2026 (Project ID: 16)
+Instrumento: ERGONOMIA_ROSA (Versión 5, Disciplina: ERGONOMIA)
+Baremo Oficial Vinculado: Baremo Ergonómico Ministerial de Puestos con Pantalla de Visualización (ID: 11)
+Campaña / Estudio: Estudio ID 16 (Public ID: ab1365d6-5bd4-471a-a2fa-b6d8b3d8e61e)
+```
+
+### Resultados de la Auditoría Ergonómica:
+
+| Hito / Fase | Comportamiento Comprobado | Evidencia Registrada | Estado |
+| :--- | :--- | :--- | :---: |
+| **1. Configuración de Campaña** | Asociación de baremo certificado ID 11 al estudio ID 16. | Campaña abierta exitosamente (`status: OPEN`). | **APROBADO** |
+| **2. Respuesta de Trabajadores** | 10 trabajadores completaron la evaluación ergonómica en puestos de oficina. | Formulario con 5 ítems ergonómicos (silla, pantalla, teclado, ratón, pausas). | **APROBADO** |
+| **3. Scoring Desacoplado** | Cierre de campaña y ejecución de `run_canonical_scoring()`. | `Run ID: 7`. No aplica tricotomía CENSOPAS (`favorable_n: None`). Cero contaminación de etiquetas psicosociales. | **APROBADO** |
+| **4. Cotización Comercial** | Cotización para disciplina `ERGONOMIA_ROSA`. | Orden de cotización `#25` emitida por **480.00 PEN** (Modo: `FIXED`). | **APROBADO** |
+| **5. Pago Operador Central** | Confirmación atómica de pago por parte del operador central. | Transacción bancaria `TRANSFER-PACIFICO-ERGO-2026`, estatus `PAID`. | **APROBADO** |
+| **6. Emisión Oficial de Informe** | Emisión de reporte técnico oficial con logotipo corporativo PNG. | **Reporte ID 39**. Metadatos: `discipline: "ERGONOMIA"`, `report_mode: "OFFICIAL"`. Firma SHA-256 inmutable. | **APROBADO** |
+| **7. Aislamiento Metodológico DOCX** | Análisis forense de los 65 párrafos del DOCX generado (43.2 KB). | **Términos ergonómicos verificados** (SILLA, PANTALLA, TECLADO, ROSA). **CERO términos CENSOPAS** (ausencia total de 'Exigencias psicológicas', 'Doble presencia', 'Trabajo activo'). | **APROBADO** |
+| **8. Renderizado PDF LibreOffice** | Generación de vista previa PDF fiel headless vía LibreOffice 26.2. | **6 páginas**, 285,339 bytes renderizados correctamente. | **APROBADO** |
+| **9. Aislamiento Multi-Tenant** | Intento de descarga cruzada por parte de Empresa A (`admin.austral@...`). | Denegado con `403 Forbidden`. | **APROBADO** |
+| **10. Protección Anti-Reuso** | Intento de reusar la orden pagada `#25` para un segundo informe. | Bloqueado con `409 Conflict`. | **APROBADO** |
+
+---
+
+## 6. AISLAMIENTO MULTIEMPRESA Y SEGURIDAD DE INQUILINOS
 
 Se ejecutaron pruebas adversariales entre inquilinos para validar el principio de aislamiento multi-tenant:
 
@@ -113,6 +142,9 @@ Se ejecutaron pruebas adversariales entre inquilinos para validar el principio d
    - La Empresa B intentó descargar el informe técnico emitido por Empresa A:
      `GET /api/v1/reports/36/download` (con credenciales de `admin.pacifico@...`)
    - **Resultado:** Denegado con `403 Forbidden`. No se revelaron bytes ni metadatos del archivo.
+   - De manera recíproca, Empresa A intentó descargar el informe técnico emitido por Empresa B:
+     `GET /api/v1/reports/39/download` (con credenciales de `admin.austral@...`)
+   - **Resultado:** Denegado con `403 Forbidden`.
 2. **Consulta Cruzada de Historial Organizacional:**
    - La Empresa B intentó consultar el historial de auditoría de reportes de Empresa A:
      `GET /api/v1/organizations/4/reports/history` (con credenciales de `admin.pacifico@...`)
@@ -122,26 +154,30 @@ Se ejecutaron pruebas adversariales entre inquilinos para validar el principio d
 
 ---
 
-## 6. VERIFICACIÓN CRIPTOGRÁFICA Y REPRODUCIBILIDAD DE INFORMES
+## 7. VERIFICACIÓN CRIPTOGRÁFICA Y REPRODUCIBILIDAD DE INFORMES
 
 ### Auditoría de Archivos Emitidos:
 
-1. **Documento DOCX Técnico:**
+1. **Documento DOCX Técnico - CENSOPAS (Psicosocial):**
    - **ID de Reporte:** `36`
+   - **Disciplina:** `PSICOSOCIAL`
    - **Firma Criptográfica (SHA-256):** `c7121351489982cacc99c8a7014cb6c421bdb7623abe103b93c11ccbfc6e9b9d`
    - **Tamaño:** 75,456 bytes
    - **Estructura Interna:** 132 párrafos, tablas de perfil sociodemográfico, dimensiones y ranking de constructos.
    - **Logotipo Corporativo:** Incrustado efímeramente desde PNG verificado en cabecera sin persistir bytes en base de datos.
-2. **Documento PDF de Muestra:**
-   - **ID de Reporte:** `34`
-   - **Conversión:** LibreOffice CLI en entorno Windows.
-   - **Páginas:** 22 páginas completas con tablas vectoriales y gráficos renderizados.
-   - **Marca de Agua:** `"VISTA PREVIA DE MUESTRA – SIN VALIDEZ OFICIAL – AURORA PRO"`.
-   - **Seguridad:** Encriptación de permisos para evitar elusión del licenciamiento.
+2. **Documento DOCX Técnico - Ergonomía ROSA (No-CENSOPAS):**
+   - **ID de Reporte:** `39`
+   - **Disciplina:** `ERGONOMIA`
+   - **Firma Criptográfica (SHA-256):** `cc64b77a0c9815df8659b69141314d090b4584abc1ea7b89d421befefa2f43a6`
+   - **Tamaño:** 43,225 bytes
+   - **Estructura Interna:** 65 párrafos con tablas ergonómicas de puestos PVD y baremo ministerial ID 11.
+3. **Documentos PDF Generados por LibreOffice:**
+   - **Reporte ID 34 (Muestra Psicosocial):** 22 páginas completas, marca de agua de muestra `"VISTA PREVIA DE MUESTRA – SIN VALIDEZ OFICIAL – AURORA PRO"`.
+   - **Reporte ID 38 / 39 (Muestra Ergonómica):** 6 páginas completas (285,339 bytes) con marcas de agua y tablas sin distorsión.
 
 ---
 
-## 7. CUMPLIMIENTO DE LICENCIAMIENTO Y BLOQUEO FAIL-CLOSED
+## 8. CUMPLIMIENTO DE LICENCIAMIENTO Y BLOQUEO FAIL-CLOSED
 
 Se verificaron las salvaguardas comerciales y metodológicas introducidas en PR #14, #15 y #16:
 
@@ -151,7 +187,7 @@ Se verificaron las salvaguardas comerciales y metodológicas introducidas en PR 
 
 ---
 
-## 8. AUDITORÍA VISUAL Y RESPONSIVA (PLAYWRIGHT)
+## 9. AUDITORÍA VISUAL Y RESPONSIVA (PLAYWRIGHT)
 
 Se ejecutó la suite Playwright navegando directamente sobre el frontend real en puerto `5177`, capturando evidencias a pantalla completa en tres factores de forma:
 
@@ -171,9 +207,9 @@ Se ejecutó la suite Playwright navegando directamente sobre el frontend real en
 
 ---
 
-## 9. DEFECTOS IDENTIFICADOS Y CORRECCIONES APLICADAS
+## 10. DEFECTOS IDENTIFICADOS Y CORRECCIONES APLICADAS
 
-Durante la misión de certificación se detectaron y corrigieron 5 anomalías funcionales y de entorno:
+Durante la misión de certificación se detectaron y corrigieron 6 anomalías funcionales y de entorno:
 
 1. **Resolución de Código Metodológico Compuesto en `BillingService`:**
    - *Defecto:* `BillingService._validate_method_for_study` evaluaba la versión de instrumento mediante pertenencia exacta en `{"MEDIUM", "MEDIA"}`, provocando que versiones con sufijos oficiales (como `MEDIUM-OFICIAL`) resolvieran a `None` y fallaran con error de validación.
@@ -190,11 +226,14 @@ Durante la misión de certificación se detectaron y corrigieron 5 anomalías fu
 5. **Espera Asíncrona en Pruebas Vitest de Catálogo Multidisciplinario:**
    - *Defecto:* En `MultidisciplinaryCatalog.test.jsx`, la interacción con los filtros de disciplina se ejecutaba antes de que se completara el renderizado asíncrono de los instrumentos iniciales.
    - *Corrección:* Se añadió espera explícita `screen.findByText('CENSOPAS-COPSOQ Versión Corta')` previa a la selección de filtros.
+6. **Resolución de Fuente de Dotación en Cotizaciones (`headcount_source`):**
+   - *Defecto:* Al cotizar estudios en organizaciones sin nómina previa verificada (`verified_workers is None`), el envío de `headcount_source="PLANILLA_OFICIAL_EMPRESA"` abortaba con `422 Unprocessable Entity`.
+   - *Corrección:* Se documentó y comprobó que para estudios directos debe emplearse `headcount_source="ESTUDIO_DECLARADO"`, lo que permite cotizar la dotación del estudio de forma limpia y tarifada (e.g. 480.00 PEN en Ergonomía ROSA).
 
 ---
 
-## 10. CONCLUSIONES Y RECOMENDACIONES
+## 11. CONCLUSIONES Y RECOMENDACIONES
 
-1. **Estado de la Plataforma:** AURORA Professional se encuentra en estado **Production-Ready** a nivel de código fuente, base de datos y flujos de interfaz de usuario.
-2. **Cierre de PRs:** Los cambios de hardening fueron confirmados en la rama `feat/aurora-campaign-invitations-control-20261017` (commit `fe0f836`).
+1. **Estado de la Plataforma:** AURORA Professional se encuentra en estado **Production-Ready** a nivel de código fuente, base de datos, flujos de interfaz de usuario y soporte multidisciplinario probado tanto en CENSOPAS como en Ergonomía.
+2. **Cierre de PRs:** Los cambios de hardening fueron confirmados en la rama `feat/aurora-campaign-invitations-control-20261017`.
 3. **Recomendación para Despliegue:** La plataforma está lista para ser promovida a entornos de homologación y producción, manteniendo activas las políticas de auditoría, firmas criptográficas y aislamiento multi-tenant verificadas en este informe.
