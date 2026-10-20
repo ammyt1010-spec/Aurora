@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import QRCode from 'qrcode';
@@ -19,7 +19,7 @@ import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
 import FormField from '../../ui/FormField.jsx';
 
-export default function InstrumentConfirmModal({ instrument, isOpen, onClose, onCreated }) {
+export default function InstrumentConfirmModal({ instrument, isOpen, onClose }) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [copied, setCopied] = useState(false);
@@ -31,8 +31,21 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     company_sector: 'MINING',
     study_name: instrument ? `Evaluación ${instrument.title} · Aurora 2026` : 'Evaluación Aurora 2026',
     instrument_version: instrument?.version || 'MEDIUM',
-    population_invited: 50,
+    population_invited: instrument?.version === 'SHORT' ? 20 : 250,
   });
+
+  useEffect(() => {
+    if (!instrument) return;
+    setFormData((prev) => ({
+      ...prev,
+      study_name: `Evaluación ${instrument.title} · Aurora 2026`,
+      instrument_version: instrument.version,
+      population_invited: instrument.version === 'SHORT' ? 20 : 250,
+    }));
+    setStep(1);
+    setResult(null);
+    setErrorMsg(null);
+  }, [instrument]);
 
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -41,7 +54,6 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     onSuccess: (data) => {
       setResult(data);
       setStep(2);
-      if (onCreated) onCreated(data);
     },
     onError: (err) => {
       setErrorMsg(err?.message || 'Error al generar el instrumento.');
@@ -62,6 +74,10 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     }
     if (!formData.company_ruc.trim()) {
       setErrorMsg('Ingresa el RUC o ID Tributario.');
+      return;
+    }
+    if (instrument?.version === 'SHORT' && Number(formData.population_invited) > 24) {
+      setErrorMsg('Para 25 o más trabajadores selecciona CENSOPAS versión media.');
       return;
     }
 
@@ -95,9 +111,9 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     anchor.click();
   };
 
-  const handleGoToTelemetry = () => {
+  const handleGoToWorkspace = () => {
     if (result?.project_id) {
-      navigate(`/colmena/project/${result.project_id}/telemetry`);
+      navigate(`/colmena/project/${result.project_id}/link`);
       if (onClose) onClose();
     }
   };
@@ -290,8 +306,8 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
               <ExternalLink size={14} />
               Probar Demo
             </a>
-            <Button onClick={handleGoToTelemetry} size="sm" className="flex items-center justify-center gap-1.5 font-bold">
-              Ir a Telemetría en Vivo
+            <Button onClick={handleGoToWorkspace} size="sm" className="flex items-center justify-center gap-1.5 font-bold">
+              Ver enlace y QR
               <ArrowRight size={14} />
             </Button>
           </div>

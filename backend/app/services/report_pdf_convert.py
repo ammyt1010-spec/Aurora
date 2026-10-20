@@ -81,9 +81,12 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
         except Exception as exc:
             conversion_errors.append(f"Microsoft Word no disponible: {exc}")
 
-    # Conserva una salida mínima para entornos de prueba/CI sin suite ofimática.
-    # Los despliegues productivos deben incluir LibreOffice o Word; en ambos
-    # casos se toma uno de los caminos anteriores y se preserva el layout real.
+    # A los usuarios nunca se les debe entregar como "completo" un PDF de
+    # contingencia que pierde tablas, figuras y paginación del DOCX. Solo los
+    # tests pueden optar explícitamente por ese renderer para no requerir
+    # una suite ofimática en CI.
+    if os.getenv("AURORA_ALLOW_LOSSY_PDF_FALLBACK", "").lower() not in {"1", "true"}:
+        raise DocxToPdfError("No se pudo preservar el diseño completo del informe PDF: " + " | ".join(conversion_errors))
     logger.warning(
         "Se usó el PDF de contingencia porque no hubo suite ofimática: %s",
         " | ".join(conversion_errors) or "conversor no disponible",
@@ -92,7 +95,11 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
 
 
 async def _convert_with_word(docx_bytes: bytes) -> bytes | None:
-    with tempfile.TemporaryDirectory(prefix="aurora_word_report_") as tmp_dir:
+    # Word releases its read-only DOCX handle asynchronously after Quit().
+    # The PDF is already safely read before leaving this scope; a transient
+    # Windows file lock during temp cleanup must not discard that PDF and
+    # trigger the lossy emergency renderer.
+    with tempfile.TemporaryDirectory(prefix="aurora_word_report_", ignore_cleanup_errors=True) as tmp_dir:
         tmp_path = Path(tmp_dir)
         docx_path = (tmp_path / "report.docx").resolve()
         pdf_path = (tmp_path / "report.pdf").resolve()

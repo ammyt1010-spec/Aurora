@@ -10,7 +10,7 @@ import TelemetryOverview from './TelemetryOverview.jsx';
  * respuestas agrupadas por dimensión — la analítica avanzada (segmentación,
  * correlaciones, priorización) vive en Resultados.
  */
-export default function TelemetryDashboard({ studyId, telemetry, descriptives, isLoadingTelemetry }) {
+export default function TelemetryDashboard({ studyId, telemetry, descriptives, isLoadingTelemetry, isLoadingDescriptives }) {
   if (!studyId) {
     return (
       <Card>
@@ -36,7 +36,7 @@ export default function TelemetryDashboard({ studyId, telemetry, descriptives, i
           <p className="text-sm font-semibold text-dark">Dimensiones</p>
           <p className="text-xs text-muted">Preguntas y respuestas, agrupadas por dimensión.</p>
         </div>
-        <TelemetryDimensionsSection descriptives={descriptives} isLoading={isLoadingTelemetry} />
+        <TelemetryDimensionsSection descriptives={descriptives} isLoading={isLoadingDescriptives} />
       </div>
     </div>
   );

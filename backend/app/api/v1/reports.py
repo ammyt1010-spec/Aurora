@@ -106,6 +106,23 @@ async def get_report_preview_status(
     )
 
 
+@router.get("/studies/{study_id}/reports/latest-preview", response_model=ReportPreviewRead | None)
+async def get_latest_report_preview(
+    study_id: int,
+    session: AsyncSession = Depends(get_db),
+):
+    latest = await ReportService(session).get_latest_preview(study_id)
+    if latest is None:
+        return None
+    report_run, pages = latest
+    return ReportPreviewRead(
+        preview_id=report_run.id,
+        status=report_run.status,
+        pages=pages,
+        preview_url=f"/reports/{report_run.id}/preview.pdf",
+    )
+
+
 @router.get("/reports/{report_id}", response_model=ReportRunRead)
 async def get_report(report_id: int, session: AsyncSession = Depends(get_db)):
     service = ReportService(session)

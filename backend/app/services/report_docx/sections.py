@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Cm, Pt, RGBColor
@@ -124,11 +125,13 @@ def _add_cover(document, cover: dict, study: dict) -> None:
         add_cover_org(document, org)
 
     label = cover.get("methodological_label") or {}
-    mode_label = (
-        f"{label.get('label', 'Baremo de referencia')} — "
-        + ("Equivalente al resultado oficial CENSOPAS-COPSOQ" if label.get("official_equivalence")
-           else "Reporte provisional — datos sintéticos y sin equivalencia oficial")
-    )
+    if study.get("synthetic_data"):
+        mode_detail = "DEMOSTRACIÓN CON DATOS SINTÉTICOS — NO APTO PARA PRESENTACIÓN OFICIAL"
+    elif label.get("official_equivalence"):
+        mode_detail = "Equivalente al resultado oficial CENSOPAS-COPSOQ"
+    else:
+        mode_detail = "Reporte provisional — sin equivalencia oficial"
+    mode_label = f"{label.get('label', 'Baremo de referencia')} — {mode_detail}"
     add_cover_subtitle(document, mode_label)
 
     pairs = [
@@ -151,7 +154,7 @@ def _add_cover(document, cover: dict, study: dict) -> None:
         variant="neutral",
     )
 
-    date_label = _format_datetime(cover.get("generated_at"))
+    date_label = _format_datetime(cover.get("generated_at"), to_lima=True)
     if date_label:
         document.add_paragraph()
         add_caption(document, f"Generado: {date_label}")
@@ -600,10 +603,13 @@ def _format_duration(seconds: float | None) -> str:
     return f"{minutes} min {remainder} s" if minutes else f"{remainder} s"
 
 
-def _format_datetime(value: str | None) -> str | None:
+def _format_datetime(value: str | None, *, to_lima: bool = False) -> str | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value).strftime("%d/%m/%Y %H:%M")
+        parsed = datetime.fromisoformat(value)
+        if to_lima and parsed.tzinfo is not None:
+            parsed = parsed.astimezone(ZoneInfo("America/Lima"))
+        return parsed.strftime("%d/%m/%Y %H:%M")
     except ValueError:
         return value

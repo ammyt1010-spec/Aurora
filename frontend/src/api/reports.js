@@ -16,6 +16,10 @@ export function getReportPreviewStatus(reportId) {
   return apiRequest(`/reports/${reportId}/preview-status`);
 }
 
+export function getLatestReportPreview(studyId) {
+  return apiRequest(`/studies/${studyId}/reports/latest-preview`);
+}
+
 export function getReport(reportId) {
   return apiRequest(`/reports/${reportId}`);
 }

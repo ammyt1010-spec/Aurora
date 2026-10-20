@@ -9,7 +9,6 @@ import { getProjectTelemetry } from '../../../api/telemetry.js';
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { displayLabel } from '../../../utils/labels.js';
 
-import { PageHeader } from '../../../components/layout/PageHeader.jsx';
 import { Button } from '../../../components/ui/Button.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
@@ -17,6 +16,7 @@ import { ErrorState } from '../../../components/ui/ErrorState.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 import TelemetryDashboard from '../../../components/colmena/telemetry/TelemetryDashboard.jsx';
+import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 
 function usePageVisibility() {
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
@@ -145,6 +145,7 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
       {studyId ? (
         <TelemetryDashboard
           descriptives={descriptivesQuery.data}
+          isLoadingDescriptives={descriptivesQuery.isLoading}
           isLoadingTelemetry={telemetryQuery.isLoading}
           studyId={studyId}
           telemetry={selectedTelemetry}

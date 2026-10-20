@@ -49,16 +49,16 @@ class CensopasProvisioningService:
                 convention="CENSOPAS_PROJECT_PROVISIONING",
             )
         version = await self._default_version(requested_kind)
-        questions = await self._exogenous_questions(version.id)
-        if not questions:
+        exogenous_questions = await self._exogenous_questions(version.id)
+        if not exogenous_questions:
             raise ValidationDomainError(
                 "La versión oficial CensoPÁS no contiene los datos exógenos fijos. "
                 "Ejecute scripts/seed_censopas_official.py antes de crear el proyecto.",
                 convention="CENSOPAS_PROJECT_PROVISIONING",
             )
 
-        await self._ensure_exogenous_variables(project, version, questions)
-        survey = await self._ensure_survey(project, version, questions)
+        await self._ensure_exogenous_variables(project, version, exogenous_questions)
+        survey = await self._ensure_survey(project, version)
         barem = await self._ensure_reference_barem(project, version)
 
         project.metadata_ = {
@@ -159,9 +159,7 @@ class CensopasProvisioningService:
             )
         await self.session.flush()
 
-    async def _ensure_survey(
-        self, project: Project, version: InstrumentVersion, questions: list[Question]
-    ) -> Survey:
+    async def _ensure_survey(self, project: Project, version: InstrumentVersion) -> Survey:
         existing = (
             await self.session.execute(
                 select(Survey).where(
@@ -171,7 +169,18 @@ class CensopasProvisioningService:
                 )
             )
         ).scalars().first()
+        questions = list(
+            (await self.session.execute(
+                select(Question)
+                .where(Question.instrument_version_id == version.id)
+                .order_by(Question.sort_order, Question.id)
+            )).scalars().all()
+        )
+        if not questions:
+            raise ValidationDomainError("La versión CensoPÁS no contiene preguntas para el formulario.")
+
         if existing is not None:
+            await self._complete_survey_questions(existing, questions)
             return existing
 
         survey = Survey(
@@ -201,9 +210,7 @@ class CensopasProvisioningService:
         )
         self.session.add_all([exogenous, instrument])
         await self.session.flush()
-        for index, question in enumerate(
-            sorted(questions, key=lambda item: (item.sort_order or item.id, item.id))
-        ):
+        for index, question in enumerate(questions):
             self.session.add(
                 SurveyQuestion(
                     survey_id=survey.id,
@@ -215,6 +222,49 @@ class CensopasProvisioningService:
             )
         await self.session.flush()
         return survey
+
+    async def _complete_survey_questions(self, survey: Survey, questions: list[Question]) -> bool:
+        """Repara formularios creados cuando sólo se agregaban ítems exógenos."""
+        linked_ids = set((await self.session.execute(
+            select(SurveyQuestion.question_id).where(SurveyQuestion.survey_id == survey.id)
+        )).scalars().all())
+        if {question.id for question in questions}.issubset(linked_ids):
+            return False
+        sections = list((await self.session.execute(
+            select(SurveySection).where(SurveySection.survey_id == survey.id)
+        )).scalars().all())
+        exogenous = next((section for section in sections if section.section_kind == "EXOGENOUS"), None)
+        instrument = next((section for section in sections if section.section_kind == "INSTRUMENT"), None)
+        if exogenous is None or instrument is None:
+            raise ValidationDomainError("El formulario CensoPÁS no tiene las secciones requeridas.")
+        for index, question in enumerate(questions):
+            if question.id in linked_ids:
+                continue
+            self.session.add(SurveyQuestion(
+                survey_id=survey.id,
+                question_id=question.id,
+                section_id=exogenous.id if question.research_role == "EXOGENOUS" else instrument.id,
+                sort_order=index,
+                is_required=question.is_required_default,
+            ))
+        await self.session.flush()
+        return True
+
+    async def repair_project_survey(self, project: Project) -> bool:
+        metadata = project.metadata_ or {}
+        survey_id = metadata.get("survey_id")
+        version_id = metadata.get("instrument_version_id")
+        if not survey_id or not version_id:
+            return False
+        survey = await self.session.get(Survey, int(survey_id))
+        if survey is None:
+            return False
+        questions = list((await self.session.execute(
+            select(Question)
+            .where(Question.instrument_version_id == int(version_id))
+            .order_by(Question.sort_order, Question.id)
+        )).scalars().all())
+        return await self._complete_survey_questions(survey, questions)
 
     async def _ensure_reference_barem(
         self, project: Project, version: InstrumentVersion

@@ -1,23 +1,20 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import QRCode from 'qrcode';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  Check,
   Copy,
   ExternalLink,
   QrCode,
-  Send,
   ShieldCheck,
   Users,
-  Building2,
-  Lock,
-  Sparkles,
-  RefreshCcw,
+  FlaskConical,
 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
-import { listStudies, openStudy, closeStudy } from '../../../api/studies.js';
+import { listStudies } from '../../../api/studies.js';
+import { getDemoPopulationStatus, startDemoPopulation } from '../../../api/demoPopulation.js';
 
 import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
@@ -27,10 +24,8 @@ import { ProjectMissingState } from '../../../components/colmena/ProjectMissingS
 
 export default function ProjectLinkPage() {
   const { projectId } = useParams();
-  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const [accessCode, setAccessCode] = useState(() => localStorage.getItem(`access_code_${projectId}`) || '');
-  const [savedCodeMsg, setSavedCodeMsg] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
   useActiveProject(projectId);
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -48,18 +43,31 @@ export default function ProjectLinkPage() {
   const activeStudy = studies.find((s) => s.status === 'OPEN') || studies[0];
   const publicId = activeStudy?.public_id || project?.censopas_study?.public_id;
   const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
+  useEffect(() => {
+    let active = true;
+    if (!surveyUrl) return undefined;
+    QRCode.toDataURL(surveyUrl, { width: 720, margin: 3, errorCorrectionLevel: 'H' })
+      .then((url) => { if (active) setQrDataUrl(url); })
+      .catch(() => { if (active) setQrDataUrl(null); });
+    return () => { active = false; };
+  }, [surveyUrl]);
+  const isFreeDemo = project?.metadata?.commercial_tier === 'FREE_REPORT';
+  const demoQuery = useQuery({
+    queryKey: ['demoPopulation', activeStudy?.id],
+    queryFn: () => getDemoPopulationStatus(activeStudy.id),
+    enabled: isFreeDemo && Boolean(activeStudy?.id),
+    refetchInterval: (query) => query.state.data?.status === 'RUNNING' ? 3000 : false,
+  });
+  const demoMutation = useMutation({
+    mutationFn: () => startDemoPopulation(activeStudy.id),
+    onSuccess: () => demoQuery.refetch(),
+  });
 
   const handleCopyLink = () => {
     if (!surveyUrl) return;
     navigator.clipboard.writeText(surveyUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
-
-  const handleSaveAccessCode = () => {
-    localStorage.setItem(`access_code_${projectId}`, accessCode);
-    setSavedCodeMsg(true);
-    setTimeout(() => setSavedCodeMsg(false), 2500);
   };
 
   if (isLoadingProject || isLoadingStudies) return <LoadingState label="Cargando enlace de evaluación..." />;
@@ -131,38 +139,40 @@ export default function ProjectLinkPage() {
             )}
           </Card>
 
-          {/* Worker Authentication / Company Access Code */}
-          <Card className="p-6 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber/10 text-amber">
-                <Lock size={20} />
+          {isFreeDemo && demoQuery.data?.status !== 'HAS_RESPONSES' ? (
+            <Card className="space-y-3 border-violet-200 bg-gradient-to-br from-violet-50 to-cyan-50 p-5">
+              <div className="flex items-start gap-3">
+                <FlaskConical size={20} className="mt-0.5 shrink-0 text-violet-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-dark">Probar todo Aurora con datos de ejemplo</h3>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    Genera hasta {demoStatus?.target || 250} respuestas anónimas sintéticas, calcula los niveles de riesgo y activa telemetría, dashboard e informe. Úsalo solo para esta prueba; una evaluación real debe iniciar con respuestas de trabajadores.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-dark">Validación de Trabajadores y Acceso Restringido</h3>
-                <p className="text-xs text-muted mt-0.5">
-                  Establece un código de verificación empresarial (opcional) para asegurar que solo personal autorizado conteste la encuesta.
-                </p>
-              </div>
-            </div>
+              {demoQuery.data?.status === 'AVAILABLE' || demoQuery.data?.status === 'FAILED' ? (
+                <Button disabled={demoMutation.isPending} onClick={() => demoMutation.mutate()} size="sm">
+                  {demoMutation.isPending ? 'Preparando muestra…' : `Cargar muestra sintética de ${demoStatus?.target || 250} trabajadores`}
+                </Button>
+              ) : null}
+              {demoQuery.data?.status === 'RUNNING' ? (
+                <p className="text-xs font-semibold text-violet-700">Generando respuestas y análisis. Esta sección se actualizará automáticamente.</p>
+              ) : null}
+              {demoQuery.data?.status === 'COMPLETED' ? (
+                <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-emerald-700">
+                  <span>{demoStatus?.target || 250} respuestas sintéticas listas</span>
+                  <Link to={`/colmena/project/${projectId}/telemetry`} className="underline">Ver telemetría →</Link>
+                  <Link to={`/colmena/project/${projectId}/premium`} className="underline">Ver dashboard →</Link>
+                </div>
+              ) : null}
+              {demoQuery.data?.status === 'FAILED' || demoMutation.isError ? (
+                <p className="text-xs text-red-700">{demoQuery.data?.error || demoMutation.error?.message || 'No se pudo preparar la muestra.'}</p>
+              ) : null}
+            </Card>
+          ) : null}
 
-            <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2">
-                <input
-                  type="text"
-                  placeholder="ej. MINERA-AURORA-2026"
-                  value={accessCode}
-                  onChange={(e) => setAccessCode(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-xs text-dark placeholder:text-muted focus:border-amber outline-none transition"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleSaveAccessCode}
-                className="px-4 py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark font-bold text-xs transition"
-              >
-                {savedCodeMsg ? '¡Guardado!' : 'Guardar Código'}
-              </button>
-            </div>
+          <Card className="p-5 text-xs leading-5 text-muted">
+            El enlace permite responder sin cuenta ni nombre. Compártelo únicamente con la población convocada; Aurora presenta resultados agregados y protege los grupos pequeños.
           </Card>
         </div>
 
@@ -173,11 +183,10 @@ export default function ProjectLinkPage() {
               <QrCode size={16} className="text-amber" /> Código QR de Aplicación
             </div>
 
-            {surveyUrl ? (
+            {qrDataUrl ? (
               <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-border bg-white p-3 shadow-inner">
-                {/* Clean QR code rendering using Google Charts QR API */}
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(surveyUrl)}`}
+                  src={qrDataUrl}
                   alt="Código QR de la Encuesta"
                   className="h-full w-full object-contain"
                 />
@@ -188,12 +197,10 @@ export default function ProjectLinkPage() {
               Imprime este código QR para colocarlo en afiches, áreas comunes o enviar por WhatsApp corporativo.
             </p>
 
-            {surveyUrl ? (
+            {qrDataUrl ? (
               <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(surveyUrl)}`}
-                target="_blank"
+                href={qrDataUrl}
                 download="qr_encuesta_aurora.png"
-                rel="noreferrer"
                 className="inline-block w-full py-2.5 rounded-xl border border-border bg-surfaceSoft hover:bg-surface text-dark text-xs font-bold transition"
               >
                 Descargar QR Alta Resolución

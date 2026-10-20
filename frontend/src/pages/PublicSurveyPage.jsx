@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CheckCircle2 } from 'lucide-react';
@@ -41,7 +41,6 @@ function toResponsePayload(question, value) {
 
 export default function PublicSurveyPage() {
   const { publicId } = useParams();
-  const sessionCreatedRef = useRef(false);
   const [session, setSession] = useState(null);
   const [answers, setAnswers] = useState({});
   const [index, setIndex] = useState(0);
@@ -62,22 +61,16 @@ export default function PublicSurveyPage() {
     onSuccess: (data) => setSession(data),
   });
 
-  useEffect(() => {
-    if (bundle && !sessionCreatedRef.current) {
-      sessionCreatedRef.current = true;
-      createSessionMutation.mutate();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bundle]);
-
   const answerMutation = useMutation({
-    mutationFn: ({ questionId, payload }) => upsertResponse(session.id, questionId, payload),
+    mutationFn: ({ sessionId, questionId, payload }) => upsertResponse(sessionId, questionId, payload),
   });
 
   const completeMutation = useMutation({
-    mutationFn: () => completeResponseSession(session.id),
+    mutationFn: (sessionId) => completeResponseSession(sessionId),
     onSuccess: () => setCompleted(true),
   });
+
+  const ensureSession = async () => session || createSessionMutation.mutateAsync();
 
   if (isLoadingBundle) {
     return (
@@ -116,10 +109,11 @@ export default function PublicSurveyPage() {
   const questions = bundle.questions;
   const total = questions.length;
   const answeredCount = Object.keys(answers).length;
-  const isReady = Boolean(session);
-  const submitError = answerMutation.error instanceof ApiError ? answerMutation.error.message : null;
+  const isReady = Boolean(bundle);
+  const submitError = [createSessionMutation.error, answerMutation.error, completeMutation.error]
+    .find((error) => error instanceof ApiError)?.message || null;
   const theme = resolveSurveyTheme(bundle.theme);
-  const isSubmitting = answerMutation.isPending || completeMutation.isPending;
+  const isSubmitting = createSessionMutation.isPending || answerMutation.isPending || completeMutation.isPending;
 
   const setAnswer = (questionId, value) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -130,15 +124,15 @@ export default function PublicSurveyPage() {
   // por pregunta acá, ver SurveyAllQuestionsView).
   if (theme.layout.questionsPerScreen === 'all') {
     const handleSubmitAll = async () => {
-      if (!session) return;
+      const activeSession = await ensureSession();
       for (const [questionIdKey, value] of Object.entries(answers)) {
         const question = questions.find((item) => String(item.id) === questionIdKey);
         if (!question) continue;
         const payload = toResponsePayload(question, value);
         // eslint-disable-next-line no-await-in-loop
-        await answerMutation.mutateAsync({ questionId: question.id, payload });
+        await answerMutation.mutateAsync({ sessionId: activeSession.id, questionId: question.id, payload });
       }
-      await completeMutation.mutateAsync();
+      await completeMutation.mutateAsync(activeSession.id);
     };
 
     return (
@@ -163,16 +157,17 @@ export default function PublicSurveyPage() {
   const hasCurrentAnswer = hasAnswerValue(answers[currentQuestion.id]);
 
   const persistCurrentAnswer = async () => {
-    if (!session) return;
+    const activeSession = await ensureSession();
     const value = answers[currentQuestion.id];
     const payload = toResponsePayload(currentQuestion, value);
-    await answerMutation.mutateAsync({ questionId: currentQuestion.id, payload });
+    await answerMutation.mutateAsync({ sessionId: activeSession.id, questionId: currentQuestion.id, payload });
+    return activeSession.id;
   };
 
   const handleContinue = async () => {
-    await persistCurrentAnswer();
+    const sessionId = await persistCurrentAnswer();
     if (isLast) {
-      await completeMutation.mutateAsync();
+      await completeMutation.mutateAsync(sessionId);
     } else {
       setIndex((value) => value + 1);
     }

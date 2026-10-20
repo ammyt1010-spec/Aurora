@@ -12,6 +12,23 @@ from app.services.project_service import ProjectService
 from app.models.user import Organization, OrganizationMembership
 
 
+async def test_short_form_rejects_population_above_24(client: AsyncClient, seed_user) -> None:
+    response = await client.post(
+        "/api/v1/quick-eval",
+        headers={"Authorization": f"Bearer {create_access_token(seed_user.id)}"},
+        json={
+            "company_name": "Empresa de prueba",
+            "company_ruc": "20999999999",
+            "company_sector": "MINING",
+            "instrument_version": "SHORT",
+            "study_name": "Evaluación corta",
+            "population_invited": 25,
+        },
+    )
+    assert response.status_code == 409
+    assert "versión media" in str(response.json())
+
+
 async def test_company_cannot_claim_a_second_free_report(
     client: AsyncClient, session, seed_user
 ) -> None:

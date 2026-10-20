@@ -1,24 +1,40 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.exceptions import ConflictError
 from app.core.security import get_current_user
 from app.models.user import Organization, User
 from app.schemas.organizations import OrganizationCreate
 from app.schemas.projects import CensopasStudyConfig, ProjectCreate
 from app.services.project_service import ProjectService
+from app.services.demo_population_service import DemoPopulationService
 from app.services.study_service import StudyService
 
 router = APIRouter(tags=["quick-eval"])
+logger = logging.getLogger(__name__)
+
+
+async def _populate_demo_study(study_id: int) -> None:
+    try:
+        async with AsyncSessionLocal() as session:
+            service = DemoPopulationService(session)
+            try:
+                await service.populate(study_id)
+            except Exception as exc:
+                await service.mark_failed(study_id, exc)
+                raise
+    except Exception:
+        logger.exception("Falló la población sintética del estudio %s", study_id)
 
 
 class QuickEvalRequest(BaseModel):
@@ -49,6 +65,8 @@ async def create_quick_eval(
     current_user: User = Depends(get_current_user),
 ):
     """Crea una evaluación rápida (organización, proyecto CENSO, estudio) en un solo paso."""
+    if payload.instrument_version == "SHORT" and payload.population_invited and payload.population_invited > 24:
+        raise ConflictError("La versión corta admite hasta 24 trabajadores; selecciona la versión media para esta población.")
     tax_id_normalized = "".join(payload.company_ruc.split()).upper()
     existing_org = (
         await session.execute(
@@ -123,3 +141,27 @@ async def create_quick_eval(
         free_report=True,
         free_reports_remaining=0,
     )
+
+
+@router.get("/studies/{study_id}/demo-population")
+async def get_demo_population_status(
+    study_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await DemoPopulationService(session).status(study_id, current_user)
+
+
+@router.post("/studies/{study_id}/demo-population", status_code=202)
+async def start_demo_population(
+    study_id: int,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = DemoPopulationService(session)
+    previous = await service.status(study_id, current_user)
+    result = await service.start(study_id, current_user)
+    if previous["status"] != "RUNNING":
+        background_tasks.add_task(_populate_demo_study, study_id)
+    return result

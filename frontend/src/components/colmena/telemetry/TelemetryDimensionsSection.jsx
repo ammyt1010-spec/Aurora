@@ -2,7 +2,7 @@ import { Card } from '../../ui/Card.jsx';
 import { EmptyState } from '../../ui/EmptyState.jsx';
 import { LoadingState } from '../../ui/LoadingState.jsx';
 
-function QuestionFrequencies({ question }) {
+function QuestionFrequencies({ question, minPublishableN }) {
   const isOrdinal = question.measurement_level === 'ORDINAL';
   const frequencies = isOrdinal
     ? [...question.frequencies].sort((a, b) => a.order - b.order)
@@ -19,7 +19,9 @@ function QuestionFrequencies({ question }) {
           </span>
         </div>
       </div>
-      {frequencies.length ? (
+      {question.valid_n > 0 && question.valid_n < minPublishableN ? (
+        <div className="p-4 text-sm text-muted">Distribución protegida hasta reunir al menos {minPublishableN} respuestas válidas.</div>
+      ) : frequencies.length ? (
         <div className="space-y-2.5 p-4">
           {frequencies.map((item) => (
             <div key={item.code}>
@@ -68,7 +70,7 @@ export default function TelemetryDimensionsSection({ descriptives, isLoading }) 
           <section key={group.key} className="space-y-3">
             <h3 className="text-sm font-bold text-dark">{group.label}</h3>
             <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-              {groupQuestions.map((question) => <QuestionFrequencies key={question.question_id} question={question} />)}
+              {groupQuestions.map((question) => <QuestionFrequencies key={question.question_id} question={question} minPublishableN={descriptives?.min_publishable_n || 5} />)}
             </div>
           </section>
         );

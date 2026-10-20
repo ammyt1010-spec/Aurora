@@ -355,6 +355,11 @@ class ResponseDescriptiveService:
             ]
             if numeric_values and measurement in {"SCALE", "ORDINAL"}:
                 numeric = NumericDescriptives(**compute_descriptive(numeric_values))
+            # No individual answer distribution is publishable below the
+            # study's privacy threshold, even to the company dashboard.
+            if valid_n < study.min_publishable_n:
+                frequency_rows = []
+                numeric = None
             output_questions.append(
                 ResponseQuestionDescriptives(
                     question_id=question.id,

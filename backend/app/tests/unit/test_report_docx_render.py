@@ -59,3 +59,8 @@ if __name__ == "__main__":
     test_render_report_docx_produces_valid_document()
     test_every_table_has_a_single_tblw_and_tbllayout()
     print("ok")
+from app.services.report_docx.sections import _format_datetime
+
+
+def test_report_generation_time_is_shown_in_lima() -> None:
+    assert _format_datetime("2026-10-20T20:00:00+00:00", to_lima=True) == "20/10/2026 15:00"

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Activity,
   ArrowRight,
@@ -71,7 +70,6 @@ const CORPORATE_CAPABILITIES = [
 ];
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
   const [selectedInstrument, setSelectedInstrument] = useState(null);
 
   return (
@@ -206,10 +204,6 @@ export default function DashboardPage() {
           instrument={selectedInstrument}
           isOpen={Boolean(selectedInstrument)}
           onClose={() => setSelectedInstrument(null)}
-          onCreated={(data) => {
-            setSelectedInstrument(null);
-            navigate(`/colmena/project/${data.project_id}/telemetry`);
-          }}
         />
       ) : null}
     </div>

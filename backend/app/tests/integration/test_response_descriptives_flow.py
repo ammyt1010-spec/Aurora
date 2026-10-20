@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 
 from app.models.analysis import AnalysisRun
+from app.models.study import Study
 from app.services.response_descriptive_service import ResponseDescriptiveService
 
 
@@ -178,6 +179,12 @@ async def test_response_descriptives_groups_frequencies_and_valid_sessions(
     )
 
     before_runs = await session.scalar(select(func.count()).select_from(AnalysisRun))
+    private_response = await client.get(f"/api/v1/studies/{study['id']}/response-descriptives")
+    assert private_response.status_code == 200
+    assert all(not question["frequencies"] for question in private_response.json()["questions"])
+    study_model = await session.get(Study, study["id"])
+    study_model.min_publishable_n = 1
+    await session.commit()
     response = await client.get(f"/api/v1/studies/{study['id']}/response-descriptives")
     assert response.status_code == 200, response.text
     body = response.json()

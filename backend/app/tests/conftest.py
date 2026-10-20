@@ -10,7 +10,10 @@ ver README.md.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
+
+os.environ.setdefault("AURORA_ALLOW_LOSSY_PDF_FALLBACK", "1")
 
 import pytest
 import pytest_asyncio

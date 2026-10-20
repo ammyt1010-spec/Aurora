@@ -163,6 +163,27 @@ class ReportService:
         pages = (report_run.metadata_ or {}).get("preview_pages")
         return report_run, pages
 
+    async def get_latest_preview(self, study_id: int) -> tuple | None:
+        from app.models.report import ReportRun
+
+        candidates = list((await self.session.execute(
+            select(ReportRun)
+            .where(
+                ReportRun.study_id == study_id,
+                ReportRun.status == "COMPLETED",
+                ReportRun.output_format == "DOCX",
+            )
+            .order_by(ReportRun.id.desc())
+            .limit(10)
+        )).scalars().all())
+        for report_run in candidates:
+            if not report_run.storage_path:
+                continue
+            pdf_path = Path(report_run.storage_path).with_suffix(".pdf")
+            if pdf_path.exists():
+                return report_run, (report_run.metadata_ or {}).get("preview_pages")
+        return None
+
     async def _create_pending_run(self, study_id: int, payload: ReportRunCreate) -> tuple:
         from app.models.report import ReportRun
 
@@ -265,6 +286,7 @@ class ReportService:
                 "period_end": study.end_at.isoformat() if study.end_at else None,
                 "instrument_name": study.instrument_name,
                 "instrument_version_code": study.instrument_version_code,
+                "synthetic_data": bool((study.settings or {}).get("synthetic_data")),
             },
             "generated_at": datetime.now(UTC).isoformat(),
             "report_mode": report_mode,
@@ -377,6 +399,7 @@ class ReportService:
 
     async def _build_cover(self, study, bundle: dict, report_run) -> dict:
         organization_name = None
+        organization = None
         project = await self.session.get(Project, study.project_id)
         if project is not None and project.organization_id is not None:
             organization = await self.session.get(Organization, project.organization_id)
@@ -393,6 +416,15 @@ class ReportService:
         readiness = bundle.get("methodological_status") or {}
         return {
             "organization_name": organization_name,
+            "ruc": organization.tax_id if organization else None,
+            "population": (study.settings or {}).get("population_invited"),
+            "activity": ({
+                "MINING": "Minería e hidrocarburos",
+                "INDUSTRIAL": "Industria y manufactura",
+                "CONSTRUCTION": "Construcción y energía",
+                "HEALTH": "Salud y servicios médicos",
+                "SERVICES": "Servicios y comercio",
+            }.get(organization.organization_type, organization.organization_type) if organization else None),
             "study_code": bundle["study"]["code"],
             "period_start": bundle["study"]["period_start"],
             "period_end": bundle["study"]["period_end"],
@@ -407,9 +439,8 @@ class ReportService:
     async def _build_sociolaboral_profile(self, study) -> list[dict]:
         """Fase 3: perfil sociolaboral (11 variables C-001..C-011, EXOGENOUS,
         nunca puntuables — harness §9). Reusa `ResponseDescriptiveService`
-        (misma fuente que Resultados) y aplica supresión n<min_publishable_n
-        por categoría aquí mismo, porque ese servicio no suprime por diseño
-        (sirve también a vistas internas con otro umbral de exposición)."""
+        (misma fuente que Resultados), que oculta preguntas por debajo del
+        umbral, y aplica además supresión n<min_publishable_n por categoría."""
         try:
             descriptives = await ResponseDescriptiveService(self.session).get(study.id)
         except NotFoundError:

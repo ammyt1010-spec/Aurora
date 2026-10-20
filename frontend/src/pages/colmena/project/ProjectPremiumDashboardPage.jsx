@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Activity, AlertTriangle, Clock, Gauge, Layers, ScatterChart as ScatterChartIcon, Sparkles, Target, Users } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
 import { getProjectTelemetry } from '../../../api/telemetry.js';
-import { getResponseDescriptives, getResultsOverview } from '../../../api/studies.js';
+import { getResponseDescriptives, getResultsOverview, runScoring } from '../../../api/studies.js';
+import { getDemoPopulationStatus } from '../../../api/demoPopulation.js';
 import { listVariables } from '../../../api/variables.js';
 import { runAnalysis, runSpearmanMatrix } from '../../../api/analytics.js';
 
@@ -390,6 +391,8 @@ function SegmentationCard({ studyId, rankableVariables }) {
 export default function ProjectPremiumDashboardPage() {
   const { projectId } = useParams();
   useActiveProject(projectId);
+  const queryClient = useQueryClient();
+  const autoScoredStudy = useRef(null);
   const [studyId, setStudyId] = useState(null);
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -401,7 +404,7 @@ export default function ProjectPremiumDashboardPage() {
     queryFn: () => getProjectTelemetry(projectId),
     enabled: Boolean(projectId),
   });
-  const { data: overview, isLoading: isLoadingOverview } = useQuery({
+  const { data: overview, isLoading: isLoadingOverview, isError: isOverviewError } = useQuery({
     queryKey: ['resultsOverview', studyId],
     queryFn: () => getResultsOverview(studyId),
     enabled: Boolean(studyId),
@@ -416,11 +419,36 @@ export default function ProjectPremiumDashboardPage() {
     queryFn: () => getResponseDescriptives(studyId),
     enabled: Boolean(studyId),
   });
+  const { data: demoPopulation } = useQuery({
+    queryKey: ['demoPopulation', studyId],
+    queryFn: () => getDemoPopulationStatus(studyId),
+    enabled: Boolean(studyId) && project?.metadata?.commercial_tier === 'FREE_REPORT',
+    refetchInterval: (query) => query.state.data?.status === 'RUNNING' ? 3000 : false,
+  });
+  const scoringMutation = useMutation({
+    mutationFn: () => runScoring(studyId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resultsOverview', studyId] }),
+  });
+  const selectedTelemetry = (telemetry?.studies || []).find((study) => study.study_id === studyId);
+
+  useEffect(() => {
+    if (demoPopulation?.status === 'COMPLETED') {
+      queryClient.invalidateQueries({ queryKey: ['projectTelemetry', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['resultsOverview', studyId] });
+    }
+  }, [demoPopulation?.status, projectId, studyId, queryClient]);
+
+  useEffect(() => {
+    if (!studyId || isLoadingOverview || isOverviewError || scoringMutation.isPending) return;
+    if (!selectedTelemetry?.valid_count || overview?.results?.length) return;
+    if (demoPopulation?.status === 'RUNNING' || autoScoredStudy.current === studyId) return;
+    autoScoredStudy.current = studyId;
+    scoringMutation.mutate();
+  }, [studyId, isLoadingOverview, isOverviewError, selectedTelemetry?.valid_count, overview?.results?.length, demoPopulation?.status, scoringMutation]);
 
   if (isLoadingProject) return <LoadingState label="Cargando..." />;
   if (!project) return <ProjectMissingState />;
 
-  const selectedTelemetry = (telemetry?.studies || []).find((study) => study.study_id === studyId);
   const results = overview?.results || [];
   const dimensions = results.filter((result) => result.construct_type === 'DIMENSION' && !result.suppressed);
   const subdimensions = results.filter((result) => result.construct_type === 'SUBDIMENSION' && !result.suppressed);
@@ -453,8 +481,22 @@ export default function ProjectPremiumDashboardPage() {
         description="Resumen, confiabilidad, comparaciones, correlaciones, segmentación y multivariado, organizados en secciones separadas."
       />
 
+      {demoPopulation?.synthetic ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+          Escenario sintético de {demoPopulation.target} trabajadores para explorar Aurora. Estos hallazgos no describen a una empresa real.
+        </div>
+      ) : null}
+
       <Card>
         <StudySelector projectId={projectId} studyId={studyId} onStudyChange={setStudyId} />
+        {studyId && selectedTelemetry?.valid_count ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
+            <Button size="sm" disabled={scoringMutation.isPending || demoPopulation?.status === 'RUNNING'} onClick={() => scoringMutation.mutate()}>
+              {scoringMutation.isPending ? 'Calculando resultados…' : 'Actualizar análisis con nuevas respuestas'}
+            </Button>
+            {scoringMutation.isError ? <span className="text-xs text-red-700">No se pudo calcular: {scoringMutation.error?.message}</span> : null}
+          </div>
+        ) : null}
       </Card>
 
       {!studyId ? (

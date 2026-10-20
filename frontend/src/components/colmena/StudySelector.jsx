@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { listStudies } from '../../api/studies.js';
@@ -14,6 +15,10 @@ export default function StudySelector({ projectId, studyId, onStudyChange }) {
     enabled: Boolean(projectId),
   });
   const studies = studiesData?.items ?? [];
+
+  useEffect(() => {
+    if (!studyId && studies.length > 0) onStudyChange(studies[0].id);
+  }, [studyId, studies, onStudyChange]);
 
   return (
     <label className="flex flex-col gap-2">

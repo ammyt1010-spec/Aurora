@@ -152,6 +152,9 @@ class ProjectService:
             await CensopasProvisioningService(self.session).provision_project(project)
             await self.session.commit()
             await self.session.refresh(project)
+        elif project.project_type == "CENSO" and (project.metadata_ or {}).get("censopas_auto_provisioned"):
+            if await CensopasProvisioningService(self.session).repair_project_survey(project):
+                await self.session.commit()
         return project
 
     async def ensure_access(self, project: Project, user: User, *, write: bool) -> None:
