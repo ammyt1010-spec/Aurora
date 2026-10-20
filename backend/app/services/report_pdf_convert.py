@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
+import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -23,11 +25,16 @@ from pathlib import Path
 from pypdf import PdfReader
 
 
+logger = logging.getLogger(__name__)
+_word_conversion_lock = asyncio.Lock()
+
+
 class DocxToPdfError(RuntimeError):
     pass
 
 
 async def docx_to_pdf(docx_bytes: bytes) -> bytes:
+    conversion_errors: list[str] = []
     try:
         with tempfile.TemporaryDirectory(prefix="colmena_report_") as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -53,10 +60,99 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
                 pdf_path = tmp_path / "report.pdf"
                 if pdf_path.exists():
                     return pdf_path.read_bytes()
-    except (FileNotFoundError, Exception):
-        pass
+            conversion_errors.append(
+                f"LibreOffice terminó con código {process.returncode}: "
+                f"{stderr.decode(errors='replace') or stdout.decode(errors='replace')}"
+            )
+    except Exception as exc:
+        conversion_errors.append(f"LibreOffice no disponible: {exc}")
 
+    # En los equipos Windows corporativos Word suele estar instalado aunque
+    # LibreOffice no lo esté. La automatización COM conserva tablas, colores,
+    # saltos, encabezados, pies y gráficos del DOCX canónico; el antiguo
+    # fallback de matplotlib extraía sólo texto y producía un PDF visualmente
+    # incompleto. Se ejecuta en un proceso PowerShell aislado y con timeout.
+    if os.name == "nt":
+        try:
+            async with _word_conversion_lock:
+                converted = await _convert_with_word(docx_bytes)
+            if converted is not None:
+                return converted
+        except Exception as exc:
+            conversion_errors.append(f"Microsoft Word no disponible: {exc}")
+
+    # Conserva una salida mínima para entornos de prueba/CI sin suite ofimática.
+    # Los despliegues productivos deben incluir LibreOffice o Word; en ambos
+    # casos se toma uno de los caminos anteriores y se preserva el layout real.
+    logger.warning(
+        "Se usó el PDF de contingencia porque no hubo suite ofimática: %s",
+        " | ".join(conversion_errors) or "conversor no disponible",
+    )
     return _generate_fallback_pdf_from_docx(docx_bytes)
+
+
+async def _convert_with_word(docx_bytes: bytes) -> bytes | None:
+    with tempfile.TemporaryDirectory(prefix="aurora_word_report_") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        docx_path = (tmp_path / "report.docx").resolve()
+        pdf_path = (tmp_path / "report.pdf").resolve()
+        script_path = tmp_path / "convert.ps1"
+        docx_path.write_bytes(docx_bytes)
+        script_path.write_text(
+            r'''param([string]$DocxPath, [string]$PdfPath)
+$ErrorActionPreference = "Stop"
+$word = $null
+$document = $null
+try {
+    $word = New-Object -ComObject Word.Application
+    $word.Visible = $false
+    $word.DisplayAlerts = 0
+    $document = $word.Documents.Open($DocxPath, $false, $true)
+    $document.ExportAsFixedFormat($PdfPath, 17)
+}
+finally {
+    if ($null -ne $document) {
+        $document.Close($false)
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($document) | Out-Null
+    }
+    if ($null -ne $word) {
+        $word.Quit()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+    }
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+}
+''',
+            encoding="utf-8-sig",
+        )
+        process = await asyncio.create_subprocess_exec(
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+            str(docx_path),
+            str(pdf_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+        except TimeoutError:
+            process.kill()
+            await process.communicate()
+            raise DocxToPdfError("Microsoft Word excedió 120 segundos al exportar el PDF.")
+        if process.returncode != 0:
+            message = stderr.decode(errors="replace") or stdout.decode(errors="replace")
+            raise DocxToPdfError(message.strip() or "Microsoft Word no pudo exportar el PDF.")
+        if not pdf_path.exists() or pdf_path.stat().st_size < 5:
+            raise DocxToPdfError("Microsoft Word no produjo un archivo PDF válido.")
+        pdf_bytes = pdf_path.read_bytes()
+        if not pdf_bytes.startswith(b"%PDF-"):
+            raise DocxToPdfError("La salida de Microsoft Word no es un PDF válido.")
+        return pdf_bytes
 
 
 def _generate_fallback_pdf_from_docx(docx_bytes: bytes) -> bytes:

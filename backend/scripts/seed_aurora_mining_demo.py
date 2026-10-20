@@ -23,22 +23,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal, engine
 from app.models.audit import AuditLog
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi
 from app.models.censopas import Barem
+from app.models.construct import Construct
 from app.models.instrument import Instrument
 from app.models.project import Project
 from app.models.question import Question
 from app.models.response import Response, ResponseSession, ResponseSessionUnit
 from app.models.study import Study
 from app.models.user import User, Organization
+from app.models.variable import Variable
+from app.schemas.analytics import (
+  KMeansRequest,
+  NormalityRequest,
+  ReliabilityRequest,
+  SpearmanMatrixRequest,
+)
 from app.schemas.projects import ProjectCreate
 from app.schemas.reports import ReportRunCreate
 from app.schemas.studies import StudyCreate, StudyUpdate
 from app.schemas.surveys import SurveyFromInstrumentCreate
 from app.services.censopas_service import CensopasScoringService
+from app.services.advanced_analysis_service import AdvancedAnalysisService
+from app.services.analysis_service import AnalysisService
 from app.services.instrument_service import InstrumentService
 from app.services.project_service import ProjectService
 from app.services.report_service import ReportService
@@ -157,6 +168,13 @@ async def main():
       "name": PROJECT_NAME,
       "project_type": "CENSO",
       "description": "Evaluación de Riesgos Psicosociales y Salud Ocupacional para 35 trabajadores en operaciones mineras de socavón y planta concentradora.",
+      # El aprovisionamiento automático ocurre al crear el proyecto. Declarar
+      # MEDIUM aquí evita que el catálogo exógeno quede vinculado a la versión
+      # corta antes de crear la encuesta media del escenario.
+      "metadata": {
+        "requested_version_kind": "MEDIUM",
+        "analytics_plan_code": "PREMIUM",
+      },
     }
     if org:
       project_payload["organization_id"] = org.id
@@ -197,6 +215,7 @@ async def main():
         study_type="CENSO",
         target_sample_size=35,
         min_publishable_n=5,
+        analytics_plan="PREMIUM",
       ),
     )
     await StudyService(session).update(
@@ -211,9 +230,10 @@ async def main():
     questions = q_res.scalars().all()
     q_by_code = {q.code: q for q in questions}
 
-    options_by_q = {}
-    for q in questions:
-      options_by_q[q.id] = await load_question_options(session, q.id)
+    # El helper recibe el id de la versión y ya devuelve el catálogo indexado
+    # por question_id. Pasarle q.id producía diccionarios vacíos y terminaba
+    # guardando las 69 respuestas puntuables como texto libre.
+    options_by_q = await load_question_options(session, version.id)
 
     # 9. Crear 35 Sesiones de Respuesta Mineras
     print("[respuestas] Generando 35 respuestas mineras sintéticas...")
@@ -233,7 +253,7 @@ async def main():
 
       # Respuestas a las 112 preguntas (incluyendo sociodemográficas y psicosociales)
       for q in questions:
-        opts = options_by_q.get(q.id, [])
+        opts = list(options_by_q.get(q.id, {}).values())
         if not opts:
           session.add(
             Response(
@@ -262,7 +282,7 @@ async def main():
             response_session_id=sess.id,
             question_id=q.id,
             option_id=selected_opt.id,
-            raw_code=selected_opt.code,
+            raw_code=selected_opt.raw_code,
             is_missing=False,
           )
         )
@@ -273,6 +293,68 @@ async def main():
     print("[scoring] Calculando puntuaciones y baremos...")
     run_obj, summary = await run_canonical_scoring(session, study.id)
     print(f"[scoring ok] AnalysisRun ID={run_obj.id}")
+
+    # 10b. Analítica avanzada publicable para que el demo y el expediente no
+    # muestren un laboratorio vacío: normalidad, Spearman con corrección BH,
+    # confiabilidad y clustering exploratorio sin asignaciones individuales.
+    constructs = list(
+      (
+        await session.execute(
+          select(Construct)
+          .where(Construct.instrument_version_id == version.id)
+          .options(selectinload(Construct.item_links))
+        )
+      ).scalars().all()
+    )
+    dimensions = sorted(
+      [c for c in constructs if c.construct_type == "DIMENSION"],
+      key=lambda c: c.code,
+    )
+    subdimensions = sorted(
+      [c for c in constructs if c.construct_type == "SUBDIMENSION"],
+      key=lambda c: int(c.code[1:]),
+    )
+    dimension_ids = [c.id for c in dimensions]
+    advanced = AdvancedAnalysisService(session)
+    await advanced.run_normality(
+      study.id, NormalityRequest(construct_ids=dimension_ids, histogram_bins=8)
+    )
+    await advanced.run_spearman_matrix(
+      study.id,
+      SpearmanMatrixRequest(construct_ids=dimension_ids, include_points=False),
+    )
+
+    analysis = AnalysisService(session)
+    reliable_constructs = [
+      construct for construct in subdimensions if len(construct.item_links) >= 2
+    ][:2]
+    for construct in reliable_constructs:
+      await analysis.run_reliability(
+        study.id,
+        ReliabilityRequest(
+          construct_id=construct.id,
+          methods=["CRONBACH_ALPHA", "MCDONALD_OMEGA"],
+        ),
+      )
+
+    root_construct = next(
+      (c for c in constructs if c.construct_type == "VARIABLE" and c.parent_id is None),
+      None,
+    )
+    if root_construct is not None:
+      root_variable = (
+        await session.execute(
+          select(Variable).where(
+            Variable.project_id == project.id,
+            Variable.construct_id == root_construct.id,
+          )
+        )
+      ).scalars().first()
+      if root_variable is not None:
+        await analysis.run_kmeans(
+          study.id, KMeansRequest(variable_ids=[root_variable.id], k=3)
+        )
+    print("[analítica ok] Normalidad, Spearman, confiabilidad y K-means calculados")
 
     # 11. Generar Plan de Seguridad Preventivo en Minería
     print("[plan] Creando Plan de Seguridad e Intervención Minera...")

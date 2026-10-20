@@ -103,7 +103,9 @@ class ReportService:
             },
         )
         report_run = await self.repo.add_run(report_run)
-        await self.session.flush()
+        await self.session.commit()
+        await self.session.refresh(report_run)
+        report_run_id = report_run.id
 
         try:
             bundle = await self._build_bundle(
@@ -145,6 +147,14 @@ class ReportService:
             report_run.status = "COMPLETED"
             report_run.generated_at = datetime.now(UTC)
         except Exception as exc:
+            # Una excepción SQL deja la transacción de PostgreSQL abortada. Hay
+            # que revertirla antes de persistir el estado FAILED; de lo contrario
+            # el commit secundario oculta la causa original con
+            # InFailedSQLTransactionError.
+            await self.session.rollback()
+            report_run = await self.repo.get_run(report_run_id)
+            if report_run is None:
+                raise
             report_run.status = "FAILED"
             report_run.error_message = str(exc)
             await self.session.commit()

@@ -71,6 +71,19 @@ def test_likert_item_is_normalized_and_reverse_oriented() -> None:
     assert ScoringService._item_values(response, reverse_link, None) == pytest.approx((4, 75))
 
 
+def test_censopas_risk_map_is_used_for_scoring() -> None:
+    question = SimpleNamespace(
+        is_scored=True,
+        question_type="LIKERT",
+        option_set=None,
+    )
+    response = SimpleNamespace(is_missing=False, numeric_value=None, raw_code="4")
+    link = SimpleNamespace(question=question, scoring_direction="DIRECT")
+    rule = SimpleNamespace(parameters={"risk_map": {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5}})
+
+    assert ScoringService._item_values(response, link, rule) == pytest.approx((4, 75))
+
+
 def test_missing_policy_is_configurable() -> None:
     assert ScoringService._meets_missing_policy(3, 5, {"missing_policy": "ALLOW_PARTIAL"})
     assert not ScoringService._meets_missing_policy(3, 5, {"missing_policy": "STRICT_COMPLETE"})

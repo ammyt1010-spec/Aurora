@@ -126,9 +126,17 @@ class ScoringService:
 
         source_values: list[float] = []
         raw_value: float | None = None
-        if rule and rule.parameters.get("map"):
+        # Los instrumentos Likert genéricos históricos usan ``map``; el
+        # manifiesto CENSOPAS validado usa ``risk_map``. Ambos representan la
+        # misma tabla código -> valor de riesgo y deben pasar por un único
+        # camino de normalización. Antes sólo se reconocía ``map`` y las
+        # respuestas CENSOPAS oficiales quedaban sin puntaje (n_valid=0).
+        rule_map = None
+        if rule:
+            rule_map = rule.parameters.get("risk_map") or rule.parameters.get("map")
+        if rule_map:
             score_map = {
-                str(code): float(value) for code, value in rule.parameters["map"].items()
+                str(code): float(value) for code, value in rule_map.items()
             }
             if response.raw_code is not None:
                 raw_value = score_map.get(response.raw_code)
