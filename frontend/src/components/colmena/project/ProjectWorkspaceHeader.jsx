@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileBarChart2,
   FolderKanban,
+  LayoutDashboard,
   Link as LinkIcon,
   QrCode,
   ShieldCheck,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { getProject } from '../../../api/projects.js';
+import { listStudies } from '../../../api/studies.js';
 
 export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
   const { projectId } = useParams();
@@ -29,7 +31,13 @@ export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
     enabled: Boolean(projectId),
   });
 
-  const publicId = project?.censopas_study?.public_id || project?.metadata_?.public_id;
+  const { data: studiesData } = useQuery({
+    queryKey: ['studies', projectId, 'workspace-header'],
+    queryFn: () => listStudies(projectId, { page: 1, pageSize: 1 }),
+    enabled: Boolean(projectId),
+  });
+
+  const publicId = studiesData?.items?.[0]?.public_id || project?.metadata?.public_id;
   const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
 
   const handleCopy = () => {
@@ -54,20 +62,28 @@ export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
     },
     {
       id: 'reports',
-      label: '3. Reporte PDF SUNAFIL',
+      label: '4. Expediente técnico',
       icon: FileBarChart2,
       path: `/colmena/project/${projectId}/reports`,
     },
+    {
+      id: 'premium',
+      label: '3. Dashboard avanzado',
+      icon: LayoutDashboard,
+      path: `/colmena/project/${projectId}/premium`,
+    },
   ];
+
+  navTabs.sort((a, b) => Number(a.label.split('.')[0]) - Number(b.label.split('.')[0]));
 
   return (
     <div className="mb-4 space-y-3 text-xs">
       {/* High-Density Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5 shadow-sm">
+      <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/70 bg-white/75 p-4 shadow-[0_12px_34px_rgba(29,25,70,0.06)] backdrop-blur-xl sm:flex-row sm:items-center">
         <div className="space-y-1">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted">
             <Link to="/colmena" className="hover:text-amber transition flex items-center gap-1">
-              <FolderKanban size={12} /> Menú de Instrumentos
+              <FolderKanban size={12} /> Centro de instrumentos
             </Link>
             <ChevronRight size={11} />
             <span className="text-dark font-bold">{project?.name || 'Cargando...'}</span>
@@ -113,9 +129,9 @@ export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
       </div>
 
       {/* 3-Step Navigation Tabs */}
-      <div className="flex border-b border-border bg-surface/60 rounded-xl p-1 gap-1">
+      <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/70 bg-white/65 p-1.5 shadow-sm backdrop-blur-xl lg:grid-cols-4">
         {navTabs.map((tab) => {
-          const isActive = location.pathname.includes(tab.id);
+          const isActive = activeTab === tab.id || location.pathname.includes(tab.id);
           const Icon = tab.icon;
           return (
             <Link
@@ -123,11 +139,11 @@ export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
               to={tab.path}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition ${
                 isActive
-                  ? 'bg-amber text-dark shadow-sm'
-                  : 'text-muted hover:text-dark hover:bg-surfaceSoft'
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-violet-500/15'
+                  : 'text-muted hover:bg-white hover:text-dark'
               }`}
             >
-              <Icon size={14} className={isActive ? 'text-dark' : 'text-muted'} />
+              <Icon size={14} className={isActive ? 'text-white' : 'text-muted'} />
               <span>{tab.label}</span>
             </Link>
           );

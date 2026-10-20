@@ -5,12 +5,12 @@ from datetime import UTC, datetime, time
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, NotFoundError, ValidationDomainError
+from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError, ValidationDomainError
 from app.core.pagination import Page, PageParams, paginate
 from app.models.analytics_plan import AnalyticsPlan
 from app.models.project import Project
 from app.models.study import Study
-from app.models.user import OrganizationMembership, User
+from app.models.user import Organization, OrganizationMembership, User
 from app.repositories.projects import ProjectRepository
 from app.schemas.projects import ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.censopas_provisioning_service import CensopasProvisioningService
@@ -22,9 +22,10 @@ class ProjectService:
         self.session = session
         self.repo = ProjectRepository(session)
 
-    async def create(self, payload: ProjectCreate) -> Project:
+    async def create(self, payload: ProjectCreate, *, claim_free_report: bool = False) -> Project:
         try:
             organization_id = payload.organization_id
+            organization = None
             if payload.project_type == "CENSO":
                 owner = await self.session.get(User, payload.owner_user_id)
                 if owner is None:
@@ -39,6 +40,7 @@ class ProjectService:
                     )
                     organization_id = organization.id
                 elif organization_id is not None:
+                    organization = await self.session.get(Organization, organization_id)
                     membership = (
                         await self.session.execute(
                             select(OrganizationMembership).where(
@@ -72,6 +74,19 @@ class ProjectService:
                 await CensopasProvisioningService(self.session).provision_project(project)
                 if payload.censopas_study is not None:
                     await self._create_initial_study(project, payload.censopas_study)
+                if claim_free_report:
+                    if organization is None:
+                        organization = await self.session.get(Organization, organization_id)
+                    if organization is None:
+                        raise ValidationDomainError("No se encontró la empresa del informe gratuito.")
+                    if organization.free_report_claimed_at is not None:
+                        raise ConflictError(
+                            "Esta empresa ya utilizó su informe gratuito de Aurora.",
+                            free_report_claimed=True,
+                            project_id=organization.free_report_project_id,
+                        )
+                    organization.free_report_claimed_at = datetime.now(UTC)
+                    organization.free_report_project_id = project.id
             await self.session.commit()
             await self.session.refresh(project)
             return project

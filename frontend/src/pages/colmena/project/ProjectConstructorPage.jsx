@@ -66,7 +66,7 @@ function NewProjectStep({ ownerUserId }) {
             <FolderKanban size={20} />
           </div>
           <div>
-            <p className="font-semibold text-dark">Estructura metodológica de Colmena</p>
+            <p className="font-semibold text-dark">Estructura metodológica de Aurora</p>
             <p className="mt-1 text-sm text-muted">Proyecto → variables → dimensiones o preguntas directas.</p>
           </div>
         </div>

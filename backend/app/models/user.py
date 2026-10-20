@@ -1,4 +1,6 @@
-from sqlalchemy import BigInteger, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, PublicIdMixin, TimestampMixin
@@ -31,6 +33,10 @@ class Organization(Base, PublicIdMixin, TimestampMixin):
     tax_id: Mapped[str | None] = mapped_column(String(80))
     organization_type: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    free_report_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    free_report_project_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("projects.id", ondelete="SET NULL")
+    )
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSONVariant, nullable=False, default=dict
     )

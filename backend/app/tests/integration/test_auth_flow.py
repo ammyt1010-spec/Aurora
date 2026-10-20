@@ -58,3 +58,15 @@ async def test_duplicate_email_rejected(client: AsyncClient) -> None:
 async def test_me_without_token_rejected(client: AsyncClient) -> None:
     resp = await client.get("/api/v1/auth/me")
     assert resp.status_code == 401
+
+
+async def test_demo_login_uses_isolated_demo_user(client: AsyncClient, seed_user) -> None:
+    response = await client.post("/api/v1/auth/demo-login")
+    assert response.status_code == 200, response.text
+
+    token = response.json()["access_token"]
+    me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert me.status_code == 200
+    assert me.json()["id"] != seed_user.id
+    assert me.json()["first_name"] == "Demo Aurora"

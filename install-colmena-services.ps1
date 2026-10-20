@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 # ============================================================================
-#  Instala Colmena como servicios de Windows (se ejecuta UNA sola vez).
+#  Instala Aurora como servicios de Windows (se ejecuta UNA sola vez).
 #  Correr en una consola PowerShell "Ejecutar como administrador".
 #
 #  Los servicios NO dependen de tu sesion: al cerrar SSH siguen corriendo.
@@ -10,9 +10,9 @@ $ErrorActionPreference = "Stop"
 #
 #  Servicios que crea:
 #    colmena-postgres   -> PostgreSQL (via pg_ctl register)
-#    colmena-backend    -> uvicorn app.main:app  (puerto 8001)
-#    colmena-frontend   -> vite                  (puerto 5174)
-#    colmena-tunnel     -> cloudflared quick tunnel -> localhost:5174
+#    colmena-backend    -> uvicorn app.main:app  (puerto 8002)
+#    colmena-frontend   -> vite                  (puerto 5175)
+#    colmena-tunnel     -> cloudflared quick tunnel -> localhost:5175
 # ============================================================================
 
 # --- rutas (ajusta si cambian) ---------------------------------------------
@@ -143,14 +143,14 @@ function Install-NssmService {
 #  2b) servicio backend
 # ============================================================================
 Install-NssmService -Name $BackendSvc -App $PyExe `
-    -Params "-m uvicorn app.main:app --host 0.0.0.0 --port 8001" `
+    -Params "-m uvicorn app.main:app --host 0.0.0.0 --port 8002" `
     -Dir $Backend -DependsOn $PgSvc
 
 # ============================================================================
 #  3b) servicio frontend
 # ============================================================================
 Install-NssmService -Name $FrontendSvc -App $Node `
-    -Params "`"$ViteJs`"" `
+    -Params "`"$ViteJs`" --host 0.0.0.0 --port 5175 --strictPort" `
     -Dir $Frontend
 
 # ============================================================================
@@ -158,7 +158,7 @@ Install-NssmService -Name $FrontendSvc -App $Node `
 # ============================================================================
 Write-Host "[4/4] Cloudflare Tunnel..." -ForegroundColor Cyan
 Install-NssmService -Name $TunnelSvc -App $Cloudflared `
-    -Params "tunnel --url http://localhost:5174 --no-autoupdate" `
+    -Params "tunnel --url http://localhost:5175 --no-autoupdate" `
     -Dir $LogDir
 
 Write-Host ""

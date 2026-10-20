@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import QRCode from 'qrcode';
 import {
   ArrowRight,
-  Building2,
   CheckCircle2,
   Copy,
+  Crown,
   ExternalLink,
+  Gift,
+  LockKeyhole,
   QrCode,
   ShieldCheck,
-  Sparkles,
-  Users,
 } from 'lucide-react';
 
 import { apiRequest } from '../../../api/client.js';
@@ -28,7 +29,7 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     company_name: '',
     company_ruc: '',
     company_sector: 'MINING',
-    study_name: instrument ? `Evaluación ${instrument.title} 2026` : 'Evaluación 2026',
+    study_name: instrument ? `Evaluación ${instrument.title} · Aurora 2026` : 'Evaluación Aurora 2026',
     instrument_version: instrument?.version || 'MEDIUM',
     population_invited: 50,
   });
@@ -80,6 +81,20 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownloadQr = async () => {
+    if (!surveyUrl) return;
+    const dataUrl = await QRCode.toDataURL(surveyUrl, {
+      width: 720,
+      margin: 3,
+      color: { dark: '#17162D', light: '#FFFFFF' },
+      errorCorrectionLevel: 'H',
+    });
+    const anchor = document.createElement('a');
+    anchor.href = dataUrl;
+    anchor.download = `aurora-encuesta-${formData.company_ruc || 'empresa'}.png`;
+    anchor.click();
+  };
+
   const handleGoToTelemetry = () => {
     if (result?.project_id) {
       navigate(`/colmena/project/${result.project_id}/telemetry`);
@@ -90,24 +105,48 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
   if (!isOpen || !instrument) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`⚡ Confirmar Instrumento — ${instrument.title}`}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      icon={Gift}
+      title="Crear informe gratuito"
+      subtitle={`${instrument.title} · acceso completo de evaluación`}
+    >
       {step === 1 ? (
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
-          <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-dark space-y-1">
+          <div className="rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50 via-white to-cyan-50 p-4 text-dark shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-amber text-xs flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-extrabold text-violet-700">
                 <ShieldCheck size={14} /> {instrument.badge || 'Oficial SUNAFIL'}
               </span>
-              <span className="text-[10px] font-semibold text-muted bg-surface px-2 py-0.5 rounded-full border border-border">
+              <span className="rounded-full border border-white bg-white/80 px-2 py-1 text-[10px] font-bold text-muted shadow-sm">
                 {instrument.items} ítems · ~{instrument.duration}
               </span>
             </div>
-            <p className="text-[11px] text-muted leading-relaxed">{instrument.description}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">{instrument.description}</p>
+            <div className="mt-3 grid gap-2 border-t border-violet-100 pt-3 sm:grid-cols-3">
+              {[
+                ['Informe', 'PDF / Word'],
+                ['Analítica', 'Premium'],
+                ['Costo inicial', 'S/ 0'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl bg-white/70 px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                  <p className="mt-0.5 text-[11px] font-extrabold text-slate-900">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           {errorMsg ? (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-2.5 text-xs text-red-600">
-              {errorMsg}
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              <p className="font-bold">No pudimos crear esta evaluación</p>
+              <p className="mt-1 leading-5">{errorMsg}</p>
+              {quickEvalMutation.error?.errorCode === 'CONFLICT' ? (
+                <p className="mt-2 rounded-lg bg-white/70 px-2.5 py-2 text-[10px] font-semibold text-slate-600">
+                  El beneficio aplica una vez por RUC. El proyecto existente permanece disponible desde el panel.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -175,7 +214,7 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
               Cancelar
             </Button>
             <Button type="submit" size="sm" disabled={quickEvalMutation.isPending} className="font-bold">
-              {quickEvalMutation.isPending ? 'Procesando...' : '⚡ Confirmar y Generar Enlace / QR'}
+              {quickEvalMutation.isPending ? 'Configurando Aurora...' : 'Crear evaluación gratuita'}
             </Button>
           </div>
         </form>
@@ -186,10 +225,13 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
           </div>
 
           <div>
-            <h3 className="text-base font-bold text-dark">¡Instrumento Configurado!</h3>
+            <h3 className="text-lg font-black tracking-tight text-dark">Aurora está lista para tu empresa</h3>
             <p className="text-xs text-muted mt-0.5">
-              Empresa: <strong className="text-dark">{formData.company_name}</strong> · Enlace público listo para ser compartido.
+              <strong className="text-dark">{formData.company_name}</strong> ya puede compartir el enlace anónimo con sus trabajadores.
             </p>
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-[10px] font-extrabold text-violet-700">
+              <Crown size={12} /> Informe gratuito · Analítica premium habilitada
+            </div>
           </div>
 
           {/* Enlace & QR Selection Box */}
@@ -223,16 +265,19 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
                 </span>
                 <span className="text-[11px] text-muted block">Escaneo directo desde celular</span>
               </div>
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(surveyUrl)}`}
-                target="_blank"
-                download="qr_encuesta.png"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={handleDownloadQr}
                 className="px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surfaceSoft text-dark text-xs font-semibold transition"
               >
                 Descargar QR
-              </a>
+              </button>
             </div>
+          </div>
+
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left text-[10px] leading-4 text-emerald-800">
+            <LockKeyhole size={14} className="mt-0.5 shrink-0" />
+            <p><strong>Protección activa:</strong> Aurora procesa resultados agregados y evita exponer identidades individuales en la experiencia de empresa.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-2">

@@ -6,9 +6,11 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.exceptions import ConflictError
 from app.core.security import get_current_user
 from app.models.user import Organization, User
 from app.schemas.organizations import OrganizationCreate
@@ -33,6 +35,9 @@ class QuickEvalResponse(BaseModel):
     study_id: int
     public_id: uuid.UUID
     survey_url: str
+    plan_code: str = "PREMIUM"
+    free_report: bool = True
+    free_reports_remaining: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,16 +52,36 @@ async def create_quick_eval(
     tax_id_normalized = "".join(payload.company_ruc.split()).upper()
     existing_org = (
         await session.execute(
-            select(Organization).where(Organization.tax_id == tax_id_normalized)
+            select(Organization)
+            .where(Organization.tax_id == tax_id_normalized)
+            .with_for_update()
         )
     ).scalars().first()
+
+    if existing_org and existing_org.free_report_claimed_at is not None:
+        raise ConflictError(
+            "Esta empresa ya utilizó su informe gratuito de Aurora. Puedes continuar con un plan corporativo a medida.",
+            free_report_claimed=True,
+            project_id=existing_org.free_report_project_id,
+        )
 
     project_payload = ProjectCreate(
         owner_user_id=current_user.id,
         name=payload.study_name,
         project_type="CENSO",
+        metadata={
+            "commercial_tier": "FREE_REPORT",
+            "free_report": True,
+            "included_capabilities": [
+                "anonymous_survey",
+                "live_telemetry",
+                "premium_analytics",
+                "sunafil_report",
+            ],
+        },
         censopas_study=CensopasStudyConfig(
             instrument_version=payload.instrument_version,
+            analytics_plan="PREMIUM",
             workplace_name=payload.company_name,
             population_invited=payload.population_invited,
         ),
@@ -72,7 +97,13 @@ async def create_quick_eval(
         )
 
     project_service = ProjectService(session)
-    project = await project_service.create(project_payload)
+    try:
+        project = await project_service.create(project_payload, claim_free_report=True)
+    except IntegrityError as exc:
+        raise ConflictError(
+            "La empresa ya está registrada o su informe gratuito ya fue utilizado.",
+            free_report_claimed=True,
+        ) from exc
 
     study_id = project.metadata_.get("censopas_study_id")
     if not study_id:
@@ -88,4 +119,7 @@ async def create_quick_eval(
         study_id=study.id,
         public_id=study.public_id,
         survey_url=survey_url,
+        plan_code="PREMIUM",
+        free_report=True,
+        free_reports_remaining=0,
     )

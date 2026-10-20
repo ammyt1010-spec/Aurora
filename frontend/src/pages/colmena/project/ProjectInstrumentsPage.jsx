@@ -202,7 +202,7 @@ export default function ProjectInstrumentsPage() {
             <div>
               <p className="font-bold text-dark">¿Necesitas medir otros factores de riesgo específicos?</p>
               <p className="text-xs text-muted">
-                Colmena 2.0 admite la incorporación de Burnout (MBI), Clima Ergonómico, Ciberestrés y escalas personalizadas.
+                Aurora está preparada para incorporar Burnout, clima de seguridad, ergonomía y escalas personalizadas por módulos.
               </p>
             </div>
           </div>

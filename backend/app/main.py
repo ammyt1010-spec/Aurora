@@ -11,9 +11,9 @@ settings = get_settings()
 configure_logging()
 
 app = FastAPI(
-    title="Colmena Backend",
+    title="Aurora Intelligence API",
     description=(
-        "Backend unificado de Colmena (proyectos académicos, CENSOPAS-COPSOQ, "
+        "Backend unificado de Aurora (CENSOPAS-COPSOQ, analítica avanzada, "
         "surveys, motor estadístico, autenticación). Fases 1-9 implementadas."
     ),
     version="0.1.0",

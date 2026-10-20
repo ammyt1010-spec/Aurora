@@ -26,6 +26,7 @@ import { formatNumber, formatPercent } from '../../../utils/format.js';
 import { semanticBand, semanticBandColor, semanticBandOrder } from '../../../utils/chartColors.js';
 import { dominantBand, unfavorablePct } from '../../../utils/scoringResults.js';
 import PriorityBarChart from '../../../components/colmena/results/PriorityBarChart.jsx';
+import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 
 const K_OPTIONS = [2, 3, 4];
 
@@ -50,15 +51,17 @@ function MultivariateSection() {
   return (
     <Card>
       <div className="flex items-start gap-3">
-        <ScatterChartIcon size={18} className="mt-0.5 shrink-0 text-muted" />
+        <ScatterChartIcon size={18} className="mt-0.5 shrink-0 text-violet-600" />
         <div>
-          <p className="text-sm font-semibold text-dark">Modelo multivariable (regresión)</p>
+          <p className="text-sm font-semibold text-dark">Ruta de análisis multivariable</p>
           <p className="mt-1 text-xs text-muted">
-            El backend todavía no expone un endpoint premium para regresión (predictor, OR, p). Pendiente como
-            GAP-PREMIUM-REGRESSION — no se muestran valores simulados. Cuando exista, se etiquetará siempre
-            &ldquo;Analítica complementaria — modelo ajustado&rdquo; y nunca como resultado CENSOPAS; tampoco se
-            dibujará un forest plot mientras el backend no calcule intervalos de confianza.
+            Aurora recomienda modelos ajustados únicamente cuando el tamaño muestral, la distribución y la calidad
+            de las variables lo permiten. Los resultados oficiales se mantienen separados de la analítica
+            complementaria para evitar interpretaciones causales no sustentadas.
           </p>
+          <span className="mt-3 inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+            Activación sujeta a supuestos estadísticos
+          </span>
         </div>
       </div>
     </Card>
@@ -443,8 +446,9 @@ export default function ProjectPremiumDashboardPage() {
 
   return (
     <div className="colmena-page">
+      <ProjectWorkspaceHeader activeTab="premium" />
       <PageHeader
-        eyebrow="Explorador"
+        eyebrow="Aurora Intelligence · Dashboard avanzado"
         title={project.name}
         description="Resumen, confiabilidad, comparaciones, correlaciones, segmentación y multivariado, organizados en secciones separadas."
       />
@@ -531,7 +535,7 @@ export default function ProjectPremiumDashboardPage() {
 
           <Card>
             <p className="text-sm font-semibold text-dark">Priorización preventiva por dimensión</p>
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber">Analítica complementaria Colmena</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Analítica complementaria Aurora</p>
             <p className="mb-3 mt-1 text-xs text-muted">
               Orden de exploración preventiva calculado por el backend a partir del % desfavorable (o por % desfavorable si aún no hay baremo). No es una clasificación oficial adicional de CENSOPAS ni reemplaza el juicio técnico del equipo responsable.
             </p>
@@ -550,7 +554,7 @@ export default function ProjectPremiumDashboardPage() {
           {subdimensionRows.length ? (
             <Card>
               <p className="text-sm font-semibold text-dark">Priorización preventiva por subdimensión</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber">Analítica complementaria Colmena</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Analítica complementaria Aurora</p>
               <p className="mb-3 mt-1 text-xs text-muted">
                 Vista compacta de todas las subdimensiones a la vez, en vez de un gráfico por cada una.
               </p>

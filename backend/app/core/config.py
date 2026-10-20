@@ -31,7 +31,8 @@ class Settings(BaseSettings):
         "http://localhost:5176",
         "http://127.0.0.1:5176",
     ]
-    demo_access_enabled: bool = False
+    demo_access_enabled: bool = True
+    demo_user_email: str = "ammyt11@gmail.com"
 
     # E-17: protección anti-abuso mínima del formulario público (sin Redis —
     # limitación conocida en despliegues multi-worker, documentada en

@@ -49,7 +49,13 @@ class AuthService:
         result = await self.session.execute(select(User).where(User.email == email))
         user = result.scalars().first()
         if user is None:
-            user = User(email=email, username="demo", first_name="Supervisor", status="ACTIVE")
+            user = User(
+                email=email,
+                username=f"demo_{email.split('@')[0]}",
+                first_name="Demo Aurora",
+                status="ACTIVE",
+                metadata_={"account_mode": "DEMO", "brand": "AURORA"},
+            )
             self.session.add(user)
             await self.session.commit()
             await self.session.refresh(user)

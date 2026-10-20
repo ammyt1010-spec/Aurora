@@ -17,7 +17,7 @@ export const DEFAULT_SURVEY_STYLE = 'colmena';
 export const SURVEY_THEME_STYLES = {
   colmena: {
     id: 'colmena',
-    label: 'Colmena',
+    label: 'Aurora',
     description: 'Vidrio, azul y ámbar — el estilo por defecto de la app.',
     fontLabel: 'Inter',
     defaultColors: {

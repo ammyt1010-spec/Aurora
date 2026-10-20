@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, LogOut, RefreshCcw, Search, Wifi, WifiOff } from 'lucide-react';
+import { Bell, Crown, LogOut, RefreshCcw, Search, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { API_ROOT_URL } from '../../api/client.js';
@@ -38,14 +38,14 @@ export function Topbar() {
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="sticky top-0 z-10 h-14 border-b border-[#eef0f3] bg-white/90 px-4 backdrop-blur-xl sm:px-5">
+    <div className="sticky top-0 z-10 h-16 border-b border-white/70 bg-white/70 px-4 shadow-[0_8px_28px_rgba(34,30,75,0.035)] backdrop-blur-2xl sm:px-5">
       <div className="flex h-full w-full items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center">
-          <div className="group flex h-9 min-w-0 w-full max-w-[520px] items-center gap-2.5 rounded-xl border border-[#eef0f3] bg-[#f8f9fb] px-3 transition-all hover:border-[#dfe2e6] hover:bg-white focus-within:border-amber focus-within:bg-white focus-within:ring-2 focus-within:ring-amber/10">
+          <div className="group flex h-10 min-w-0 w-full max-w-[520px] items-center gap-2.5 rounded-2xl border border-slate-200/70 bg-white/65 px-3.5 transition-all hover:border-violet-200 hover:bg-white focus-within:border-violet-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-violet-100/70">
             <Search className="h-4 w-4 shrink-0 text-muted/50" />
             <input
               className="min-w-0 flex-1 bg-transparent text-sm text-dark placeholder:text-muted/50 outline-none"
-              placeholder="Buscar proyectos, formularios o respuestas..."
+              placeholder="Buscar evaluaciones, reportes o indicadores…"
               type="text"
             />
           </div>
@@ -59,6 +59,10 @@ export function Topbar() {
           >
             {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
             {connected ? 'API' : 'Sin API'}
+          </div>
+
+          <div className="hidden items-center gap-1.5 rounded-full border border-violet-200/70 bg-violet-50 px-2.5 py-1.5 text-[10px] font-extrabold text-violet-700 xl:flex">
+            <Crown className="h-3 w-3" /> Acceso completo
           </div>
 
           <button
@@ -83,7 +87,7 @@ export function Topbar() {
           <div className="mx-1 h-6 w-px bg-[#eef0f3]" />
 
           <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition hover:bg-[#f5f6f8]">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber to-honey text-xs font-bold text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 via-violet-500 to-rose-500 text-xs font-bold text-white shadow-md shadow-violet-500/20">
               {initial}
             </div>
             <div className="text-left hidden lg:block">

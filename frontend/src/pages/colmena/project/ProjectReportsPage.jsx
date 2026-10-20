@@ -22,6 +22,7 @@ import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
 import StudySelector from '../../../components/colmena/StudySelector.jsx';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
+import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 
 const SECTIONS = [
   { key: 'portada', label: 'Portada' },
@@ -170,10 +171,11 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   return (
     <div className="colmena-page space-y-6">
+      <ProjectWorkspaceHeader activeTab="reports" />
       <PageHeader
-        eyebrow="Reportes Oficiales SUNAFIL — AURORA PRO"
+        eyebrow="Aurora Intelligence · Expediente técnico"
         title={project.name}
-        description="Genera e imprime el Informe de Evaluación de Riesgos Psicosociales con membrete y logo institucional."
+        description="Genera, revisa e imprime el Informe de Evaluación de Riesgos Psicosociales con estructura corporativa."
       />
 
       <div className="grid gap-6 md:grid-cols-[380px_1fr]">
@@ -339,7 +341,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 <span>Páginas renderizadas: {preview.pages || '—'}</span>
                 {companyLogo ? (
                   <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Incluye membrete y logo de empresa
+                    <CheckCircle2 size={12} /> Identidad visual guardada en este equipo
                   </span>
                 ) : null}
               </div>
@@ -365,7 +367,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               }`}
             >
               <Download size={16} />
-              Descargar {outputFormat === 'PDF' ? 'PDF Oficial' : 'Word Editables'}
+              Descargar {outputFormat === 'PDF' ? 'PDF técnico' : 'Word editable'}
             </a>
           </div>
         </Card>

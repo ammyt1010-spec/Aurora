@@ -59,10 +59,10 @@ export default function UnitResultsPanel({ studyId }) {
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="rounded-2xl border border-border bg-surfaceSoft p-5 text-sm leading-5 text-muted">
-        Colmena suprime el resultado visible de cualquier unidad (área, sede, turno, contrato…) con menos de{' '}
+        Aurora suprime el resultado visible de cualquier unidad (área, sede, turno, contrato…) con menos de{' '}
         <strong className="text-dark">{study.min_publishable_n}</strong> respuestas válidas — pero conserva
         esas respuestas para los agregados globales. Si una unidad organizacionalmente válida es demasiado
-        pequeña por sí sola, agrúpala como hija de otra unidad al configurarla: Colmena publicará el
+        pequeña por sí sola, agrúpala como hija de otra unidad al configurarla: Aurora publicará el
         resultado combinado del padre y dejará de mostrar las celdas individuales de sus hijas.
       </div>
 

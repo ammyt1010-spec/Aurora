@@ -78,7 +78,7 @@ export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="⚡ Nueva Evaluación Rápida — AURORA PRO">
+    <Modal isOpen={isOpen} onClose={onClose} title="Nueva evaluación rápida · Aurora">
       {step === 1 ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-800 dark:text-amber-300">
@@ -170,7 +170,7 @@ export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
                 }`}
               >
                 <p className="text-sm font-bold text-dark flex items-center justify-between">
-                  <span>Corte Corta</span>
+                  <span>Versión corta</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber/20 text-amber font-semibold">42 ítems</span>
                 </p>
                 <p className="text-xs mt-1 leading-tight text-muted">

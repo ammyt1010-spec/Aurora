@@ -23,7 +23,7 @@ cp .env.example .env   # ajustar VITE_API_BASE_URL si el backend no está en loc
 npm run dev
 ```
 
-La app queda en `http://localhost:5174`.
+La app queda en `http://localhost:5175`.
 
 ## Build
 

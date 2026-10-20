@@ -11,7 +11,7 @@ export class AppErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    if (import.meta.env.DEV) console.error('Error de renderizado en Colmena', error, info);
+    if (import.meta.env.DEV) console.error('Error de renderizado en Aurora', error, info);
   }
 
   render() {
