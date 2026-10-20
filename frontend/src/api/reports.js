@@ -9,7 +9,11 @@ export function createReport(studyId, payload) {
 }
 
 export function createReportPreview(studyId, payload) {
-  return apiRequest(`/studies/${studyId}/reports/preview`, { method: 'POST', body: payload });
+  return apiRequest(`/studies/${studyId}/reports/preview-async`, { method: 'POST', body: payload });
+}
+
+export function getReportPreviewStatus(reportId) {
+  return apiRequest(`/reports/${reportId}/preview-status`);
 }
 
 export function getReport(reportId) {
@@ -22,4 +26,8 @@ export function getReportDownloadUrl(reportId) {
 
 export function getReportPreviewPdfUrl(reportId) {
   return `${API_BASE_URL}/reports/${reportId}/preview.pdf`;
+}
+
+export function getReportPdfDownloadUrl(reportId) {
+  return `${API_BASE_URL}/reports/${reportId}/download.pdf`;
 }

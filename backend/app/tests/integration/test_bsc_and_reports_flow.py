@@ -214,6 +214,14 @@ async def test_report_preview_reuses_same_docx_for_download(
     assert preview_pdf_resp.headers["content-type"] == "application/pdf"
     assert preview_pdf_resp.content[:5] == b"%PDF-"
 
+    pdf_download_resp = await client.get(
+        f"/api/v1/reports/{preview['preview_id']}/download.pdf"
+    )
+    assert pdf_download_resp.status_code == 200
+    assert pdf_download_resp.headers["content-type"] == "application/pdf"
+    assert "attachment" in pdf_download_resp.headers["content-disposition"]
+    assert pdf_download_resp.content[:5] == b"%PDF-"
+
     download_resp = await client.get(f"/api/v1/reports/{preview['preview_id']}/download")
     assert download_resp.status_code == 200
     assert download_resp.headers["content-type"] == (

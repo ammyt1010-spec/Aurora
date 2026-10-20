@@ -13,6 +13,7 @@ report_run`, harness).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -84,6 +85,85 @@ class ReportService:
         return run
 
     async def generate(self, study_id: int, payload: ReportRunCreate):
+        report_run, study = await self._create_pending_run(study_id, payload)
+        try:
+            await self._render_run(report_run, study, payload)
+        except Exception as exc:
+            await self._mark_failed(report_run.id, exc)
+            raise
+
+        await self.session.commit()
+        await self.session.refresh(report_run)
+        return report_run
+
+    async def generate_preview(self, study_id: int, payload: ReportRunCreate) -> tuple:
+        """Genera el DOCX canónico (siempre, sin importar `output_format`
+        pedido) y deriva su PDF de preview convirtiéndolo con LibreOffice.
+
+        El PDF de preview se guarda como archivo hermano del `.docx`
+        (`{public_id}.pdf`, mismo `report_run`) en vez de agregar una
+        columna nueva a `ReportRun` — el path se puede derivar siempre por
+        convención desde `storage_path`. `GET /reports/{id}/download` sigue
+        sirviendo ese mismo `.docx` sin regenerar nada: es el archivo que
+        efectivamente se descarga al exportar.
+        """
+        forced_payload = payload.model_copy(update={"output_format": "DOCX"})
+        report_run, study = await self._create_pending_run(study_id, forced_payload)
+        try:
+            await self._render_run(report_run, study, forced_payload)
+            pages = await self._render_preview_pdf(report_run)
+            report_run.metadata_ = {
+                **(report_run.metadata_ or {}),
+                "preview_pages": pages,
+            }
+        except Exception as exc:
+            await self._mark_failed(report_run.id, exc)
+            raise
+
+        await self.session.commit()
+        await self.session.refresh(report_run)
+        return report_run, pages
+
+    async def start_preview(self, study_id: int, payload: ReportRunCreate):
+        """Crea el trabajo de preview y responde inmediatamente.
+
+        La construcción del expediente se completa con otra sesión en una
+        tarea de fondo. Esto evita que una conversión DOCX/PDF bloquee el
+        event loop y deje sin respuesta el resto de la plataforma.
+        """
+        forced_payload = payload.model_copy(update={"output_format": "DOCX"})
+        report_run, _ = await self._create_pending_run(study_id, forced_payload)
+        return report_run
+
+    async def complete_preview(self, report_run_id: int, payload: ReportRunCreate) -> tuple:
+        """Completa un preview previamente creado por :meth:`start_preview`."""
+        forced_payload = payload.model_copy(update={"output_format": "DOCX"})
+        report_run = await self.get_run(report_run_id)
+        study = await self.study_repo.get(report_run.study_id)
+        if study is None:
+            raise NotFoundError(f"Estudio {report_run.study_id} no encontrado")
+
+        try:
+            await self._render_run(report_run, study, forced_payload)
+            pages = await self._render_preview_pdf(report_run)
+            report_run.metadata_ = {
+                **(report_run.metadata_ or {}),
+                "preview_pages": pages,
+            }
+        except Exception as exc:
+            await self._mark_failed(report_run.id, exc)
+            raise
+
+        await self.session.commit()
+        await self.session.refresh(report_run)
+        return report_run, pages
+
+    async def get_preview_status(self, report_run_id: int) -> tuple:
+        report_run = await self.get_run(report_run_id)
+        pages = (report_run.metadata_ or {}).get("preview_pages")
+        return report_run, pages
+
+    async def _create_pending_run(self, study_id: int, payload: ReportRunCreate) -> tuple:
         from app.models.report import ReportRun
 
         study = await self.study_repo.get(study_id)
@@ -105,87 +185,64 @@ class ReportService:
         report_run = await self.repo.add_run(report_run)
         await self.session.commit()
         await self.session.refresh(report_run)
-        report_run_id = report_run.id
+        return report_run, study
 
-        try:
-            bundle = await self._build_bundle(
-                study,
-                payload.analysis_run_id,
-                report_mode=payload.report_mode,
-                sections=payload.sections,
-                report_run=report_run,
-            )
+    async def _render_run(self, report_run, study, payload: ReportRunCreate) -> None:
+        """Renderiza el archivo canónico sin bloquear las peticiones HTTP."""
+        bundle = await self._build_bundle(
+            study,
+            payload.analysis_run_id,
+            report_mode=payload.report_mode,
+            sections=payload.sections,
+            report_run=report_run,
+        )
 
-            storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
-            storage_dir.mkdir(parents=True, exist_ok=True)
+        storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
+        await asyncio.to_thread(storage_dir.mkdir, parents=True, exist_ok=True)
 
-            if payload.output_format == "DOCX":
-                from app.services.report_docx import render_report_docx
+        if payload.output_format == "DOCX":
+            from app.services.report_docx import render_report_docx
 
-                file_bytes = render_report_docx(bundle)
-                path = storage_dir / f"{report_run.public_id}.docx"
-                path.write_bytes(file_bytes)
-            elif payload.output_format == "PDF":
-                # El PDF nunca se renderiza aparte: siempre es una conversión
-                # del mismo DOCX (LibreOffice headless), para que el layout
-                # entregado en PDF y en Word coincida por construcción.
-                from app.services.report_docx import render_report_docx
-                from app.services.report_pdf_convert import docx_to_pdf
+            file_bytes = await asyncio.to_thread(render_report_docx, bundle)
+            path = storage_dir / f"{report_run.public_id}.docx"
+        elif payload.output_format == "PDF":
+            from app.services.report_docx import render_report_docx
+            from app.services.report_pdf_convert import docx_to_pdf
 
-                docx_bytes = render_report_docx(bundle)
-                file_bytes = await docx_to_pdf(docx_bytes)
-                path = storage_dir / f"{report_run.public_id}.pdf"
-                path.write_bytes(file_bytes)
-            else:
-                file_bytes = json.dumps(bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
-                path = storage_dir / f"{report_run.public_id}.json"
-                path.write_bytes(file_bytes)
+            docx_bytes = await asyncio.to_thread(render_report_docx, bundle)
+            file_bytes = await docx_to_pdf(docx_bytes)
+            path = storage_dir / f"{report_run.public_id}.pdf"
+        else:
+            file_bytes = json.dumps(bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
+            path = storage_dir / f"{report_run.public_id}.json"
 
-            data_hash = hashlib.sha256(file_bytes).hexdigest()
-            report_run.storage_path = str(path)
-            report_run.data_hash = data_hash
-            report_run.status = "COMPLETED"
-            report_run.generated_at = datetime.now(UTC)
-        except Exception as exc:
-            # Una excepción SQL deja la transacción de PostgreSQL abortada. Hay
-            # que revertirla antes de persistir el estado FAILED; de lo contrario
-            # el commit secundario oculta la causa original con
-            # InFailedSQLTransactionError.
-            await self.session.rollback()
-            report_run = await self.repo.get_run(report_run_id)
-            if report_run is None:
-                raise
-            report_run.status = "FAILED"
-            report_run.error_message = str(exc)
-            await self.session.commit()
-            raise
+        await asyncio.to_thread(path.write_bytes, file_bytes)
+        report_run.storage_path = str(path)
+        report_run.data_hash = hashlib.sha256(file_bytes).hexdigest()
+        report_run.status = "COMPLETED"
+        report_run.generated_at = datetime.now(UTC)
+        report_run.error_message = None
 
-        await self.session.commit()
-        await self.session.refresh(report_run)
-        return report_run
-
-    async def generate_preview(self, study_id: int, payload: ReportRunCreate) -> tuple:
-        """Genera el DOCX canónico (siempre, sin importar `output_format`
-        pedido) y deriva su PDF de preview convirtiéndolo con LibreOffice.
-
-        El PDF de preview se guarda como archivo hermano del `.docx`
-        (`{public_id}.pdf`, mismo `report_run`) en vez de agregar una
-        columna nueva a `ReportRun` — el path se puede derivar siempre por
-        convención desde `storage_path`. `GET /reports/{id}/download` sigue
-        sirviendo ese mismo `.docx` sin regenerar nada: es el archivo que
-        efectivamente se descarga al exportar.
-        """
+    async def _render_preview_pdf(self, report_run) -> int:
         from app.services.report_pdf_convert import count_pdf_pages, docx_to_pdf
 
-        forced_payload = payload.model_copy(update={"output_format": "DOCX"})
-        report_run = await self.generate(study_id, forced_payload)
-
         docx_path = Path(report_run.storage_path)
-        pdf_bytes = await docx_to_pdf(docx_path.read_bytes())
+        docx_bytes = await asyncio.to_thread(docx_path.read_bytes)
+        pdf_bytes = await docx_to_pdf(docx_bytes)
         pdf_path = docx_path.with_suffix(".pdf")
-        pdf_path.write_bytes(pdf_bytes)
+        await asyncio.to_thread(pdf_path.write_bytes, pdf_bytes)
+        return count_pdf_pages(pdf_bytes)
 
-        return report_run, count_pdf_pages(pdf_bytes)
+    async def _mark_failed(self, report_run_id: int, exc: Exception) -> None:
+        # Una excepción SQL deja la transacción de PostgreSQL abortada. Hay
+        # que revertirla antes de persistir FAILED para no ocultar la causa.
+        await self.session.rollback()
+        report_run = await self.repo.get_run(report_run_id)
+        if report_run is None:
+            raise exc
+        report_run.status = "FAILED"
+        report_run.error_message = str(exc)
+        await self.session.commit()
 
     async def _build_bundle(
         self,
