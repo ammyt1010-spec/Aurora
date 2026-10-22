@@ -1,39 +1,12 @@
-import {
-  BarChart3,
-  BookOpen,
-  FileBarChart2,
-  Home,
-  LayoutDashboard,
-  Sparkles,
-  Settings2,
-} from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { BarChart3, FileBarChart2, Home, Sparkles } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 
-import { listProjects } from '../../api/projects.js';
 import { BrandLogo } from '../../brand/BrandLogo.jsx';
 import { cn } from '../../utils/cn.js';
-import { getActiveProjectId, setActiveProjectId } from '../../utils/activeProject.js';
 import { ColmenaMenuButton } from './ColmenaMenuButton.jsx';
 
 export function Sidebar({ collapsed = false, onToggle }) {
   const location = useLocation();
-  const navigate = useNavigate();
-
-  const match = location.pathname.match(/^\/colmena\/project\/([a-zA-Z0-9-]+)/);
-  const routeProjectId = match ? match[1] : null;
-
-  const projectsQuery = useQuery({
-    queryKey: ['sidebar-projects'],
-    queryFn: () => listProjects({ page: 1, pageSize: 50 }),
-  });
-  const projects = projectsQuery.data?.items ?? [];
-
-  const fallbackProjectId = projects[0]?.id;
-  const activeProjectId = (routeProjectId && routeProjectId !== 'new') ? routeProjectId : (getActiveProjectId() || fallbackProjectId);
-
-  const hasProject = Boolean(activeProjectId);
-
   const navItems = [
     {
       to: '/colmena',
