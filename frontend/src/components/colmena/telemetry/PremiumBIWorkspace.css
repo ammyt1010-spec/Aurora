@@ -240,3 +240,13 @@ border-radius:12px;padding:13px;background:linear-gradient(145deg,#f7f9ff,#fff);
 @media(max-width:390px){
  .aurora-bi-heat-grid,.aurora-bi-dimension-cards{grid-template-columns:minmax(0,1fr)}
 }
+
+.aurora-bi-plan{display:grid;gap:12px}
+.aurora-bi-plan-bar{height:17px;border-radius:7px;background:#ecf0f7;overflow:hidden}
+.aurora-bi-plan-bar span{display:block;height:100%;background:linear-gradient(90deg,#22afaa,#66c9b5);border-radius:7px}
+.aurora-bi-plan-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.aurora-bi-plan-metrics>div{border:1px solid #e2e9f4;background:#f8faff;border-radius:9px;padding:11px;display:grid;gap:3px}
+.aurora-bi-plan-metrics strong{font-size:22px;font-weight:850;color:#1d3157}
+.aurora-bi-plan-metrics small{font-size:10px;font-weight:650;color:#718099}
+.aurora-bi-plan-link{display:inline-flex;align-items:center;gap:5px;color:#34589b;font-size:11px;font-weight:800}
+.aurora-bi-plan-link:hover{text-decoration:underline}
