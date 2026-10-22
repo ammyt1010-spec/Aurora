@@ -215,12 +215,15 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   return (
     <div className="colmena-page space-y-6">
       <PageHeader
-        eyebrow="Reportes de evaluación — AURORA PRO"
+        eyebrow="Etapa 3 de 3 · Informe"
         title={project.name}
-        description="Configura informes técnicos de distintas disciplinas, revisa los indicadores empresariales y emite documentos con licencia."
+        description="Previsualiza el informe completo, revisa sus interpretaciones y descarga el documento autorizado."
       />
 
-      <ExecutiveReportDashboard studyId={studyId} />
+      <details className="rounded-xl border border-border bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-dark">Resumen de hallazgos antes de emitir el informe</summary>
+        <div className="border-t border-border p-3"><ExecutiveReportDashboard studyId={studyId} /></div>
+      </details>
 
       <div className="grid gap-6 md:grid-cols-[380px_1fr]">
         <div className="space-y-4">
@@ -417,10 +420,10 @@ export default function ProjectReportsPage({ overrideProjectId }) {
         </div>
 
         {/* Report Preview Panel */}
-        <Card className="flex min-h-[600px] flex-col gap-3 p-5">
+        <Card className="flex min-h-[680px] flex-col gap-3 p-4 sm:p-5">
           {previewState === 'IDLE' ? (
             <EmptyState
-              title="Generación de Reporte de Riesgos Psicosociales"
+              title="Previsualización del informe completo"
               description={isPaymentRequired ? "Solicita tu cotización, confirma el pago y selecciona la orden aprobada para emitir el informe." : "Selecciona el estudio y genera una vista previa técnica del informe."}
             />
           ) : null}
@@ -479,7 +482,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 title="Visor PDF del informe de evaluación"
                 src={previewBlobUrl || 'about:blank'}
                 allowFullScreen
-                className="min-h-[640px] w-full flex-1 rounded-xl border border-border bg-white shadow-inner"
+                className="min-h-[680px] w-full flex-1 rounded-xl border border-border bg-white shadow-inner"
               />
             </>
           ) : null}
