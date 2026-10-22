@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Sparkles, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
@@ -16,7 +16,7 @@ import {
   getReportPreviewPdfUrl,
 } from '../../../api/reports.js';
 
-import { PageHeader } from '../../../components/layout/PageHeader.jsx';
+import '../../../design/PremiumSurfaces.css';
 import { Card } from '../../../components/ui/Card.jsx';
 import { Button } from '../../../components/ui/Button.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
@@ -25,6 +25,7 @@ import { ProjectMissingState } from '../../../components/colmena/ProjectMissingS
 import StudySelector from '../../../components/colmena/StudySelector.jsx';
 import ReportBillingPanel from '../../../components/colmena/project/ReportBillingPanel.jsx';
 import ExecutiveReportDashboard from '../../../components/colmena/project/ExecutiveReportDashboard.jsx';
+import ConsolidatedReportsPanel from '../../../components/colmena/project/ConsolidatedReportsPanel.jsx';
 import { getBillingPolicy, getOrders } from '../../../api/billing.js';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
 
@@ -213,14 +214,21 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
 
   return (
-    <div className="colmena-page space-y-6">
-      <PageHeader
-        eyebrow="Reportes de evaluación — AURORA PRO"
-        title={project.name}
-        description="Configura informes técnicos de distintas disciplinas, revisa los indicadores empresariales y emite documentos con licencia."
-      />
+    <div className="colmena-page aurora-premium-page space-y-4">
+      <header className="aurora-suite-hero">
+        <div className="aurora-suite-hero-copy">
+          <span><Sparkles size={14}/> ETAPA 03 · INFORME CORPORATIVO</span>
+          <h1>Informe y resultados.</h1>
+          <p>Explora la previsualización paginada, verifica las interpretaciones y descarga únicamente los documentos autorizados.</p>
+        </div>
+        <div className="aurora-suite-hero-icon" aria-hidden="true"><FileText size={34}/></div>
+      </header>
+      <ConsolidatedReportsPanel projectId={projectId} />
 
-      <ExecutiveReportDashboard studyId={studyId} />
+      <details className="rounded-xl border border-border bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-dark">Resumen de hallazgos antes de emitir el informe</summary>
+        <div className="border-t border-border p-3"><ExecutiveReportDashboard studyId={studyId} /></div>
+      </details>
 
       <div className="grid gap-6 md:grid-cols-[380px_1fr]">
         <div className="space-y-4">
@@ -293,7 +301,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             </Card>
           )}
           {/* Report Config Card */}
-          <Card className="flex flex-col gap-5 p-4">
+          <Card className="aurora-report-builder flex flex-col gap-5 p-4">
             <div className="flex flex-col gap-3">
               <p className="colmena-label">Estudio de Evaluación</p>
               <StudySelector
@@ -417,10 +425,10 @@ export default function ProjectReportsPage({ overrideProjectId }) {
         </div>
 
         {/* Report Preview Panel */}
-        <Card className="flex min-h-[600px] flex-col gap-3 p-5">
+        <Card className="aurora-report-viewer flex min-h-[680px] flex-col gap-3 p-4 sm:p-5">
           {previewState === 'IDLE' ? (
             <EmptyState
-              title="Generación de Reporte de Riesgos Psicosociales"
+              title="Previsualización del informe completo"
               description={isPaymentRequired ? "Solicita tu cotización, confirma el pago y selecciona la orden aprobada para emitir el informe." : "Selecciona el estudio y genera una vista previa técnica del informe."}
             />
           ) : null}
@@ -479,7 +487,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 title="Visor PDF del informe de evaluación"
                 src={previewBlobUrl || 'about:blank'}
                 allowFullScreen
-                className="min-h-[640px] w-full flex-1 rounded-xl border border-border bg-white shadow-inner"
+                className="aurora-report-preview min-h-[680px] w-full flex-1"
               />
             </>
           ) : null}

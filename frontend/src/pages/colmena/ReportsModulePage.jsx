@@ -1,15 +1,18 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FileBarChart2, BookOpen } from 'lucide-react';
 
 import { listProjects } from '../../api/projects.js';
-import { getActiveProjectId } from '../../utils/activeProject.js';
+import { getActiveProjectId, setActiveProjectId } from '../../utils/activeProject.js';
+import EnterpriseProjectPicker from '../../components/colmena/project/EnterpriseProjectPicker.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { Card } from '../../components/ui/Card.jsx';
 import ProjectReportsPage from './project/ProjectReportsPage.jsx';
 
 export default function ReportsModulePage() {
   const navigate = useNavigate();
+  const [selectedProjectId, setSelectedProjectId] = useState(() => getActiveProjectId());
   const { data, isLoading } = useQuery({
     queryKey: ['reports-module-projects'],
     queryFn: () => listProjects({ page: 1, pageSize: 50 }),
@@ -18,7 +21,7 @@ export default function ReportsModulePage() {
   if (isLoading) return <LoadingState label="Cargando módulo de reportes..." />;
 
   const projects = data?.items ?? [];
-  const storedId = getActiveProjectId();
+  const storedId = selectedProjectId;
   const activeProject = projects.find((p) => String(p.id) === String(storedId)) || projects[0];
 
   if (!activeProject) {
@@ -45,6 +48,13 @@ export default function ReportsModulePage() {
     );
   }
 
-  // Render Reports for active project
-  return <ProjectReportsPage overrideProjectId={activeProject.id} />;
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="px-4 pt-4">
+        <EnterpriseProjectPicker projects={projects} selectedId={activeProject.id}
+          onChange={(id) => { setSelectedProjectId(id); setActiveProjectId(id); }}/>
+      </div>
+      <ProjectReportsPage key={activeProject.id} overrideProjectId={activeProject.id} />
+    </div>
+  );
 }

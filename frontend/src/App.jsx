@@ -9,6 +9,7 @@ const DashboardPage = lazy(() => import('./pages/colmena/DashboardPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
 const SignupPage = lazy(() => import('./pages/SignupPage.jsx'));
 const PublicSurveyPage = lazy(() => import('./pages/PublicSurveyPage.jsx'));
+const PublicBundlePage = lazy(() => import('./pages/PublicBundlePage.jsx'));
 const TelemetryModulePage = lazy(() => import('./pages/colmena/TelemetryModulePage.jsx'));
 const ReportsModulePage = lazy(() => import('./pages/colmena/ReportsModulePage.jsx'));
 const ArchiveProjectsPage = lazy(() => import('./pages/colmena/ArchiveProjectsPage.jsx'));
@@ -34,6 +35,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/encuesta/:publicId" element={<PublicSurveyPage />} />
+      <Route path="/bateria/:publicId" element={<PublicBundlePage />} />
 
       <Route
         path="/colmena"

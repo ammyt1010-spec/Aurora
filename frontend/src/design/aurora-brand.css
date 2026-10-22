@@ -1,0 +1,89 @@
+/* Brand system AURORA Professional v1.0 | Light-first */
+html, body, #root { background-color: var(--aurora-bg); }
+body {
+  color: var(--aurora-ink);
+  background: radial-gradient(ellipse at 93% -18%, rgba(0,212,216,.095), transparent 48%),
+    radial-gradient(ellipse at 63% -18%, rgba(99,102,241,.045), transparent 52%), var(--aurora-bg);
+  font-family: var(--aurora-font);
+}
+.aurora-app { color: var(--aurora-ink); }
+.aurora-app .colmena-card {
+  border-color: rgba(226,232,240,.88);
+  background: rgba(255,255,255,.93);
+  box-shadow: var(--aurora-shadow-card);
+}
+.aurora-app .colmena-input:focus {
+  border-color: #00AFC8;
+  box-shadow: 0 0 0 3px rgba(0,212,216,.14);
+}
+.aurora-app :is(a,button,input,select,textarea):focus-visible {
+  outline: 2px solid #176BA4;
+  outline-offset: 3px;
+}
+/* Portadas claras con motivo boreal: legibilidad prioritaria. */
+.aurora-app .aurora-premium-page .aurora-suite-hero {
+  background-color: #fff;
+  background-image:
+    linear-gradient(100deg, rgba(255,255,255,.96) 0%, rgba(248,250,252,.94) 49%, rgba(248,250,252,.65) 100%),
+    url('/brand/aurora-light-waves.svg');
+  background-size: cover, 82% 180%;
+  background-position: center, right center;
+  background-repeat: no-repeat;
+  border: 1px solid #D9E7F3;
+  box-shadow: var(--aurora-shadow-card);
+}
+.aurora-app .aurora-premium-page .aurora-suite-hero-copy > span { color: #146FA0; }
+.aurora-app .aurora-premium-page .aurora-suite-hero-copy h1 { color: var(--aurora-navy); }
+.aurora-app .aurora-premium-page .aurora-suite-hero-copy p { color: #526780; }
+.aurora-app .aurora-premium-page .aurora-suite-hero-icon {
+  background: linear-gradient(135deg,rgba(0,212,216,.11),rgba(99,102,241,.1));
+  border-color: #CDE6F1; color: #2D5BBD;
+}
+.aurora-app .aurora-premium-page .aurora-catalog-card::before {
+  background: var(--aurora-gradient);
+}
+.aurora-app .aurora-premium-page .aurora-catalog-action {
+  background: linear-gradient(120deg,#0A1F44,#3255A6);
+}
+/* Panel BI de tema claro, incluso si el hero original fue diseñado oscuro. */
+.aurora-app .aurora-bi .aurora-bi-hero {
+  background-color: #fff;
+  background-image:
+    linear-gradient(97deg,rgba(255,255,255,.99) 0%,rgba(248,250,252,.95) 54%,rgba(248,250,252,.58) 100%),
+    url('/brand/aurora-light-waves.svg');
+  background-size: cover, 76% 190%;
+  background-position: center, right center;
+  background-repeat: no-repeat;
+  border: 1px solid #DDE9F4;
+  box-shadow: var(--aurora-shadow-card);
+}
+.aurora-app .aurora-bi .aurora-bi-hero h2 { color: var(--aurora-navy); }
+.aurora-app .aurora-bi .aurora-bi-hero p { color: #576984; }
+.aurora-app .aurora-bi .aurora-bi-overline { color: #126DAB; }
+.aurora-app .aurora-bi .aurora-bi-hero-mark {
+  color: #275FA9;
+  background: rgba(238,249,252,.72);
+  border-color: #C5E6F0;
+  box-shadow: 0 8px 22px rgba(18,46,90,.06);
+}
+.aurora-app .aurora-bi .aurora-bi-hero::after { opacity: .14; }
+.aurora-app .aurora-bi {
+  --aurora-ink: #112441;
+  --aurora-ink-soft: #64748B;
+  --aurora-accent: #6366F1;
+  --aurora-border: rgba(177,201,224,.44);
+  --aurora-shadow: var(--aurora-shadow-card);
+}
+.aurora-app .aurora-bi .aurora-bi-panel { border-radius:var(--aurora-radius-card); }
+.aurora-app .aurora-bi .aurora-bi-panel-icon {
+  background: linear-gradient(135deg,#E3FBFC,#F1ECFF);
+  color: #3157B0;
+}
+.aurora-app .aurora-bi .aurora-bi-toolbutton.is-primary {
+  background: #0A1F44; border-color: #0A1F44;
+}
+.aurora-app .aurora-bi .aurora-bi-toolbutton.is-primary:hover {background:#274580;}
+.aurora-app .aurora-bi .aurora-bi-stat-symbol {color:#1E62AB;background:#EAF6FF;}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-app *, .aurora-app *::before, .aurora-app *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
+}

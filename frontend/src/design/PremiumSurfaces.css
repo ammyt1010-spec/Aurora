@@ -1,0 +1,82 @@
+/* Superficies premium de las pantallas Inicio e Informe.
+   No afecta rutas técnicas o componentes externos a estas pantallas. */
+.aurora-premium-page {
+  --aurora-pr-ink:#182844;
+  --aurora-pr-border:#e0e7f2;
+  background:radial-gradient(ellipse at 95% 0%,rgba(93,112,255,.045),transparent 54%);
+  color:var(--aurora-pr-ink);
+}
+.aurora-premium-page .aurora-suite-hero {
+  position:relative;overflow:hidden;display:flex;justify-content:space-between;align-items:center;gap:12px;
+  min-height:145px;border-radius:17px;padding:22px 25px;
+  background:radial-gradient(circle at 86% 5%,rgba(87,112,255,.35),transparent 38%),
+    radial-gradient(circle at 20% 140%,rgba(15,196,187,.18),transparent 45%),
+    linear-gradient(115deg,#10213e,#192c55 80%);
+  box-shadow:0 18px 38px rgba(22,41,81,.17), inset 0 1px rgba(255,255,255,.15);
+}
+.aurora-suite-hero-copy {position:relative;z-index:1}
+.aurora-suite-hero-copy>span {display:flex;align-items:center;gap:7px;color:#9af2e2;letter-spacing:.14em;font-size:10px;font-weight:900}
+.aurora-suite-hero-copy h1 {font-weight:850;color:white;letter-spacing:-.04em;font-size:clamp(21px,2.5vw,29px);line-height:1.2;margin:8px 0}
+.aurora-suite-hero-copy p {font-size:12px;line-height:1.6;color:#c8d5ea;margin:0;max-width:590px}
+.aurora-suite-hero-icon {display:grid;place-items:center;flex:none;width:70px;height:70px;border-radius:16px;
+ color:#bcfcef;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+ box-shadow:0 6px 30px rgba(0,0,0,.12);backdrop-filter:blur(12px)}
+.aurora-premium-page .aurora-catalog-card {
+ position:relative;overflow:hidden;border-radius:14px;border:1px solid var(--aurora-pr-border);
+ box-shadow:0 11px 27px rgba(29,46,81,.075),0 2px 7px rgba(29,46,81,.03);
+ background:linear-gradient(164deg,#fff,#fff 78%,#f9fbff);
+ transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;
+}
+.aurora-premium-page .aurora-catalog-card::before {
+ content:"";position:absolute;left:0;right:0;top:0;height:3px;
+ background:linear-gradient(90deg,#536df0,#28bdb4);
+}
+.aurora-premium-page .aurora-catalog-card:hover {
+ transform:translateY(-3px);border-color:#b3c3e8;
+ box-shadow:0 17px 34px rgba(29,46,81,.13),0 3px 10px rgba(29,46,81,.04);
+}
+.aurora-premium-page .aurora-catalog-action {
+ border-radius:9px;background:linear-gradient(130deg,#253f78,#3b5cad);color:white;
+ box-shadow:0 6px 16px rgba(45,75,135,.2);font-weight:750;
+}
+.aurora-premium-page .aurora-catalog-action:hover {filter:brightness(1.13)}
+.aurora-premium-page .aurora-catalog-action:disabled {box-shadow:none}
+.aurora-premium-page .aurora-catalog-aux {
+ background:linear-gradient(180deg,#fff,#f9fbff);border:1px solid var(--aurora-pr-border);
+ box-shadow:0 8px 22px rgba(28,46,83,.05);border-radius:13px
+}
+.aurora-premium-page .aurora-catalog-aux h2 {color:#1c3157}
+.aurora-premium-page .aurora-catalog-aux button {
+ border-color:#a9bbdf;color:#263f74;transition:all .2s ease
+}
+.aurora-premium-page .aurora-catalog-aux button:hover {background:#eef3ff;box-shadow:0 4px 12px rgba(38,62,114,.1)}
+.aurora-premium-page .aurora-report-builder {
+ background:linear-gradient(180deg,#fff,#fafcff);
+ border:1px solid var(--aurora-pr-border);border-radius:14px;
+ box-shadow:0 12px 28px rgba(29,46,81,.07),0 2px 6px rgba(29,46,81,.03);
+}
+.aurora-premium-page .aurora-report-viewer {
+ border:1px solid #d9e3f3;border-radius:14px;min-width:0;
+ background:linear-gradient(155deg,#fdfefe,#f7f9fe);
+ box-shadow:0 16px 38px rgba(21,41,81,.11);
+}
+.aurora-premium-page .aurora-report-preview {
+ border:1px solid #d6e1f1;border-radius:10px;
+ box-shadow:0 4px 17px rgba(26,47,90,.11),0 2px 4px rgba(26,47,90,.04);
+ background:#fff;
+}
+.aurora-premium-page .aurora-report-viewer button:not(:disabled):hover,
+.aurora-premium-page .aurora-report-builder button:not(:disabled):hover {
+ transition:filter .2s ease,box-shadow .2s ease;filter:brightness(.98);
+}
+.aurora-premium-page .aurora-report-caption {
+ display:flex;align-items:center;gap:8px;color:#6a7891;
+ font-size:11px;padding:3px 2px;
+}
+@media (max-width:768px) {
+ .aurora-premium-page .aurora-suite-hero {padding:18px 17px;min-height:122px}
+ .aurora-suite-hero-icon {display:none}
+}
+@media (prefers-reduced-motion:reduce) {
+ .aurora-premium-page * {transition:none!important}
+}

@@ -5,6 +5,7 @@ sin valores dentro de los segmentos."""
 from __future__ import annotations
 
 import io
+import textwrap
 
 import matplotlib
 
@@ -51,7 +52,11 @@ def build_trichotomy_chart(results: list[dict]) -> io.BytesIO | None:
     if not plot_results:
         return None
 
-    labels = [r.get("construct_code") or r.get("construct_name") or "" for r in plot_results]
+    labels = [
+        f"{r.get('construct_code') or ''} · {textwrap.shorten(str(r.get('construct_name') or ''), width=25, placeholder='...')}"
+        if r.get("construct_name") else str(r.get("construct_code") or "")
+        for r in plot_results
+    ]
     fig_height = max(1.8, 0.42 * len(plot_results) + 1.1)
     fig, ax = plt.subplots(figsize=(6.3, fig_height), dpi=150)
     apply_colmena_plot_theme(ax)
@@ -86,6 +91,45 @@ def build_trichotomy_chart(results: list[dict]) -> io.BytesIO | None:
     fig.tight_layout()
     return _fig_to_png(fig)
 
+
+
+
+def build_priority_chart(results: list[dict]) -> io.BytesIO | None:
+    """Panel ejecutivo: % desfavorable del backend, sin inventar clasificaciones."""
+    from math import isfinite
+
+    rows = [
+        row for row in results
+        if not row.get("suppressed")
+        and isinstance(row.get("unfavorable_pct"), (int, float))
+        and isfinite(row["unfavorable_pct"])
+        and 0 <= row["unfavorable_pct"] <= 100
+    ][:12]
+    if not rows:
+        return None
+    names = [
+        textwrap.shorten(
+            f"{row.get('construct_code') or ''} {row.get('construct_name') or ''}".strip(),
+            width=37, placeholder="…",
+        )
+        for row in rows
+    ]
+    values = [float(row["unfavorable_pct"]) for row in rows]
+    fig, ax = plt.subplots(figsize=(7.0, max(1.8, 0.40 * len(rows) + 0.8)), dpi=175)
+    fig.patch.set_facecolor("white")
+    apply_colmena_plot_theme(ax)
+    ax.barh(list(range(len(rows))), values, height=0.58, color=_c("red"), alpha=0.91)
+    ax.set_yticks(list(range(len(rows))))
+    ax.set_yticklabels(names, fontsize=8.5, color=_c("text"))
+    ax.invert_yaxis()
+    ax.set_xlim(0, 112)
+    ax.set_xticks([0, 25, 50, 75, 100])
+    ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"])
+    for i, value in enumerate(values):
+        ax.text(value + 1, i, f"{value:.1f}%", ha="left", va="center",
+                fontsize=8, color=_c("navy"), fontweight="bold")
+    fig.tight_layout()
+    return _fig_to_png(fig)
 
 def _fig_to_png(fig) -> io.BytesIO:
     buffer = io.BytesIO()

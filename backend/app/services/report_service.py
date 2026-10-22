@@ -307,11 +307,16 @@ class ReportService:
         forced_payload = payload.model_copy(update={"output_format": "DOCX"})
 
         if is_sample:
+            from app.services.demo_entitlement_service import (
+                reserve_demo_usage, complete_demo_usage, release_demo_usage,
+            )
             # Vista previa segura de muestra con marca de agua (Req 4):
             # No consume crédito ni exige orden pagada, permitiendo ver la estructura y estética sin entregar archivo oficial.
             study = await self.study_repo.get(study_id)
             if study is None:
                 raise NotFoundError(f"Estudio {study_id} no encontrado")
+
+            demo_reserved = await reserve_demo_usage(self.session, payload.requested_by_user_id)
 
             template_name = None
             template_code = None
@@ -381,12 +386,16 @@ class ReportService:
                 report_run.data_hash = hashlib.sha256(file_bytes).hexdigest()
                 report_run.status = "COMPLETED"
                 report_run.generated_at = datetime.now(UTC)
+                if demo_reserved:
+                    await complete_demo_usage(self.session, payload.requested_by_user_id, report_run.id)
                 await self.session.commit()
                 await self.session.refresh(report_run)
                 return report_run, count_pdf_pages(pdf_bytes)
             except Exception as exc:
                 report_run.status = "FAILED"
                 report_run.error_message = f"Falló la conversión de vista previa de muestra: {exc}"
+                if demo_reserved:
+                    await release_demo_usage(self.session, payload.requested_by_user_id)
                 await self.session.commit()
                 raise
         else:

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, LogOut, RefreshCcw, Search, Wifi, WifiOff } from 'lucide-react';
+import { LogOut, RefreshCcw, Settings2, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { API_ROOT_URL } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import ThemeToggle from '../ui/ThemeToggle.jsx';
+import { BrandMark } from '../../brand/BrandMark.jsx';
 
 async function fetchHealth() {
   const response = await fetch(`${API_ROOT_URL}/health`);
@@ -13,11 +14,7 @@ async function fetchHealth() {
   return response.json();
 }
 
-/**
- * Portado de fullProyect/COLMENA/frontend (Topbar.tsx). El buscador y la
- * campana de notificaciones son decorativos (igual que en el original) — el
- * indicador de API sí es real, contra nuestro GET /health.
- */
+/** Barra superior: identidad, conexión real al backend, configuración y sesión. */
 export function Topbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -57,15 +54,9 @@ export function Topbar() {
         </div>
       )}
       <div className="flex h-full w-full items-center justify-between gap-4">
-        <div className="flex min-w-0 flex-1 items-center">
-          <div className="group flex h-9 min-w-0 w-full max-w-[520px] items-center gap-2.5 rounded-xl border border-[#eef0f3] bg-[#f8f9fb] px-3 transition-all hover:border-[#dfe2e6] hover:bg-white focus-within:border-amber focus-within:bg-white focus-within:ring-2 focus-within:ring-amber/10">
-            <Search className="h-4 w-4 shrink-0 text-muted/50" />
-            <input
-              className="min-w-0 flex-1 bg-transparent text-sm text-dark placeholder:text-muted/50 outline-none"
-              placeholder="Buscar proyectos, formularios o respuestas..."
-              type="text"
-            />
-          </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-dark">AURORA Professional</p>
+          <p className="text-[11px] text-muted">Diagnóstico y evaluaciones corporativas</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -87,20 +78,23 @@ export function Topbar() {
             <RefreshCcw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </button>
 
-          <ThemeToggle />
-
           <button
-            aria-label="Notificaciones"
+            aria-label="Administración"
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#eef0f3] bg-white text-muted transition hover:bg-[#f5f6f8] hover:text-dark"
+            onClick={() => navigate('/colmena/settings')}
+            title="Administración, tarifas y configuración"
             type="button"
           >
-            <Bell className="h-3.5 w-3.5" />
+            <Settings2 className="h-4 w-4" />
           </button>
+
+          <ThemeToggle />
+
 
           <div className="mx-1 h-6 w-px bg-[#eef0f3]" />
 
           <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition hover:bg-[#f5f6f8]">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber to-honey text-xs font-bold text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#00B9CD] to-[#6366F1] text-xs font-bold text-white">
               {initial}
             </div>
             <div className="text-left hidden lg:block">

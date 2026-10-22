@@ -1,4 +1,4 @@
-"""Paleta, tipografía y métricas de página del design system Colmena.
+"""Paleta corporativa AURORA Professional, tipografía y métricas de página.
 
 Única fuente de verdad para todo HEX/tamaño usado en el renderer — ninguna
 otra función de `report_docx` debe declarar un color o un tamaño de fuente
@@ -10,17 +10,17 @@ from __future__ import annotations
 from docx.shared import Mm
 
 COLMENA = {
-    "navy": "123D42",
-    "teal": "20A7A4",
-    "gold": "DDA629",
-    "text": "18383B",
-    "muted": "718286",
-    "line": "CDD9DB",
-    "surface": "F3F6F6",
-    "surface_alt": "EDF2F2",
-    "green": "299D78",
-    "yellow": "E6AA22",
-    "red": "DB5656",
+    "navy": "0A1F44",
+    "teal": "087F8F",  # Uso con texto blanco; cyan luminoso reservado para acentos\n    "cyan": "00D4D8",\n    "violet": "6366F1",
+    "gold": "F59E0B",
+    "text": "112441",
+    "muted": "64748B",
+    "line": "E2E8F0",
+    "surface": "F8FAFC",
+    "surface_alt": "EDF5FC",
+    "green": "10B981",
+    "yellow": "F59E0B",
+    "red": "EF4444",
     "white": "FFFFFF",
 }
 
@@ -51,4 +51,4 @@ FONT = {
     "label": 9.5,
 }
 
-FONT_FAMILY = "Calibri"
+FONT_FAMILY = "Inter"

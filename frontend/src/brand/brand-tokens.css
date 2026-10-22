@@ -1,0 +1,19 @@
+:root {
+  --aurora-navy: #0A1F44;
+  --aurora-ink: #112441;
+  --aurora-cyan: #00D4D8;
+  --aurora-violet: #6366F1;
+  --aurora-teal: #10B981;
+  --aurora-slate: #64748B;
+  --aurora-bg: #F8FAFC;
+  --aurora-surface: #FFFFFF;
+  --aurora-border: #E2E8F0;
+  --aurora-warning: #F59E0B;
+  --aurora-danger: #EF4444;
+  --aurora-gradient: linear-gradient(110deg, #00D4D8 0%, #6366F1 100%);
+  --aurora-shadow-card: 0 9px 28px rgba(10,31,68,.08);
+  --aurora-shadow-float: 0 18px 46px rgba(10,31,68,.13);
+  --aurora-radius-card: 16px;
+  --aurora-font: Inter, system-ui, -apple-system, sans-serif;
+}
+/* Riesgos no son colores de marca: están determinados por la metodología. */

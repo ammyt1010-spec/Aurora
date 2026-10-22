@@ -1,15 +1,18 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BarChart3, BookOpen, Sparkles } from 'lucide-react';
 
 import { listProjects } from '../../api/projects.js';
-import { getActiveProjectId } from '../../utils/activeProject.js';
+import { getActiveProjectId, setActiveProjectId } from '../../utils/activeProject.js';
+import EnterpriseProjectPicker from '../../components/colmena/project/EnterpriseProjectPicker.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { Card } from '../../components/ui/Card.jsx';
 import AdaptiveProjectTelemetryPage from './project/AdaptiveProjectTelemetryPage.jsx';
 
 export default function TelemetryModulePage() {
   const navigate = useNavigate();
+  const [selectedProjectId, setSelectedProjectId] = useState(() => getActiveProjectId());
   const { data, isLoading } = useQuery({
     queryKey: ['telemetry-module-projects'],
     queryFn: () => listProjects({ page: 1, pageSize: 50 }),
@@ -18,7 +21,7 @@ export default function TelemetryModulePage() {
   if (isLoading) return <LoadingState label="Cargando telemetría en vivo..." />;
 
   const projects = data?.items ?? [];
-  const storedId = getActiveProjectId();
+  const storedId = selectedProjectId;
   const activeProject = projects.find((p) => String(p.id) === String(storedId)) || projects[0];
 
   if (!activeProject) {
@@ -45,6 +48,13 @@ export default function TelemetryModulePage() {
     );
   }
 
-  // Render Telemetry for active project
-  return <AdaptiveProjectTelemetryPage overrideProjectId={activeProject.id} />;
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="px-4 pt-4">
+        <EnterpriseProjectPicker projects={projects} selectedId={activeProject.id}
+          onChange={(id) => { setSelectedProjectId(id); setActiveProjectId(id); }}/>
+      </div>
+      <AdaptiveProjectTelemetryPage key={activeProject.id} overrideProjectId={activeProject.id} />
+    </div>
+  );
 }

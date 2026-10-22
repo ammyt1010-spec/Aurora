@@ -23,6 +23,8 @@ from app.api.v1 import (
     telemetry,
     variables,
     quick_eval,
+    dashboard_preferences,
+    evaluation_bundles,
 )
 
 api_router = APIRouter()
@@ -46,3 +48,5 @@ api_router.include_router(reports.router, dependencies=[Depends(require_business
 api_router.include_router(public.router)
 api_router.include_router(telemetry.router, dependencies=[Depends(require_business_access)])
 api_router.include_router(quick_eval.router)
+api_router.include_router(dashboard_preferences.router)
+api_router.include_router(evaluation_bundles.router)
