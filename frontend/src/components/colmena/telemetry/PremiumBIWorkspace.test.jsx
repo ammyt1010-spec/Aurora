@@ -9,9 +9,11 @@ import {
   getCensopasResults, getCensopasUnitResults, getResultsOverview, getStudy, listStudyUnitTypes,
 } from '../../../api/studies.js';
 import PremiumBIWorkspace from './PremiumBIWorkspace.jsx';
+import { getProjectLongitudinal } from '../../../api/analytics.js';
 
 vi.mock('../../../api/instruments.js', () => ({ getCensopasReadiness: vi.fn() }));
 vi.mock('../../../api/reports.js', () => ({ getExecutiveDashboard: vi.fn() }));
+vi.mock('../../../api/analytics.js', () => ({ getProjectLongitudinal: vi.fn() }));
 vi.mock('../../../api/studies.js', () => ({
   getCensopasResults: vi.fn(),
   getCensopasUnitResults: vi.fn(),
@@ -36,6 +38,7 @@ function renderDashboard() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getProjectLongitudinal.mockResolvedValue({ constructs: [] });
   localStorage.removeItem('aurora:bi:layout:v2:project-5');
   getStudy.mockResolvedValue({ id: 12, instrument_version_id: 21 });
   getCensopasReadiness.mockResolvedValue({ is_censopas_instrument: true });
