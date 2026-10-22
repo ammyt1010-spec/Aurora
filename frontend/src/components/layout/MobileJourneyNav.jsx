@@ -1,5 +1,5 @@
 import { BarChart3, FileText, Home } from 'lucide-react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 /** Navegación inferior consistente en pantallas pequeñas. */
 export function MobileJourneyNav() {
@@ -14,11 +14,11 @@ export function MobileJourneyNav() {
       {routes.map(({ to, label, Icon, match }) => {
         const selected = match(location.pathname);
         return (
-          <NavLink key={to} to={to} aria-current={selected ? 'page' : undefined}
+          <Link key={to} to={to} aria-current={selected ? 'page' : undefined}
             className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1 text-[11px] font-semibold ${selected ? 'bg-amber/15 text-dark' : 'text-muted'}`}>
             <Icon size={18} aria-hidden="true" />
             {label}
-          </NavLink>
+          </Link>
         );
       })}
     </nav>
