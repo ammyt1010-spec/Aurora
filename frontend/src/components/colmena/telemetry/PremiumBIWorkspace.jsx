@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, ArrowDown, ArrowUp, BarChart3, Check, ChevronRight, CircleHelp,
-  Download, GripVertical, Layers3, LayoutGrid, RotateCcw, Settings2, ShieldCheck,
-  SlidersHorizontal, Sparkles, Target, Users, X,
+  Activity, ArrowDown, ArrowUp, BarChart3, ChevronRight, CircleHelp,
+  GripVertical, Layers3, LayoutGrid, RotateCcw, Settings2, ShieldCheck,
+  SlidersHorizontal, Sparkles, Target, Users,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
