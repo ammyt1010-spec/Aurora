@@ -89,7 +89,24 @@ export default function ExecutiveReportDashboard({ studyId }) {
                         {indicator.label}
                       </span>
                     </div>
-                    <p className="mt-2 text-xs leading-relaxed text-muted">{item.recommendation}</p>
+                    {typeof item.unfavorable_pct === 'number' && Number.isFinite(item.unfavorable_pct) ? (
+                      <div className="mt-2 flex items-center gap-3">
+                        <div role="img" aria-label={`Porcentaje desfavorable: ${item.unfavorable_pct.toFixed(1)}%`}
+                          className="h-2.5 flex-1 overflow-hidden rounded-full bg-surfaceSoft">
+                          <div className={`h-full rounded-full ${item.traffic_light === 'RED' ? 'bg-red-500' : item.traffic_light === 'AMBER' ? 'bg-amber' : 'bg-emerald-500'}`}
+                            style={{ width: `${Math.max(0, Math.min(100, item.unfavorable_pct))}%` }} />
+                        </div>
+                        <span className="shrink-0 text-xs font-bold tabular-nums text-dark">
+                          {item.unfavorable_pct.toFixed(1)}% desfavorable
+                        </span>
+                      </div>
+                    ) : null}
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-semibold text-muted hover:text-dark">
+                        Interpretación y acción sugerida
+                      </summary>
+                      <p className="mt-2 text-xs leading-relaxed text-muted">{item.recommendation}</p>
+                    </details>
                   </div>
                 );
               })}
