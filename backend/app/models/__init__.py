@@ -20,6 +20,7 @@ from app.models.bsc import ActionPlan, ActionPlanItem, Kpi, KpiMeasurement
 from app.models.export import Export
 from app.models.evaluation_bundle import EvaluationBundle
 from app.models.demo_report_usage import DemoReportUsage
+from app.models.consolidated_bundle_report import ConsolidatedBundleReport
 from app.models.report import ReportRun, ReportTemplate
 from app.models.construct import Construct, ConstructItem
 from app.models.instrument import Instrument, InstrumentVersion
@@ -90,6 +91,7 @@ __all__ = [
     "ReportRun",
     "EvaluationBundle",
     "DemoReportUsage",
+    "ConsolidatedBundleReport",
     "Participant",
     "StudyInvitation",
 ]
