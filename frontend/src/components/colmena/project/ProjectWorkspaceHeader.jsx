@@ -1,145 +1,66 @@
-import { useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  BarChart3,
-  Building2,
-  ChevronRight,
-  Copy,
-  ExternalLink,
-  FileBarChart2,
-  FolderKanban,
-  Link as LinkIcon,
-  QrCode,
-  ShieldCheck,
-  Sparkles,
-  Users,
-} from 'lucide-react';
+import { BarChart3, ChevronRight, FileBarChart2, FolderKanban, Link as LinkIcon, Users } from 'lucide-react';
 
 import { getProject } from '../../../api/projects.js';
 
-export default function ProjectWorkspaceHeader({ activeTab = 'link' }) {
-  const { projectId } = useParams();
-  const navigate = useNavigate();
+/**
+ * Tres pantallas para el usuario corporativo. La gestión de enlaces y
+ * colaboradores permanece accesible como tarea auxiliar del proyecto.
+ * projectId explícito cubre las rutas de módulo /colmena/telemetry.
+ */
+export default function ProjectWorkspaceHeader({ activeTab = 'telemetry', projectId: explicitProjectId, actions }) {
+  const { projectId: routeProjectId } = useParams();
+  const projectId = explicitProjectId || routeProjectId;
   const location = useLocation();
-  const [copied, setCopied] = useState(false);
-
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => getProject(projectId),
     enabled: Boolean(projectId),
   });
-
-  const publicId = project?.censopas_study?.public_id || project?.metadata_?.public_id;
-  const surveyUrl = publicId ? `${window.location.origin}/encuesta/${publicId}` : null;
-
-  const handleCopy = () => {
-    if (!surveyUrl) return;
-    navigator.clipboard.writeText(surveyUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const navTabs = [
-    {
-      id: 'link',
-      label: '1. Enlace & Código QR',
-      icon: LinkIcon,
-      path: `/colmena/project/${projectId}/link`,
-    },
-    {
-      id: 'telemetry',
-      label: '2. Telemetría en Vivo',
-      icon: BarChart3,
-      path: `/colmena/project/${projectId}/telemetry`,
-    },
-    {
-      id: 'reports',
-      label: '3. Informes profesionales',
-      icon: FileBarChart2,
-      path: `/colmena/project/${projectId}/reports`,
-    },
-    {
-      id: 'team',
-      label: '4. Colaboradores',
-      icon: Users,
-      path: `/colmena/project/${projectId}/team`,
-    },
+    { id: 'home', label: '1. Inicio', icon: FolderKanban, path: '/colmena' },
+    { id: 'telemetry', label: '2. Telemetría', icon: BarChart3, path: projectId ? `/colmena/project/${projectId}/telemetry` : '/colmena/telemetry' },
+    { id: 'reports', label: '3. Informe', icon: FileBarChart2, path: projectId ? `/colmena/project/${projectId}/reports` : '/colmena/reports' },
   ];
-
   return (
-    <div className="mb-4 space-y-3 text-xs">
-      {/* High-Density Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5 shadow-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted">
-            <Link to="/colmena" className="hover:text-amber transition flex items-center gap-1">
-              <FolderKanban size={12} /> Menú de Instrumentos
-            </Link>
-            <ChevronRight size={11} />
-            <span className="text-dark font-bold">{project?.name || 'Cargando...'}</span>
+    <header className="mb-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1 text-[11px] text-muted">
+            <Link className="hover:text-amber" to="/colmena">Inicio</Link>
+            <ChevronRight size={12} />
+            <span className="truncate">{project?.name || 'Evaluación'}</span>
           </div>
-
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-extrabold text-dark tracking-tight">
-              {project?.name || 'Evaluación Psicosocial'}
-            </h1>
-            {project?.censopas_study?.workplace_name ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber bg-amber/10 border border-amber/20 px-2 py-0.5 rounded-full">
-                <Building2 size={11} />
-                {project.censopas_study.workplace_name}
-              </span>
-            ) : null}
-          </div>
+          <h1 className="mt-1 truncate text-base font-bold text-dark">{project?.name || 'Diagnóstico empresarial'}</h1>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
-          {surveyUrl ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {projectId ? (
             <>
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-surfaceSoft hover:bg-surface text-dark font-bold text-xs transition"
-              >
-                <Copy size={12} className="text-amber" />
-                {copied ? '¡Copiado!' : 'Copiar Link'}
-              </button>
-              <a
-                href={surveyUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-surfaceSoft hover:bg-surface text-dark font-semibold text-xs transition"
-              >
-                <ExternalLink size={12} />
-                Probar Encuesta
-              </a>
+              <Link className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-dark hover:bg-surfaceSoft" to={`/colmena/project/${projectId}/link`}>
+                <LinkIcon className="mr-1 inline" size={13} /> Gestionar enlace
+              </Link>
+              <Link className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-dark hover:bg-surfaceSoft" to={`/colmena/project/${projectId}/team`}>
+                <Users className="mr-1 inline" size={13} /> Equipo
+              </Link>
             </>
           ) : null}
+          {actions}
         </div>
       </div>
-
-      {/* 3-Step Navigation Tabs */}
-      <div className="flex border-b border-border bg-surface/60 rounded-xl p-1 gap-1">
+      <nav aria-label="Etapas de evaluación" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface p-1">
         {navTabs.map((tab) => {
-          const isActive = location.pathname.includes(tab.id);
           const Icon = tab.icon;
+          const selected = tab.id === activeTab || (tab.id === 'reports' && location.pathname.includes('/reports')) || (tab.id === 'telemetry' && location.pathname.includes('/telemetry'));
           return (
-            <Link
-              key={tab.id}
-              to={tab.path}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition ${
-                isActive
-                  ? 'bg-amber text-dark shadow-sm'
-                  : 'text-muted hover:text-dark hover:bg-surfaceSoft'
-              }`}
-            >
-              <Icon size={14} className={isActive ? 'text-dark' : 'text-muted'} />
-              <span>{tab.label}</span>
+            <Link key={tab.id} to={tab.path} aria-current={selected ? 'page' : undefined}
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-lg px-2 py-2.5 text-xs font-semibold transition ${selected ? 'bg-amber text-dark shadow-sm' : 'text-muted hover:bg-surfaceSoft hover:text-dark'}`}>
+              <Icon size={15} />
+              <span className="truncate">{tab.label}</span>
             </Link>
           );
         })}
-      </div>
-    </div>
+      </nav>
+    </header>
   );
 }
