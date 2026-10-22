@@ -147,6 +147,7 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
       {studyId ? (
         <TelemetryDashboard
           projectId={projectId}
+          organizationId={projectQuery.data?.organization_id}
           descriptives={descriptivesQuery.data}
           isLoadingTelemetry={telemetryQuery.isLoading}
           studyId={studyId}
