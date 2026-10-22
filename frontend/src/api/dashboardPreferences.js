@@ -1,7 +1,7 @@
 import { apiRequest } from './client.js';
 
 export const DEFAULT_LAYOUT = Object.freeze({
-  widgets: ['summary', 'distribution', 'ranking', 'segments', 'actions'],
+  widgets: ['summary', 'distribution', 'ranking', 'segments', 'actions', 'trend'],
   density: 'compact',
   chart_mode: 'stacked',
 });
