@@ -364,6 +364,29 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
         )}
       </ChartPanel>
     ),
+    action_plan: (
+      <ChartPanel title="Seguimiento de medidas" subtitle="Avance de acciones empresariales registradas" icon={Target}>
+        {showSegment ? (
+          <EmptyData message="El plan de acción corresponde al estudio completo. Retira el filtro para consultar su seguimiento."/>
+        ) : (executive?.action_plans_summary?.total_actions || 0) > 0 ? (
+          <div className="aurora-bi-plan">
+            <div className="aurora-bi-plan-bar" role="img"
+              aria-label={String(executive.action_plans_summary.completed) + ' acciones completadas de ' + executive.action_plans_summary.total_actions}>
+              <span style={{ width: String(100 * executive.action_plans_summary.completed / executive.action_plans_summary.total_actions) + '%' }}/>
+            </div>
+            <div className="aurora-bi-plan-metrics">
+              <div><strong>{executive.action_plans_summary.completed}</strong><small>Completadas</small></div>
+              <div><strong>{executive.action_plans_summary.in_progress}</strong><small>En progreso</small></div>
+              <div><strong>{executive.action_plans_summary.pending}</strong><small>Pendientes</small></div>
+            </div>
+            <p className="aurora-bi-help">El avance proviene del registro real de medidas. No equivale a eliminación del riesgo.</p>
+            <Link className="aurora-bi-plan-link" to={'/colmena/project/' + projectId + '/plan'}>
+              Gestionar plan de intervención <ChevronRight size={14}/>
+            </Link>
+          </div>
+        ) : <EmptyData message="Todavía no existen medidas de intervención registradas para esta evaluación."/>}
+      </ChartPanel>
+    ),
     trend: (
       <ChartPanel title="Evolución temporal" subtitle="Solo estudios con instrumentación y baremos comparables" icon={Activity}>
         <LongitudinalBIWidget projectId={projectId} dimension={dimension}/>
