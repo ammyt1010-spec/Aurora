@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { Sidebar } from './Sidebar.jsx';
+import { MobileJourneyNav } from './MobileJourneyNav.jsx';
 import { Topbar } from './Topbar.jsx';
 import { ColmenaMenuButton } from './ColmenaMenuButton.jsx';
 
@@ -23,7 +24,7 @@ export function AppShell() {
     location.pathname.includes('/form');
 
   return (
-    <div className="min-h-screen bg-transparent">
+    <div className="min-h-screen bg-transparent pb-16 lg:pb-0">
       <div className="flex min-h-screen">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -39,6 +40,8 @@ export function AppShell() {
           </main>
         </div>
       </div>
+
+      <MobileJourneyNav />
 
       {collapsed && (
         <ColmenaMenuButton
