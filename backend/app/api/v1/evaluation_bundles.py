@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
+import hashlib
+from pathlib import Path
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +19,10 @@ from app.core.exceptions import (
 )
 from app.core.security import get_current_user
 from app.models.evaluation_bundle import EvaluationBundle
+from app.models.consolidated_bundle_report import ConsolidatedBundleReport
+from app.core.config import get_settings
+from app.core.exceptions import ConflictError
+from app.services.consolidated_bundle_service import combine_paid_bundle_reports, get_consolidated_bundle_report
 from app.models.instrument import InstrumentVersion
 from app.models.project import Project
 from app.models.study import Study
@@ -200,4 +207,90 @@ async def public_bundle(public_id: UUID, db: AsyncSession = Depends(get_db)):
             )
             for id_ in bundle.study_ids if (study := by_id.get(id_)) is not None
         ],
+    )
+
+
+class ConsolidatedRead(BaseModel):
+    id: int
+    bundle_id: int
+    data_hash: str
+    manifest: dict
+    created_at: datetime
+    download_url: str
+
+
+def _read_consolidated(report: ConsolidatedBundleReport) -> ConsolidatedRead:
+    return ConsolidatedRead(
+        id=report.id,
+        bundle_id=report.bundle_id,
+        data_hash=report.data_hash,
+        manifest=report.manifest,
+        created_at=report.created_at,
+        download_url=f"/consolidated-bundle-reports/{report.id}/download",
+    )
+
+
+@router.post("/projects/{project_id}/bundles/{bundle_id}/consolidated-reports",
+             response_model=ConsolidatedRead, status_code=201)
+async def create_consolidated_report(
+    project_id: int,
+    bundle_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_admin(db, project_id, user)
+    bundle = await db.get(EvaluationBundle, bundle_id)
+    if bundle is None or bundle.project_id != project_id:
+        raise NotFoundError("La batería no pertenece a esta empresa.")
+    result = await combine_paid_bundle_reports(db, bundle, user.id)
+    return _read_consolidated(result)
+
+
+@router.get("/projects/{project_id}/bundles/{bundle_id}/consolidated-reports",
+            response_model=list[ConsolidatedRead])
+async def list_consolidated_reports(
+    project_id: int,
+    bundle_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_admin(db, project_id, user)
+    bundle = await db.get(EvaluationBundle, bundle_id)
+    if bundle is None or bundle.project_id != project_id:
+        raise NotFoundError("Batería no encontrada.")
+    reports = (await db.execute(
+        select(ConsolidatedBundleReport)
+        .where(ConsolidatedBundleReport.bundle_id == bundle_id)
+        .order_by(ConsolidatedBundleReport.created_at.desc(), ConsolidatedBundleReport.id.desc())
+        .limit(50)
+    )).scalars().all()
+    return [_read_consolidated(report) for report in reports]
+
+
+@router.get("/consolidated-bundle-reports/{report_id}/download")
+async def download_consolidated_report(
+    report_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    report = await get_consolidated_bundle_report(db, report_id)
+    bundle = await db.get(EvaluationBundle, report.bundle_id)
+    if bundle is None:
+        raise NotFoundError("Batería no encontrada.")
+    await _require_admin(db, bundle.project_id, user)
+    root = (Path(get_settings().export_storage_dir).parent / "reports_storage" / "consolidated").resolve()
+    file_path = Path(report.storage_path).resolve()
+    if root not in file_path.parents or not file_path.is_file() or file_path.suffix.lower() != ".pdf":
+        raise NotFoundError("PDF consolidado no disponible.")
+    if hashlib.sha256(file_path.read_bytes()).hexdigest() != report.data_hash:
+        raise ConflictError("La integridad del informe consolidado no coincide.")
+    await AuditService(db).log(
+        action="CONSOLIDATED_BUNDLE_REPORT_DOWNLOADED",
+        entity_type="consolidated_bundle_report", entity_id=report.id,
+        project_id=bundle.project_id, organization_id=bundle.organization_id, user_id=user.id,
+    )
+    await db.commit()
+    return FileResponse(
+        file_path, filename=f"aurora-bateria-{report.id}.pdf",
+        media_type="application/pdf",
     )
