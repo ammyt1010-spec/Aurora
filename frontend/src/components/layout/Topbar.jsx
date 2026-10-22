@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { API_ROOT_URL } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import ThemeToggle from '../ui/ThemeToggle.jsx';
+import { BrandMark } from '../../brand/BrandMark.jsx';
 
 async function fetchHealth() {
   const response = await fetch(`${API_ROOT_URL}/health`);
@@ -93,7 +94,7 @@ export function Topbar() {
           <div className="mx-1 h-6 w-px bg-[#eef0f3]" />
 
           <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition hover:bg-[#f5f6f8]">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber to-honey text-xs font-bold text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#00B9CD] to-[#6366F1] text-xs font-bold text-white">
               {initial}
             </div>
             <div className="text-left hidden lg:block">

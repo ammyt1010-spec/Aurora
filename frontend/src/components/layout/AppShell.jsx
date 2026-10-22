@@ -24,7 +24,7 @@ export function AppShell() {
     location.pathname.includes('/form');
 
   return (
-    <div className="min-h-screen bg-transparent pb-16 lg:pb-0">
+    <div className="aurora-app min-h-screen bg-transparent pb-16 lg:pb-0">
       <div className="flex min-h-screen">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">

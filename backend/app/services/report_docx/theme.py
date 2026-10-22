@@ -10,17 +10,17 @@ from __future__ import annotations
 from docx.shared import Mm
 
 COLMENA = {
-    "navy": "192C55",
-    "teal": "21ABA8",
-    "gold": "DDA629",
-    "text": "20324A",
-    "muted": "63758D",
-    "line": "DCE4F0",
-    "surface": "F6F8FD",
-    "surface_alt": "EBF1FB",
-    "green": "1A9F87",
-    "yellow": "E6A643",
-    "red": "D75E6D",
+    "navy": "0A1F44",
+    "teal": "087F8F",  # Uso con texto blanco; cyan luminoso reservado para acentos\n    "cyan": "00D4D8",\n    "violet": "6366F1",
+    "gold": "F59E0B",
+    "text": "112441",
+    "muted": "64748B",
+    "line": "E2E8F0",
+    "surface": "F8FAFC",
+    "surface_alt": "EDF5FC",
+    "green": "10B981",
+    "yellow": "F59E0B",
+    "red": "EF4444",
     "white": "FFFFFF",
 }
 
@@ -51,4 +51,4 @@ FONT = {
     "label": 9.5,
 }
 
-FONT_FAMILY = "Calibri"
+FONT_FAMILY = "Inter"

@@ -1,26 +1,16 @@
 import { BrandMark } from './BrandMark.jsx';
 import { cn } from '../utils/cn.js';
 
+/** Logotipo maestro: nombre y subtítulo nunca deben confundirse con un instrumento concreto. */
 export function BrandLogo({ className, compact = false }) {
-  if (compact) {
-    return <BrandMark className={cn('h-8 w-8', className)} />;
-  }
-
+  if (compact) return <BrandMark className={cn('h-8 w-8', className)} />;
   return (
-    <div className={cn('flex h-[36px] items-center gap-2.5 overflow-visible', className)}>
-      <BrandMark className="h-[34px] w-[34px] shrink-0" />
+    <div className={cn('flex min-h-[42px] items-center gap-2.5', className)}
+      aria-label="AURORA Professional">
+      <BrandMark className="h-[43px] w-[48px] shrink-0" decorative />
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-1.5 leading-none">
-          <span className="text-[17px] font-black tracking-[0.12em] text-slate-900 dark:text-white">
-            AURORA
-          </span>
-          <span className="rounded-md bg-gradient-to-r from-aurora-500 to-cyan-500 px-1.5 py-0.5 text-[9px] font-black tracking-widest text-white uppercase shadow-sm">
-            PRO
-          </span>
-        </div>
-        <span className="mt-0.5 text-[9px] font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
-          RIESGOS PSICOSOCIALES
-        </span>
+        <span className="text-[18px] font-extrabold leading-none tracking-[0.12em] text-[#0A1F44]">AURORA</span>
+        <span className="mt-[4px] text-[10px] font-medium leading-none tracking-[0.18em] text-[#64748B]">Professional</span>
       </div>
     </div>
   );
