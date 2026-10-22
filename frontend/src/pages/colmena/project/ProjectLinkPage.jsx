@@ -9,6 +9,7 @@ import { apiRequest } from '../../../api/client.js';
 import { getProject } from '../../../api/projects.js';
 import { listStudies } from '../../../api/studies.js';
 import { canDistributeSurvey, selectCampaign } from '../../../utils/campaignAccess.js';
+import { createEvaluationBundle, listEvaluationBundles, revokeEvaluationBundle } from '../../../api/evaluationBundles.js';
 
 import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
@@ -24,6 +25,8 @@ export default function ProjectLinkPage() {
   const [issuedTokens, setIssuedTokens] = useState([]);
   const [selectedStudyId, setSelectedStudyId] = useState('');
   const [revocationReason, setRevocationReason] = useState('');
+  const [bundleSelection, setBundleSelection] = useState([]);
+  const [bundleLabel, setBundleLabel] = useState('Batería de evaluación empresarial');
   useActiveProject(projectId);
 
   const { data: project, isLoading: isLoadingProject } = useQuery({
@@ -44,6 +47,30 @@ export default function ProjectLinkPage() {
   const surveyUrl = canDistribute && publicId
     ? `${window.location.origin}/encuesta/${publicId}`
     : null;
+
+  const { data: bundles = [], isError: bundleListError } = useQuery({
+    queryKey: ['evaluation-bundles', projectId],
+    queryFn: () => listEvaluationBundles(projectId),
+    enabled: Boolean(projectId),
+    retry: false,
+  });
+  const eligibleForBundle = studies.filter((study) =>
+    study.status === 'OPEN' && !study.requires_invitation && canDistributeSurvey(study)
+  );
+  const createBundle = useMutation({
+    mutationFn: () => createEvaluationBundle(projectId, {
+      label: bundleLabel.trim(),
+      study_ids: bundleSelection,
+    }),
+    onSuccess: () => {
+      setBundleSelection([]);
+      queryClient.invalidateQueries({ queryKey: ['evaluation-bundles', projectId] });
+    },
+  });
+  const revokeBundle = useMutation({
+    mutationFn: (id) => revokeEvaluationBundle(projectId, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['evaluation-bundles', projectId] }),
+  });
 
   const { data: invitations = [], isLoading: loadingInvitations, isError: failedInvitations } = useQuery({
     queryKey: ['study-invitations', activeStudy?.id],
@@ -130,6 +157,79 @@ export default function ProjectLinkPage() {
             <option key={study.id} value={study.id}>{study.name} · {study.status}</option>
           ))}
         </select>
+      </Card>
+
+      <Card className="rounded-2xl border border-[#dce5f4] bg-gradient-to-br from-white to-[#f5f8ff] p-4 shadow-lg">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-extrabold text-[#1c3359]">Batería de instrumentos</h2>
+            <p className="mt-1 text-xs text-muted">
+              Crea un solo enlace para orientar a los participantes hacia varios estudios publicados.
+              Cada cuestionario y resultado conserva su propia metodología.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-lg bg-[#e5edff] px-2.5 py-1.5 text-xs font-bold text-[#2b4d8d]">
+            {bundleSelection.length} seleccionados
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-end">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-dark">
+            Nombre del paquete
+            <input aria-label="Nombre del paquete" className="colmena-input w-full" maxLength={180}
+              value={bundleLabel} onChange={(e) => setBundleLabel(e.target.value)} />
+          </label>
+          <fieldset className="min-w-0">
+            <legend className="mb-1 text-xs font-semibold text-dark">Estudios disponibles</legend>
+            <div className="flex max-h-28 flex-wrap gap-2 overflow-auto rounded-xl border border-border bg-white p-2">
+              {eligibleForBundle.length ? eligibleForBundle.map((study) => (
+                <label key={study.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#f0f4fa] px-2.5 py-2 text-xs font-semibold text-dark">
+                  <input type="checkbox" checked={bundleSelection.includes(study.id)}
+                    onChange={(event) => setBundleSelection((prev) =>
+                      event.target.checked ? [...prev, study.id] : prev.filter((id) => id !== study.id)
+                    )}/>
+                  {study.name}
+                </label>
+              )) : <span className="text-xs text-muted">Se requieren al menos dos estudios abiertos sin invitación individual.</span>}
+            </div>
+          </fieldset>
+          <button type="button" disabled={bundleSelection.length < 2 || bundleLabel.trim().length < 3 || createBundle.isPending}
+            onClick={() => createBundle.mutate()}
+            className="rounded-xl bg-[#234677] px-4 py-3 text-xs font-bold text-white shadow-md hover:bg-[#315f9e] disabled:opacity-40">
+            {createBundle.isPending ? 'Generando…' : 'Generar enlace unificado'}
+          </button>
+        </div>
+        {createBundle.isError && <p role="alert" className="mt-3 text-xs font-semibold text-danger">
+          {createBundle.error?.message || 'No fue posible crear la batería.'}
+        </p>}
+        {bundleListError && <p role="alert" className="mt-3 text-xs text-danger">No fue posible recuperar el historial de baterías.</p>}
+        {bundles.filter((bundle) => bundle.status === 'PUBLISHED').length > 0 && (
+          <div className="mt-4 grid gap-2 lg:grid-cols-2">
+            {bundles.filter((bundle) => bundle.status === 'PUBLISHED').map((bundle) => {
+              const url = `${window.location.origin}/bateria/${bundle.public_id}`;
+              return (
+                <div key={bundle.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-[#e1e8f4] bg-white p-3">
+                  <QRCodeSVG value={url} size={61} aria-label={'QR de ' + bundle.label} />
+                  <div className="min-w-0 flex-1">
+                    <strong className="block truncate text-xs text-dark">{bundle.label}</strong>
+                    <span className="block text-[11px] text-muted">{bundle.study_ids.length} estudios</span>
+                    <div className="mt-1 flex flex-wrap gap-3 text-[11px] font-semibold text-[#375a9c]">
+                      <button type="button" onClick={() => navigator.clipboard.writeText(url)}>Copiar enlace</button>
+                      <a href={url} target="_blank" rel="noreferrer">Abrir</a>
+                      <button type="button" disabled={revokeBundle.isPending} className="text-red-600"
+                        onClick={() => { if (window.confirm('¿Revocar este enlace de batería?')) revokeBundle.mutate(bundle.id); }}>
+                        Revocar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="mt-3 text-[11px] text-muted">
+          La batería es una entrada conjunta a cuestionarios independientes. No crea una sesión única entre instrumentos ni modifica las reglas de invitación.
+          Las cotizaciones e informes definitivos siguen asociados a cada estudio.
+        </p>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
