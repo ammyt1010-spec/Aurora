@@ -7,7 +7,6 @@ function QuestionFrequencies({ question }) {
   const frequencies = isOrdinal
     ? [...question.frequencies].sort((a, b) => a.order - b.order)
     : [...question.frequencies].sort((a, b) => b.n - a.n || a.order - b.order);
-  const maxPercentage = Math.max(1, ...frequencies.map((item) => item.percentage));
 
   return (
     <Card className="overflow-hidden" padded={false}>
@@ -30,7 +29,7 @@ function QuestionFrequencies({ question }) {
               <div className="h-2.5 overflow-hidden rounded-full bg-[#F1F3F5]">
                 <div
                   className={`h-full rounded-full ${isOrdinal ? 'bg-amber' : 'bg-turquoise'}`}
-                  style={{ width: `${(item.percentage / maxPercentage) * 100}%` }}
+                  style={{ width: `${Math.max(0, Math.min(100, Number(item.percentage) || 0))}%` }}
                 />
               </div>
             </div>
@@ -61,16 +60,18 @@ export default function TelemetryDimensionsSection({ descriptives, isLoading }) 
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3">
       {groups.map((group) => {
         const groupQuestions = questions.filter((question) => question.group_key === group.key);
         return (
-          <section key={group.key} className="space-y-3">
-            <h3 className="text-sm font-bold text-dark">{group.label}</h3>
-            <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+          <details key={group.key} className="rounded-xl border border-border bg-surface">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-dark">
+              {group.label} <span className="ml-2 text-xs font-normal text-muted">({groupQuestions.length} preguntas)</span>
+            </summary>
+            <div className="grid grid-cols-1 gap-3 border-t border-border p-3 xl:grid-cols-2">
               {groupQuestions.map((question) => <QuestionFrequencies key={question.question_id} question={question} />)}
             </div>
-          </section>
+          </details>
         );
       })}
     </div>
