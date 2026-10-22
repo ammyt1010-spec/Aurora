@@ -10,25 +10,26 @@ from app.services.demo_entitlement_service import (
 
 @pytest.mark.asyncio
 async def test_demo_quota_allows_one_reservation_then_denies_duplicate(session, seed_user):
+    user_id = seed_user.id
     seed_user.metadata_ = {"aurora_demo_one_report": True}
     await session.commit()
 
-    reserved = await reserve_demo_usage(session, seed_user.id)
+    reserved = await reserve_demo_usage(session, user_id)
     assert reserved is True
     await session.commit()
 
     with pytest.raises(ConflictError):
-        await reserve_demo_usage(session, seed_user.id)
+        await reserve_demo_usage(session, user_id)
     await session.rollback()
 
     # Un render fallido deja la autorización disponible nuevamente.
-    await release_demo_usage(session, seed_user.id)
+    await release_demo_usage(session, user_id)
     await session.commit()
-    assert await reserve_demo_usage(session, seed_user.id) is True
+    assert await reserve_demo_usage(session, user_id) is True
     await session.commit()
 
     with pytest.raises(ConflictError):
-        await reserve_demo_usage(session, seed_user.id)
+        await reserve_demo_usage(session, user_id)
     await session.rollback()
 
 
