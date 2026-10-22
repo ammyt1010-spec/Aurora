@@ -184,6 +184,34 @@ def add_callout(document, text: str, *, variant: str = "neutral") -> None:
     document.add_paragraph().paragraph_format.space_after = Pt(2)
 
 
+
+def add_executive_metric_cards(document, metrics: list[tuple[str, str]]) -> None:
+    """Franja de KPI compacta: métricas auditables, sin cajas tipo hoja Excel."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    if not metrics:
+        return
+    visible = metrics[:3]
+    n = len(visible)
+    table = document.add_table(rows=1, cols=n)
+    set_table_fixed_layout(table, CONTENT_WIDTH_MM)
+    set_column_widths_mm(table, [CONTENT_WIDTH_MM / n] * n)
+    remove_table_borders(table)
+    for index, (label, value) in enumerate(visible):
+        cell = table.cell(0, index)
+        shade_cell(cell, COLMENA["surface_alt"] if index % 2 == 0 else COLMENA["surface"])
+        set_cell_margins(cell, top=190, bottom=175, start=190, end=190)
+        set_cell_vertical_center(cell)
+        header = cell.paragraphs[0]
+        header.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _run(header, str(label)[:48], size=8, bold=True, color=COLMENA["muted"])
+        metric = cell.add_paragraph()
+        metric.paragraph_format.space_before = Pt(5)
+        metric.paragraph_format.space_after = Pt(0)
+        _run(metric, str(value)[:30], size=17, bold=True, color=COLMENA["navy"])
+    document.add_paragraph().paragraph_format.space_after = Pt(5)
+
+
 def add_signature_grid(document, entries: list[dict]) -> None:
     """Disposición 2x2: línea de firma, nombre, rol, registro — nunca una
     tabla Rol/Firma/Fecha de tres columnas."""
