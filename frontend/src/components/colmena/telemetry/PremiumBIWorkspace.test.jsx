@@ -36,7 +36,7 @@ function renderDashboard() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.removeItem('aurora:bi:layout:v1');
+  localStorage.removeItem('aurora:bi:layout:v2:project-5');
   getStudy.mockResolvedValue({ id: 12, instrument_version_id: 21 });
   getCensopasReadiness.mockResolvedValue({ is_censopas_instrument: true });
   getCensopasResults.mockResolvedValue({ results: [basicDimension, suppressedDimension], scoring_status: 'COMPLETED' });
@@ -75,7 +75,7 @@ describe('AURORA BI workspace', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Prioridades' }));
     expect(screen.queryByText('Prioridades de intervención')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Subir Hallazgos y acciones' }));
-    await waitFor(() => expect(JSON.parse(localStorage.getItem('aurora:bi:layout:v1'))).not.toContain('ranking'));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('aurora:bi:layout:v2:project-5'))).not.toContain('ranking'));
   });
 
   it('loads a real server-approved segment without showing suppressed groups', async () => {
@@ -90,4 +90,13 @@ describe('AURORA BI workspace', () => {
     expect(screen.getByText(/Las recomendaciones globales no se atribuyen a segmentos/)).toBeInTheDocument();
     expect(screen.queryByText('Equipo pequeño')).not.toBeInTheDocument();
   });
+  it('changes between percentage bars and heatmap without recalculating scoring', async () => {
+    renderDashboard();
+    expect(await screen.findByText('Mapa de riesgos por dimensión')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Tipo de gráfico'), { target: { value: 'heatmap' } });
+    expect(screen.getByTitle(/Carga laboral: 48.0% desfavorable/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Tipo de gráfico'), { target: { value: 'cards' } });
+    expect(screen.getByText('48.0% desfavorable')).toBeInTheDocument();
+  });
+
 });
