@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDashboardLayout } from '../../../hooks/useDashboardLayout.js';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity, ArrowDown, ArrowUp, BarChart3, ChevronRight, CircleHelp,
@@ -14,11 +15,10 @@ import {
 } from '../../../api/studies.js';
 import {
   DASHBOARD_WIDGETS, DEFAULT_WIDGETS, getDimensions, percent,
-  readWidgetPreferences, reorderWidget, safeSegmentRows, safeUnitChoices,
+  reorderWidget, safeSegmentRows, safeUnitChoices,
 } from './dashboardModel.js';
 import './PremiumBIWorkspace.css';
 
-const PREF_KEY = 'aurora:bi:layout:v1';
 const CHART_BANDS = [
   { key: 'unfavorable_pct', label: 'Desfavorable', color: 'var(--aurora-risk-high)' },
   { key: 'intermediate_pct', label: 'Intermedio', color: 'var(--aurora-risk-mid)' },
@@ -100,14 +100,19 @@ function Legend({ isCensopas }) {
     : <p className="aurora-bi-help">Puntajes normalizados. No equivalen por sí mismos a categorías de riesgo.</p>;
 }
 
-export default function PremiumBIWorkspace({ projectId, studyId, telemetry }) {
-  const [widgets, setWidgets] = useState(() => readWidgetPreferences(PREF_KEY));
+export default function PremiumBIWorkspace({ projectId, organizationId, studyId, telemetry }) {
+  const { layout, updateLayout, loading: loadingLayout, saveError: layoutSaveError } = useDashboardLayout(organizationId, projectId);
+  const widgets = layout.widgets;
+  const density = layout.density;
+  const chartMode = layout.chart_mode;
+  const setWidgets = (next) => updateLayout({ widgets: typeof next === 'function' ? next(widgets) : next });
+  const setDensity = (next) => updateLayout({ density: typeof next === 'function' ? next(density) : next });
+  const setChartMode = (next) => updateLayout({ chart_mode: next });
   const [customize, setCustomize] = useState(false);
   const [dimension, setDimension] = useState('ALL');
   const [order, setOrder] = useState('risk');
   const [unitTypeId, setUnitTypeId] = useState('');
   const [unitId, setUnitId] = useState('ALL');
-  const [density, setDensity] = useState('compact');
 
   useEffect(() => {
     setDimension('ALL');
@@ -115,9 +120,7 @@ export default function PremiumBIWorkspace({ projectId, studyId, telemetry }) {
     setUnitId('ALL');
   }, [studyId]);
 
-  useEffect(() => {
-    try { window.localStorage.setItem(PREF_KEY, JSON.stringify(widgets)); } catch { /* non-critical display preference */ }
-  }, [widgets]);
+
 
   const studyQuery = useQuery({
     queryKey: ['study', studyId],
@@ -342,6 +345,7 @@ export default function PremiumBIWorkspace({ projectId, studyId, telemetry }) {
       </header>
 
       <div className="aurora-bi-controls">
+        {layoutSaveError && <p role="alert" className="aurora-bi-help">La configuración se conserva localmente, pero no se pudo sincronizar con la empresa.</p>}
         <div className="aurora-bi-controls-title"><SlidersHorizontal size={15}/><strong>Filtros y segmentación</strong></div>
         <div className="aurora-bi-filter-grid">
           <label>Dimensión
