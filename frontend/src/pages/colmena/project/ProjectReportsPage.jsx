@@ -25,6 +25,7 @@ import { ProjectMissingState } from '../../../components/colmena/ProjectMissingS
 import StudySelector from '../../../components/colmena/StudySelector.jsx';
 import ReportBillingPanel from '../../../components/colmena/project/ReportBillingPanel.jsx';
 import ExecutiveReportDashboard from '../../../components/colmena/project/ExecutiveReportDashboard.jsx';
+import ConsolidatedReportsPanel from '../../../components/colmena/project/ConsolidatedReportsPanel.jsx';
 import { getBillingPolicy, getOrders } from '../../../api/billing.js';
 import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
 
@@ -222,6 +223,8 @@ export default function ProjectReportsPage({ overrideProjectId }) {
         </div>
         <div className="aurora-suite-hero-icon" aria-hidden="true"><FileText size={34}/></div>
       </header>
+      <ConsolidatedReportsPanel projectId={projectId} />
+
       <details className="rounded-xl border border-border bg-surface">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-dark">Resumen de hallazgos antes de emitir el informe</summary>
         <div className="border-t border-border p-3"><ExecutiveReportDashboard studyId={studyId} /></div>
