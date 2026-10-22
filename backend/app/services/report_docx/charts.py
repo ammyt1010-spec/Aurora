@@ -5,6 +5,7 @@ sin valores dentro de los segmentos."""
 from __future__ import annotations
 
 import io
+import textwrap
 
 import matplotlib
 
@@ -51,7 +52,11 @@ def build_trichotomy_chart(results: list[dict]) -> io.BytesIO | None:
     if not plot_results:
         return None
 
-    labels = [r.get("construct_code") or r.get("construct_name") or "" for r in plot_results]
+    labels = [
+        f"{r.get('construct_code') or ''} · {textwrap.shorten(str(r.get('construct_name') or ''), width=25, placeholder='...')}"
+        if r.get("construct_name") else str(r.get("construct_code") or "")
+        for r in plot_results
+    ]
     fig_height = max(1.8, 0.42 * len(plot_results) + 1.1)
     fig, ax = plt.subplots(figsize=(6.3, fig_height), dpi=150)
     apply_colmena_plot_theme(ax)
