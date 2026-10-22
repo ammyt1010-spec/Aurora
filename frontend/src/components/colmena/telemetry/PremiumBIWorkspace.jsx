@@ -17,6 +17,7 @@ import {
   DASHBOARD_WIDGETS, DEFAULT_WIDGETS, getDimensions, percent,
   reorderWidget, safeSegmentRows, safeUnitChoices,
 } from './dashboardModel.js';
+import LongitudinalBIWidget from './LongitudinalBIWidget.jsx';
 import './PremiumBIWorkspace.css';
 
 const CHART_BANDS = [
@@ -361,6 +362,11 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
             <p className="aurora-bi-help">Comparación exploratoria por dimensión. No reemplaza pruebas de significancia ni sus conclusiones.</p>
           </div>
         )}
+      </ChartPanel>
+    ),
+    trend: (
+      <ChartPanel title="Evolución temporal" subtitle="Solo estudios con instrumentación y baremos comparables" icon={Activity}>
+        <LongitudinalBIWidget projectId={projectId} dimension={dimension}/>
       </ChartPanel>
     ),
     actions: (
