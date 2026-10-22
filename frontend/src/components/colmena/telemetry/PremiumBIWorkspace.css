@@ -197,3 +197,14 @@
 @media (prefers-reduced-motion: reduce) {
   .aurora-bi * {animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
+/* Refuerzo de legibilidad en etiquetas y compatibilidad con el modo oscuro del sistema. */
+.aurora-bi-panel-head p,.aurora-bi-stat-detail,.aurora-bi-help {color:#526580;font-size:11px}
+.aurora-bi-band-name strong,.aurora-bi-rank-content>span,.aurora-bi-action summary strong {font-size:12px}
+.aurora-bi-filter-grid select {color-scheme:light}
+@media (prefers-color-scheme:dark) {
+ .aurora-bi .aurora-bi-filter-grid select {
+  color-scheme:light!important;background:#f7f9fe!important;color:#17243f!important;
+  border-color:#dce4f0!important;
+ }
+ .aurora-bi .aurora-bi-filter-grid select option {background:#fff!important;color:#17243f!important}
+}
