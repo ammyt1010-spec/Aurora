@@ -5,6 +5,7 @@ export const DASHBOARD_WIDGETS = [
   { id: 'segments', title: 'Comparativo de segmentos' },
   { id: 'actions', title: 'Hallazgos y acciones' },
   { id: 'trend', title: 'Evolución temporal' },
+  { id: 'action_plan', title: 'Seguimiento del plan' },
 ];
 export const DEFAULT_WIDGETS = DASHBOARD_WIDGETS.map((widget) => widget.id);
 
