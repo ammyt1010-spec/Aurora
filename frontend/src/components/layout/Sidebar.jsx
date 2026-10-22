@@ -37,27 +37,21 @@ export function Sidebar({ collapsed = false, onToggle }) {
   const navItems = [
     {
       to: '/colmena',
-      label: 'Catálogo de Instrumentos',
-      icon: BookOpen,
-      active: (p) => p === '/colmena' || p === '/colmena/',
+      label: '1. Inicio',
+      icon: Home,
+      active: (p) => p === '/colmena' || p === '/colmena/' || p.endsWith('/instruments'),
     },
     {
       to: '/colmena/telemetry',
-      label: 'Telemetría en Vivo',
+      label: '2. Telemetría',
       icon: BarChart3,
-      active: (p) => p.includes('/telemetry'),
+      active: (p) => p.includes('/telemetry') || p.includes('/results') || p.includes('/premium'),
     },
     {
       to: '/colmena/reports',
-      label: 'Informes profesionales',
+      label: '3. Informe',
       icon: FileBarChart2,
       active: (p) => p.includes('/reports'),
-    },
-    {
-      to: '/colmena/settings',
-      label: 'Administración y tarifas',
-      icon: Settings2,
-      active: (p) => p.startsWith('/colmena/settings'),
     },
   ];
 
