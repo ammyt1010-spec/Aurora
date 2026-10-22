@@ -60,7 +60,7 @@ async def get_preferences(
         return DashboardPreferences()
     try:
         return DashboardPreferences.normalized(DashboardPreferences.model_validate(saved))
-    except (ValueError, Exception):
+    except Exception:
         # Preferencias históricas malformadas no bloquean el acceso al dashboard.
         return DashboardPreferences()
 
