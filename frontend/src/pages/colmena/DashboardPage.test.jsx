@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderWithQueryClient } from '../../test-utils/renderWithQueryClient.jsx';
 import DashboardPage from './DashboardPage.jsx';
 import { getCensopasPlans, listDisciplines, listInstruments } from '../../api/instruments.js';
+import { listProjects } from '../../api/projects.js';
 
 vi.mock('../../api/instruments.js', () => ({
   getCensopasPlans: vi.fn(),
@@ -12,12 +13,14 @@ vi.mock('../../api/instruments.js', () => ({
   validateInstrumentVersion: vi.fn(),
   linkStudyInstrument: vi.fn(),
 }));
+vi.mock('../../api/projects.js', () => ({ listProjects: vi.fn() }));
 import { availableInstrumentCards } from './DashboardPage.jsx';
 
 describe('AURORA instrument catalog', () => {
   beforeEach(() => {
     listDisciplines.mockResolvedValue([]);
     listInstruments.mockResolvedValue({ items: [] });
+    listProjects.mockResolvedValue({ items: [] });
   });
   it('renders real published instruments instead of phantom catalog items', async () => {
     getCensopasPlans.mockResolvedValue({
