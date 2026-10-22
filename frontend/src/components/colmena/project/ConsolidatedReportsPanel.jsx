@@ -1,18 +1,46 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileCheck2, Layers3, ShieldCheck } from 'lucide-react';
+import { Download, ExternalLink, Eye, FileCheck2, Layers3, Maximize2, ShieldCheck } from 'lucide-react';
 
 import {
   listEvaluationBundles, listConsolidatedBundleReports,
   createConsolidatedBundleReport, consolidatedPdfUrl,
 } from '../../../api/evaluationBundles.js';
-import { downloadProtectedFile } from '../../../api/protectedFiles.js';
+import { downloadProtectedFile, fetchProtectedBlob } from '../../../api/protectedFiles.js';
 
 /** Emisión documental: cada fuente debe estar pagada y preservar su hash. */
 export default function ConsolidatedReportsPanel({ projectId }) {
   const queryClient = useQueryClient();
   const [bundleId, setBundleId] = useState('');
   const [downloadError, setDownloadError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewObjectRef = useRef(null);
+  const iframeRef = useRef(null);
+  const loadRef = useRef(0);
+  useEffect(() => () => { if (previewObjectRef.current) URL.revokeObjectURL(previewObjectRef.current); }, []);
+
+  async function openPreview(id) {
+    const revision = ++loadRef.current;
+    setPreviewLoading(true);
+    setPreviewError('');
+    try {
+      const file = await fetchProtectedBlob(consolidatedPdfUrl(id));
+      if (revision !== loadRef.current) return;
+      if (previewObjectRef.current) URL.revokeObjectURL(previewObjectRef.current);
+      const url = URL.createObjectURL(file);
+      previewObjectRef.current = url;
+      setPreviewId(id);
+      setPreviewUrl(url);
+    } catch (error) {
+      if (revision === loadRef.current) setPreviewError(error.message || 'No se pudo visualizar el PDF.');
+    } finally {
+      if (revision === loadRef.current) setPreviewLoading(false);
+    }
+  }
+
   const bundlesQuery = useQuery({
     queryKey: ['evaluation-bundles', projectId],
     queryFn: () => listEvaluationBundles(projectId),
@@ -91,6 +119,11 @@ export default function ConsolidatedReportsPanel({ projectId }) {
                   {report.manifest?.reports?.length || 0} informes · {new Date(report.created_at).toLocaleDateString('es-PE')}
                 </span>
               </div>
+              <button type="button" disabled={previewLoading && previewId === report.id}
+                onClick={() => openPreview(report.id)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#c7d7ef] px-3 py-2 text-xs font-bold text-[#254680] hover:bg-[#edf2ff] disabled:opacity-50">
+                <Eye size={14}/> Previsualizar
+              </button>
               <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-[#c7d7ef] px-3 py-2 text-xs font-bold text-[#254680] hover:bg-[#edf2ff]"
                 onClick={async () => {
                   setDownloadError('');
@@ -102,6 +135,25 @@ export default function ConsolidatedReportsPanel({ projectId }) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {previewLoading && <p role="status" className="mt-3 text-xs text-muted">Preparando previsualización protegida…</p>}
+      {previewError && <p role="alert" className="mt-3 text-xs text-danger">{previewError}</p>}
+      {previewUrl && (
+        <div className="mt-3 rounded-xl border border-[#dce5f4] bg-[#f5f8fe] p-3 shadow-lg">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <strong className="text-xs text-dark">Visor del consolidado #{previewId}</strong>
+            <div className="flex gap-2">
+              <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold"
+                onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}><ExternalLink size={13}/> Abrir</button>
+              <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold"
+                onClick={() => iframeRef.current?.requestFullscreen?.()?.catch?.(() => setPreviewError('El navegador no permite ampliar este visor.'))}>
+                <Maximize2 size={13}/> Pantalla completa
+              </button>
+            </div>
+          </div>
+          <iframe ref={iframeRef} title={'PDF consolidado ' + previewId} src={previewUrl}
+            className="min-h-[600px] w-full rounded-lg border border-[#d5dfef] bg-white shadow-md" />
         </div>
       )}
       {downloadError && <p role="alert" className="mt-2 text-xs text-danger">{downloadError}</p>}
