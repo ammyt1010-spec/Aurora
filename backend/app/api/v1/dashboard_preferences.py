@@ -13,14 +13,14 @@ from app.models.user import Organization, OrganizationMembership, User
 
 router = APIRouter(prefix="/dashboard-preferences", tags=["dashboard-preferences"])
 
-WIDGET_IDS = frozenset({"summary", "distribution", "ranking", "segments", "actions", "trend"})
-DEFAULT_WIDGETS = ["summary", "distribution", "ranking", "segments", "actions", "trend"]
+WIDGET_IDS = frozenset({"summary", "distribution", "ranking", "segments", "actions", "trend", "action_plan"})
+DEFAULT_WIDGETS = ["summary", "distribution", "ranking", "segments", "actions", "trend", "action_plan"]
 MODES = {"stacked", "heatmap", "cards"}
 
 
 class DashboardPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    widgets: list[str] = Field(default_factory=lambda: list(DEFAULT_WIDGETS), min_length=1, max_length=6)
+    widgets: list[str] = Field(default_factory=lambda: list(DEFAULT_WIDGETS), min_length=1, max_length=7)
     density: str = "compact"
     chart_mode: str = "stacked"
 
