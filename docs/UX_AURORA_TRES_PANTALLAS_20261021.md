@@ -42,3 +42,30 @@ El usuario corporativo necesita **tres ventanas principales**, no un laboratorio
 - Nuevo generador editorial de PDF por disciplina y validación metodológica.
 - Capacitación asincrónica, QR de certificados y offline.
 Estos requieren implementación y pruebas funcionales separadas, no controles decorativos.
+
+
+## Incremento aprobado: tablero BI configurable premium
+
+Implementado en esta rama:
+- \`PremiumBIWorkspace.jsx\`: área de inteligencia gerencial dentro de Telemetría.
+- Cuadros opcionales de indicadores, distribución, ranking, comparativo de unidades y acciones.
+- Orden de paneles ajustable con controles accesibles; preferencias de disposición guardadas en el navegador, nunca los resultados confidenciales.
+- Densidad compacta o ampliada, filtros por dimensión, orden y tipo/unidad empresarial.
+- Segmentación real mediante \`getCensopasUnitResults\`; nunca reconstruir segmentos ni recalcular baremos en JavaScript.
+- Dimensiones suprimidas excluidas de gráfico, selector y ranking; tampoco se muestran unidades con todos sus datos privados.
+- Las recomendaciones globales quedan ocultas bajo un filtro de unidad para evitar atribución incorrecta.
+- Los instrumentos genéricos muestran puntajes descriptivos separados de la tricotomía CENSOPAS.
+- Estilo futurista de alta legibilidad: azules profundos, acentos tecnológicos, sombra contenida, tarjetas densas y navegador móvil.
+- Paleta por defecto de DOCX armonizada con AURORA y etiquetas de nombre/código en gráficos de dimensiones; las plantillas con paleta explícita conservan su elección.
+
+Validación incorporada en código:
+- \`dashboardModel.test.js\`: privacidad, nulidad, filtrado, orden, visualización de constructos genéricos.
+- \`PremiumBIWorkspace.test.jsx\`: personalización de cuadros, carga de segmentos reales y ocultación de filas suprimidas.
+- \`MobileJourneyNav.test.jsx\`: navegación compacta de tres pantallas.
+- Pruebas aún sin ejecutar en esta sesión. GitHub y la revisión estática no sustituyen npm test, lint, build, pytest y la inspección de los PDF renderizados.
+
+No representado como terminado:
+- Selector de visuales alternativos tipo Power BI (p. ej., heatmap), drag-and-drop y persistencia central por cuenta.
+- Filtros combinados por sexo/edad/turno simultáneos cuando requieren nuevas APIs y controles contra reidentificación.
+- Informe editorial completo por página, paquete multiinstrumento y protección demo en servidor.
+- Pruebas de escritorio/móvil reales, accesibilidad con lector de pantalla y verificación metodológica firmada.
