@@ -18,6 +18,7 @@ from app.models.base import Base
 from app.models.censopas import Barem, BaremBand, BaremCutoff, ConstructResult, ConstructScore, ResponseScore
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi, KpiMeasurement
 from app.models.export import Export
+from app.models.evaluation_bundle import EvaluationBundle
 from app.models.report import ReportRun, ReportTemplate
 from app.models.construct import Construct, ConstructItem
 from app.models.instrument import Instrument, InstrumentVersion
@@ -86,6 +87,7 @@ __all__ = [
     "KpiMeasurement",
     "ReportTemplate",
     "ReportRun",
+    "EvaluationBundle",
     "Participant",
     "StudyInvitation",
 ]
