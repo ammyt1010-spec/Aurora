@@ -49,3 +49,7 @@ export function runSpearmanMatrix(studyId, payload = {}) {
 export function compareConstructGroups(studyId, payload) {
   return apiRequest(`/studies/${studyId}/analytics/construct-compare-groups`, { method: 'POST', body: payload });
 }
+
+export function getProjectLongitudinal(projectId) {
+  return apiRequest(`/projects/${projectId}/analytics/longitudinal`);
+}
