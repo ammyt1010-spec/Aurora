@@ -190,6 +190,16 @@ export default function PremiumBIWorkspace({ projectId, studyId, telemetry }) {
   ));
 
   if (isLoading) return <div className="aurora-bi-loading">Preparando el tablero de diagnóstico…</div>;
+  if (studyQuery.isError || readinessQuery.isError) {
+    return <div role="alert" className="aurora-bi-loading">
+      No fue posible verificar el instrumento y su metodología. Actualiza Telemetría antes de interpretar resultados.
+    </div>;
+  }
+  if (censusQuery.isError || genericQuery.isError) {
+    return <div role="alert" className="aurora-bi-loading">
+      No se pudieron consultar las dimensiones calculadas. Comprueba el estudio y la disponibilidad del análisis.
+    </div>;
+  }
 
   const sectionContent = {
     summary: (
@@ -349,7 +359,7 @@ export default function PremiumBIWorkspace({ projectId, studyId, telemetry }) {
           </label>
           <label>Segmento
             <select value={unitTypeId} disabled={!isCensopas || !unitTypesQuery.data?.length}
-              onChange={(event) => { setUnitTypeId(event.target.value); setUnitId('ALL'); }}>
+              onChange={(event) => { setUnitTypeId(event.target.value); setUnitId('ALL'); setDimension('ALL'); }}>
               <option value="">Toda la empresa</option>
               {(unitTypesQuery.data || []).map((type) =>
                 <option key={type.id} value={type.id}>{type.name}</option>)}
