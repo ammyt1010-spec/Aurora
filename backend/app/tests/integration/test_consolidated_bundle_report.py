@@ -6,6 +6,8 @@ import io
 
 import pytest
 from pypdf import PdfReader, PdfWriter
+from docx import Document
+from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError
@@ -82,7 +84,27 @@ async def test_merge_only_paid_integrity_checked_pdf(
         assert len(PdfReader(stream).pages) == 2
     assert len(combined.manifest["reports"]) == 2
 
+    # Los informes PDF renderizados desde un DOCX oficial también deben
+    # poder consolidarse, verificando la integridad del archivo original.
+    document = Document()
+    document.add_heading("Informe profesional", level=1)
+    document.add_paragraph("Resultado agregado metodológicamente validado.")
+    docx_path = reports_dir / "official-source-1.docx"
+    document.save(docx_path)
+    run = (await session.execute(
+        select(ReportRun).where(ReportRun.study_id == studies[0].id)
+    )).scalar_one()
+    run.output_format = "DOCX"
+    run.storage_path = str(docx_path)
+    run.data_hash = hashlib.sha256(docx_path.read_bytes()).hexdigest()
+    await session.commit()
+
+    hybrid = await combine_paid_bundle_reports(session, bundle, seed_user.id)
+    with open(hybrid.storage_path, "rb") as stream:
+        assert len(PdfReader(stream).pages) == 2
+    assert hybrid.manifest["reports"][0]["source_format"] == "DOCX"
+
     # Cualquier manipulación posterior invalida el documento fuente.
-    (reports_dir / "source-1.pdf").write_bytes(b"PDF alterado")
+    docx_path.write_bytes(b"DOCX alterado")
     with pytest.raises(ConflictError):
         await combine_paid_bundle_reports(session, bundle, seed_user.id)
