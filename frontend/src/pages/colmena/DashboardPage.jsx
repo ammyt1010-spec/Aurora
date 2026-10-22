@@ -5,6 +5,7 @@ import { BookOpen, ClipboardCheck, ShieldCheck, RefreshCcw } from 'lucide-react'
 
 import { getCensopasPlans } from '../../api/instruments.js';
 import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
+import MultidisciplinaryCatalog from '../../components/colmena/instruments/MultidisciplinaryCatalog.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { ErrorState } from '../../components/ui/ErrorState.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
@@ -46,10 +47,9 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-amber">AURORA Professional · Instrumentos</p>
-            <h1 className="mt-1 text-xl font-bold text-dark">Catálogo de instrumentos</h1>
+            <h1 className="mt-1 text-xl font-bold text-dark">Selecciona instrumentos</h1>
             <p className="mt-1 text-sm text-muted">
-              Solo aparecen versiones registradas y publicadas en el servidor.
-              Las evaluaciones de otros métodos requieren su propio instrumento configurado.
+              Elige la evaluación que deseas aplicar. Los instrumentos deben estar publicados y contar con metodología configurada.
             </p>
           </div>
           <button type="button" onClick={() => refetch()} disabled={isFetching}
@@ -112,6 +112,15 @@ export default function DashboardPage() {
             No se generarán encuestas CENSOPAS bajo el nombre de un método diferente.</p>
         </div>
       </div>
+      <section aria-label="Catálogo multidisciplinario" className="space-y-3">
+        <div className="rounded-xl border border-border bg-surface px-4 py-3">
+          <h2 className="text-base font-bold text-dark">Otros instrumentos disponibles</h2>
+          <p className="mt-1 text-xs text-muted">Consulta instrumentos multidisciplinarios. Para aplicarlos, crea una evaluación empresarial y vincula una versión autorizada.</p>
+          <button type="button" className="mt-3 rounded-lg border border-amber px-3 py-2 text-xs font-semibold text-dark hover:bg-amber/10"
+            onClick={() => navigate('/colmena/project/new')}>Crear evaluación multidisciplinaria</button>
+        </div>
+        <MultidisciplinaryCatalog />
+      </section>
       {selectedInstrument && (
         <InstrumentConfirmModal instrument={selectedInstrument} isOpen
           onClose={() => setSelectedInstrument(null)}
