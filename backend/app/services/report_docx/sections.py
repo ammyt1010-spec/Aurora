@@ -11,8 +11,8 @@ from datetime import datetime
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Cm, Pt, RGBColor
 
-from .charts import build_trichotomy_chart
-from .components import add_callout, add_centered_badge, add_section_header, add_signature_grid
+from .charts import build_priority_chart, build_trichotomy_chart
+from .components import add_callout, add_centered_badge, add_executive_metric_cards, add_section_header, add_signature_grid
 from .paginate import keep_with_next, page_break_before
 from .tables import add_colmena_table, add_key_value_grid, add_label_value_table
 from .theme import COLMENA, CONTENT_WIDTH_MM, FONT
@@ -280,16 +280,18 @@ def _add_executive_summary(document, number, summary: dict | None) -> None:
     add_section_header(document, number, "Resumen ejecutivo")
     add_body(document, summary.get("headline") or "—")
 
-    pairs = [
-        ("Respuestas válidas", str(summary["n_valid"]) if summary.get("n_valid") is not None else "—"),
-        ("Tasa de finalización", _format_percentage(summary.get("completion_rate"))),
-    ]
-    add_key_value_grid(document, pairs, widths_mm=[45, 44, 45, 44])
+    add_executive_metric_cards(document, [
+        ("Respuestas válidas", str(summary["n_valid"]) if summary.get("n_valid") is not None else "No disponible"),
+        ("Finalización", _format_percentage(summary.get("completion_rate"))),
+        ("Dimensiones destacadas", str(len(summary.get("priority_dimensions") or []))),
+    ])
 
     priority_dimensions = summary.get("priority_dimensions") or []
     if priority_dimensions:
         document.add_paragraph().paragraph_format.space_after = Pt(4)
         add_h3(document, "Dimensiones prioritarias")
+        _insert_chart(document, build_priority_chart(priority_dimensions))
+        add_caption(document, "Porcentaje de respuestas desfavorables. Los niveles corresponden a los baremos del instrumento.")
         rows = []
         for dimension in priority_dimensions:
             label = dimension.get("construct_name") or dimension.get("construct_code") or "—"
@@ -425,6 +427,8 @@ def _add_priority_ranking_section(document, number, ranking: list[dict]) -> None
     if not ranking:
         add_body(document, "Sin dimensiones publicables para priorizar todavía.")
         return
+    _insert_chart(document, build_priority_chart(ranking))
+    add_caption(document, "Visualización de porcentajes desfavorables, no una nueva clasificación oficial.")
     rows = []
     for row in ranking:
         classification = row.get("collective_classification")
