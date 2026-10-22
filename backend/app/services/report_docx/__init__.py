@@ -36,9 +36,9 @@ def render_report_docx(bundle: dict) -> bytes:
     color_map = {
         "aurora-amber": ("543909", "DDA629"),
         "aurora-teal": ("0E4B50", "20A7A4"),
-        "aurora-indigo": ("29255F", "635BD6"),
+        "aurora-indigo": ("192C55", "5975EA"),
     }
-    background, accent = color_map.get(config.get("palette"), color_map["aurora-amber"])
+    background, accent = color_map.get(config.get("palette"), color_map["aurora-indigo"])
     add_header_band(document, title=title, background=background, accent=accent)
     add_footer_band(document, text=footer)
 
