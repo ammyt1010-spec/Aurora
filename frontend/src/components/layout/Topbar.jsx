@@ -13,11 +13,7 @@ async function fetchHealth() {
   return response.json();
 }
 
-/**
- * Portado de fullProyect/COLMENA/frontend (Topbar.tsx). El buscador y la
- * campana de notificaciones son decorativos (igual que en el original) — el
- * indicador de API sí es real, contra nuestro GET /health.
- */
+/** Barra superior: identidad, conexión real al backend, configuración y sesión. */
 export function Topbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -92,7 +88,6 @@ export function Topbar() {
           </button>
 
           <ThemeToggle />
-
 
 
           <div className="mx-1 h-6 w-px bg-[#eef0f3]" />
