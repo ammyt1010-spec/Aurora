@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, ClipboardCheck, ShieldCheck, RefreshCcw, Sparkles } from 'lucide-react';
+import { BookOpen, ClipboardCheck, ShieldCheck, RefreshCcw, Sparkles, ArrowRight, FileText } from 'lucide-react';
 
 import { getCensopasPlans } from '../../api/instruments.js';
+import { listProjects } from '../../api/projects.js';
+import { setActiveProjectId } from '../../utils/activeProject.js';
 import '../../design/PremiumSurfaces.css';
 import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
 import MultidisciplinaryCatalog from '../../components/colmena/instruments/MultidisciplinaryCatalog.jsx';
@@ -41,6 +43,12 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
   const cards = availableInstrumentCards(data);
+  const { data: existingProjects } = useQuery({
+    queryKey: ['aurora-home-projects'],
+    queryFn: () => listProjects({ page: 1, pageSize: 50 }),
+    retry: false,
+  });
+  const projectItems = existingProjects?.items || [];
 
   return (
     <div className="colmena-page aurora-premium-page space-y-4">
@@ -123,6 +131,31 @@ export default function DashboardPage() {
         </div>
         <MultidisciplinaryCatalog />
       </section>
+      {projectItems.length > 0 && (
+        <section aria-label="Mis evaluaciones corporativas" className="aurora-catalog-aux space-y-3 p-4">
+          <div>
+            <h2 className="text-sm font-extrabold text-[#233c6b]">Mis evaluaciones</h2>
+            <p className="mt-1 text-xs text-muted">Continúa una campaña existente sin repetir su configuración.</p>
+          </div>
+          <div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
+            {projectItems.map((project) => (
+              <article key={project.id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-[#e1e8f4] bg-white p-3 shadow-sm">
+                <strong className="truncate text-xs text-[#263e66]" title={project.name}>{project.name}</strong>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-[11px] font-bold text-[#284c8b]"
+                    onClick={() => { setActiveProjectId(project.id); navigate('/colmena/telemetry'); }}>
+                    <ArrowRight size={12}/> Telemetría
+                  </button>
+                  <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-[11px] font-bold text-[#284c8b]"
+                    onClick={() => { setActiveProjectId(project.id); navigate('/colmena/reports'); }}>
+                    <FileText size={12}/> Informe
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {selectedInstrument && (
         <InstrumentConfirmModal instrument={selectedInstrument} isOpen
           onClose={() => setSelectedInstrument(null)}
