@@ -37,7 +37,7 @@ async def combine_paid_bundle_reports(db, bundle: EvaluationBundle, user_id: int
             .where(
                 ReportRun.study_id == study_id,
                 ReportRun.status == "COMPLETED",
-                ReportRun.output_format == "PDF",
+                ReportRun.output_format.in_(("PDF", "DOCX")),
                 ReportRun.billing_order_id.is_not(None),
             )
             .order_by(ReportRun.created_at.desc(), ReportRun.id.desc())
@@ -49,16 +49,27 @@ async def combine_paid_bundle_reports(db, bundle: EvaluationBundle, user_id: int
         if order is None or order.study_id != study_id or order.status != "CONSUMED":
             raise ConflictError("Se detectó una orden comercial no válida para consolidar el informe.")
         path = Path(report.storage_path or "").resolve()
-        if base_dir not in path.parents or path.suffix.lower() != ".pdf" or not path.is_file():
-            raise ConflictError("No se encontró el archivo PDF autorizado de un estudio.")
+        expected_ext = ".pdf" if report.output_format == "PDF" else ".docx"
+        if base_dir not in path.parents or path.suffix.lower() != expected_ext or not path.is_file():
+            raise ConflictError("No se encontró el documento autorizado de un estudio.")
         source_size = path.stat().st_size
         size_total += source_size
         if source_size <= 0 or source_size > MAX_SOURCE_BYTES or size_total > MAX_TOTAL_BYTES:
             raise ConflictError("Uno o más informes exceden el tamaño admitido para consolidación.")
-        content = path.read_bytes()
-        digest = hashlib.sha256(content).hexdigest()
+        source = path.read_bytes()
+        digest = hashlib.sha256(source).hexdigest()
         if digest != report.data_hash:
             raise ConflictError("El hash de integridad de un informe no coincide con su archivo.")
+        if report.output_format == "DOCX":
+            # La pantalla Informe crea DOCX oficial y su PDF visual. Reconvertimos
+            # desde el DOCX cuya integridad verificamos, sin confiar en un PDF
+            # auxiliar que carece de un hash propio persistido.
+            from app.services.report_pdf_convert import docx_to_pdf
+            content = await docx_to_pdf(source)
+        else:
+            content = source
+        if len(content) > MAX_SOURCE_BYTES:
+            raise ConflictError("El PDF resultante excede el tamaño de consolidación.")
         all_reports.append((study, report, digest, content))
 
     if len(all_reports) < 2:
@@ -78,6 +89,8 @@ async def combine_paid_bundle_reports(db, bundle: EvaluationBundle, user_id: int
             "study_name": study.name,
             "report_id": report.id,
             "source_hash": digest,
+            "source_format": report.output_format,
+            "compiled_pdf_hash": hashlib.sha256(content).hexdigest(),
             "pages": len(reader.pages),
         })
     writer.add_metadata({
