@@ -17,7 +17,7 @@ SCHEMA = "colmena"
 def upgrade() -> None:
     op.create_table(
         "evaluation_bundles",
-        sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), primary_key=True, autoincrement=True),
         sa.Column("public_id", postgresql.UUID(as_uuid=True), nullable=False, unique=True),
         sa.Column("project_id", sa.BigInteger(), sa.ForeignKey("colmena.projects.id", ondelete="CASCADE"), nullable=False),
         sa.Column("organization_id", sa.BigInteger(), sa.ForeignKey("colmena.organizations.id", ondelete="CASCADE"), nullable=False),
