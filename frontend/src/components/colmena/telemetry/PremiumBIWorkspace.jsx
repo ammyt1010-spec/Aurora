@@ -109,6 +109,7 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
   const setDensity = (next) => updateLayout({ density: typeof next === 'function' ? next(density) : next });
   const setChartMode = (next) => updateLayout({ chart_mode: next });
   const [customize, setCustomize] = useState(false);
+  const [draggedWidget, setDraggedWidget] = useState(null);
   const [dimension, setDimension] = useState('ALL');
   const [order, setOrder] = useState('risk');
   const [unitTypeId, setUnitTypeId] = useState('');
@@ -192,7 +193,7 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
     items.includes(id) ? (items.length > 1 ? items.filter((item) => item !== id) : items) : [...items, id]
   ));
 
-  if (isLoading) return <div className="aurora-bi-loading">Preparando el tablero de diagnóstico…</div>;
+  if (isLoading || loadingLayout) return <div className="aurora-bi-loading">Preparando el tablero de diagnóstico…</div>;
   if (studyQuery.isError || readinessQuery.isError) {
     return <div role="alert" className="aurora-bi-loading">
       No fue posible verificar el instrumento y su metodología. Actualiza Telemetría antes de interpretar resultados.
@@ -203,6 +204,18 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
       No se pudieron consultar las dimensiones calculadas. Comprueba el estudio y la disponibilidad del análisis.
     </div>;
   }
+
+  const chartChoices = isCensopas
+    ? [
+        { value: 'stacked', label: 'Barras apiladas' },
+        { value: 'heatmap', label: 'Mapa de calor' },
+        { value: 'cards', label: 'Tarjetas' },
+      ]
+    : [
+        { value: 'stacked', label: 'Barras de puntuación' },
+        { value: 'cards', label: 'Tarjetas' },
+      ];
+  const actualChartMode = !isCensopas && chartMode === 'heatmap' ? 'stacked' : chartMode;
 
   const sectionContent = {
     summary: (
@@ -240,15 +253,58 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
     distribution: (
       <ChartPanel title={isCensopas ? 'Mapa de riesgos por dimensión' : 'Dimensiones evaluadas'}
         subtitle={isCensopas ? 'Distribución completa, escala fija de 0 a 100 %' : 'Puntaje descriptivo, sin equivalencia automática a riesgo'}
-        icon={Layers3} wide>
+        icon={Layers3} wide
+        action={<label className="aurora-bi-chart-select-label">Visual
+          <select aria-label="Tipo de gráfico" value={actualChartMode}
+            onChange={(event) => setChartMode(event.target.value)}>
+            {chartChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+          </select>
+        </label>}>
         {dimensions.length ? (
-          <div className="aurora-bi-chart-rows">
-            {dimensions.map((row) => isCensopas
-              ? <PercentageTrack key={row.construct_code} row={row}
-                  onSelect={(value) => setDimension(dimension === value ? 'ALL' : value)} selected={dimension === row.construct_code}/>
-              : <GenericScoreTrack key={row.construct_code} row={row} onSelect={(value) => setDimension(dimension === value ? 'ALL' : value)}/>)}
+          <>
+            {dimension !== 'ALL' && <button type="button" className="aurora-bi-reset-dimension"
+              onClick={() => setDimension('ALL')}>Ver todas las dimensiones <X size={13}/></button>}
+            {actualChartMode === 'heatmap' && isCensopas ? (
+              <div className="aurora-bi-heat-grid">
+                {dimensions.map((row) => (
+                  <button type="button" key={row.construct_code} className="aurora-bi-heat-tile"
+                    onClick={() => setDimension(dimension === row.construct_code ? 'ALL' : row.construct_code)}
+                    style={{ '--heat-alpha': (0.09 + row.unfavorable_pct / 100 * 0.48).toFixed(2) }}
+                    title={row.construct_name + ': ' + row.unfavorable_pct.toFixed(1) + '% desfavorable (n=' + row.n_valid + ')'}>
+                    <span>{row.construct_code}</span>
+                    <strong>{row.unfavorable_pct.toFixed(1)}%</strong>
+                    <small>{row.construct_name}</small>
+                    <em>Desfavorable · n={row.n_valid}</em>
+                  </button>
+                ))}
+              </div>
+            ) : actualChartMode === 'cards' ? (
+              <div className="aurora-bi-dimension-cards">
+                {dimensions.map((row) => (
+                  <button type="button" key={row.construct_code} className="aurora-bi-dimension-tile"
+                    onClick={() => setDimension(dimension === row.construct_code ? 'ALL' : row.construct_code)}>
+                    <small>{row.construct_code} · n={row.n_valid}</small>
+                    <strong>{row.construct_name}</strong>
+                    <span>{isCensopas ? row.unfavorable_pct.toFixed(1) + '% desfavorable' : row.mean_score.toFixed(1) + ' / 100'}</span>
+                    {isCensopas ? <div className="aurora-bi-tile-meter">
+                      {CHART_BANDS.map((band) => <i key={band.key} style={{ width: percent(row[band.key]) + '%', background: band.color }}
+                        title={band.label + ': ' + row[band.key].toFixed(1) + '%'} />)}
+                    </div> : <div className="aurora-bi-tile-meter">
+                      <i style={{ width: percent(row.mean_score) + '%', background: 'var(--aurora-accent)' }}/>
+                    </div>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="aurora-bi-chart-rows">
+                {dimensions.map((row) => isCensopas
+                  ? <PercentageTrack key={row.construct_code} row={row}
+                      onSelect={(value) => setDimension(dimension === value ? 'ALL' : value)} selected={dimension === row.construct_code}/>
+                  : <GenericScoreTrack key={row.construct_code} row={row} onSelect={(value) => setDimension(dimension === value ? 'ALL' : value)}/>)}
+              </div>
+            )}
             <Legend isCensopas={isCensopas} />
-          </div>
+          </>
         ) : <EmptyData message={hasResults ? 'No hay dimensiones publicables para este filtro. Verifica el mínimo de muestra y el baremo.' : 'Calcula y valida los resultados del instrumento para activar este tablero.'}/>}
       </ChartPanel>
     ),
@@ -394,11 +450,26 @@ export default function PremiumBIWorkspace({ projectId, organizationId, studyId,
         {customize && (
           <div className="aurora-bi-customize">
             <div className="aurora-bi-customize-title">
-              <strong>Configura tu tablero</strong><span>Mostrar, ocultar y ordenar. Preferencias guardadas en este navegador.</span>
+              <strong>Configura tu tablero</strong><span>Arrastra cuadros, utiliza las flechas o activa paneles. La disposición se sincroniza con tu empresa.</span>
             </div>
             <div className="aurora-bi-widget-options">
-              {DASHBOARD_WIDGETS.map((widget) => (
-                <div key={widget.id} className="aurora-bi-widget-choice">
+              {DASHBOARD_WIDGETS.filter((widget) => widgets.includes(widget.id)).concat(
+                DASHBOARD_WIDGETS.filter((widget) => !widgets.includes(widget.id))
+              ).map((widget) => (
+                <div key={widget.id} className="aurora-bi-widget-choice"
+                  draggable={widgets.includes(widget.id)}
+                  onDragStart={(event) => { setDraggedWidget(widget.id); event.dataTransfer.effectAllowed = 'move'; }}
+                  onDragOver={(event) => { if (draggedWidget) event.preventDefault(); }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (!draggedWidget || draggedWidget === widget.id || !widgets.includes(widget.id)) return;
+                    const next = [...widgets].filter((id) => id !== draggedWidget);
+                    const position = next.indexOf(widget.id);
+                    next.splice(position, 0, draggedWidget);
+                    setWidgets(next);
+                    setDraggedWidget(null);
+                  }}
+                  onDragEnd={() => setDraggedWidget(null)}>
                   <label><input type="checkbox" checked={widgets.includes(widget.id)} onChange={() => toggleWidget(widget.id)} />
                     <span>{widget.title}</span></label>
                   <div>
