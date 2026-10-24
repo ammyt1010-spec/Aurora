@@ -33,4 +33,11 @@ describe('Compact telemetry default', () => {
     fireEvent.click(screen.getByRole('button',{name:/Evidencia por pregunta/}));
     expect(screen.getByText('Questions Detail Loaded')).toBeInTheDocument();
   });
+  it('shows saved diagnostic when capture telemetry is unavailable', () => {
+    render(<TelemetryDashboard projectId={1} studyId={3} telemetry={null}
+      descriptives={null} isLoadingTelemetry={false} />);
+    expect(screen.getByText('Executive Decision Board')).toBeInTheDocument();
+    expect(screen.queryByText('Sin datos de seguimiento')).not.toBeInTheDocument();
+  });
+
 });
