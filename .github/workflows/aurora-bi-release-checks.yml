@@ -5,6 +5,7 @@ on:
     branches:
       - feat/aurora-three-screen-ux-20261021
       - feat/aurora-executive-single-screen-20261023
+      - feat/aurora-final-ux-cleanup-20261023
   pull_request:
     branches:
       - feat/aurora-campaign-invitations-control-20261017
