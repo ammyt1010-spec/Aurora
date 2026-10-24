@@ -246,6 +246,7 @@ export default function MultidisciplinaryCatalog({
             const statusInfo = STATUS_CONFIG[inst.status] || STATUS_CONFIG.DRAFT;
             const StatusIcon = statusInfo.icon;
             const isSystem = Boolean(inst.is_system);
+            const canConfigure = ['AUTHORIZED', 'ACTIVE'].includes(inst.status);
 
             return (
               <Card
@@ -319,12 +320,12 @@ export default function MultidisciplinaryCatalog({
                   <div className="mt-2">
                     <button type="button"
                       className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#173968] px-3 py-2 text-xs font-bold text-white hover:bg-[#29538F]"
-                      disabled={!onSelectInstrument && !onCreateEvaluation}
+                      disabled={!canConfigure || (!onSelectInstrument && !onCreateEvaluation)}
                       onClick={() => {
                         if (onSelectInstrument) onSelectInstrument(inst);
                         else onCreateEvaluation?.(inst);
                       }}>
-                      <ChevronRight size={14}/> Configurar evaluación
+                      <ChevronRight size={14}/>{canConfigure ? 'Configurar evaluación' : 'Pendiente de autorización'}
                     </button>
                   </div>
                 ) : <div className="mt-5 border-t border-border pt-4">
