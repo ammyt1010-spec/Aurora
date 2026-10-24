@@ -10,6 +10,7 @@ import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { displayLabel } from '../../../utils/labels.js';
 
 import { Button } from '../../../components/ui/Button.jsx';
+import { Card } from '../../../components/ui/Card.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ErrorState } from '../../../components/ui/ErrorState.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
