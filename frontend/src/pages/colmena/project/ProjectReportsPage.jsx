@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Sparkles, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
@@ -57,6 +57,8 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   const [reportMode, setReportMode] = useState('PROVISIONAL');
   const [outputFormat, setOutputFormat] = useState('PDF');
   const [previewState, setPreviewState] = useState('IDLE');
+  const [showConsolidated, setShowConsolidated] = useState(false);
+  const [showMethodology, setShowMethodology] = useState(false);
   const [preview, setPreview] = useState(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
   const pdfFrameRef = useRef(null);
@@ -215,21 +217,20 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   return (
     <div className="colmena-page aurora-premium-page space-y-4">
-      <header className="aurora-suite-hero">
-        <div className="aurora-suite-hero-copy">
-          <span><Sparkles size={14}/> ETAPA 03 · INFORME CORPORATIVO</span>
-          <h1>Informe y resultados.</h1>
-          <p>Explora la previsualización paginada, verifica las interpretaciones y descarga únicamente los documentos autorizados.</p>
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 shadow-sm">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <FileText size={19} className="shrink-0 text-[#245E9C]"/>
+          <div>
+            <h1 className="text-base font-extrabold text-[#0A1F44]">Informe ejecutivo</h1>
+            <p className="text-xs text-[#64748B]">Previsualización y emisión de resultados autorizados.</p>
+          </div>
         </div>
-        <div className="aurora-suite-hero-icon" aria-hidden="true"><FileText size={34}/></div>
+        <button type="button" onClick={() => setShowConsolidated(value => !value)}
+          aria-expanded={showConsolidated}
+          className="rounded-lg border border-[#CFDDEB] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788] hover:bg-[#EDF5FC]">
+          {showConsolidated ? 'Cerrar batería' : 'Informe de batería'}
+        </button>
       </header>
-      <ConsolidatedReportsPanel projectId={projectId} />
-
-      <details className="rounded-xl border border-border bg-surface">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-dark">Resumen de hallazgos antes de emitir el informe</summary>
-        <div className="border-t border-border p-3"><ExecutiveReportDashboard studyId={studyId} /></div>
-      </details>
-
       <div className="grid gap-6 md:grid-cols-[380px_1fr]">
         <div className="space-y-4">
           {/* Logo Upload Card */}
@@ -517,6 +518,14 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p> : null}
           </div>
         </Card>
+      </div>
+      <div className="space-y-2">
+        <button type="button" className="flex w-full items-center justify-between rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 text-left text-xs font-bold text-[#315788]"
+          onClick={() => setShowMethodology(value => !value)} aria-expanded={showMethodology}>
+          Resumen metodológico y hallazgos <span aria-hidden="true">{showMethodology ? '−' : '+'}</span>
+        </button>
+        {showMethodology && <ExecutiveReportDashboard studyId={studyId} />}
+        {showConsolidated && <ConsolidatedReportsPanel projectId={projectId} />}
       </div>
     </div>
   );

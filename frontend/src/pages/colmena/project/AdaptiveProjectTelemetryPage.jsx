@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Pause, Play, RefreshCcw } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { getProject } from '../../../api/projects.js';
 import { getResponseDescriptives, listStudies } from '../../../api/studies.js';
@@ -9,10 +9,7 @@ import { getProjectTelemetry } from '../../../api/telemetry.js';
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { displayLabel } from '../../../utils/labels.js';
 
-import { PageHeader } from '../../../components/layout/PageHeader.jsx';
-import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Button } from '../../../components/ui/Button.jsx';
-import { Card } from '../../../components/ui/Card.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ErrorState } from '../../../components/ui/ErrorState.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
@@ -95,43 +92,33 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
   if (!projectQuery.data) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page space-y-6">
-      <ProjectWorkspaceHeader
-        projectId={projectId}
-        activeTab="telemetry"
-        actions={(
-          <>
-            <Button onClick={() => setPaused((value) => !value)} size="sm" type="button" variant="secondary">
-              {paused ? <Play size={14} /> : <Pause size={14} />}
-              {paused ? 'Reanudar' : 'Pausar'}
-            </Button>
-            <Button disabled={isRefreshing} onClick={refresh} size="sm" type="button" variant="secondary">
-              <RefreshCcw className={isRefreshing ? 'animate-spin' : ''} size={14} />
-              Actualizar
-            </Button>
-          </>
-        )}
-      />
-
-      <Card padding="compact">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <label className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center">
-            <span className="colmena-label shrink-0">Aplicación / estudio</span>
-            <select
-              className="colmena-input min-w-0 sm:min-w-[280px]"
-              onChange={(event) => setStudyId(event.target.value ? Number(event.target.value) : null)}
-              value={studyId || ''}
-            >
+    <div className="colmena-page !gap-2">
+      <section aria-label="Evaluación activa" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DBE6F1] bg-white px-3 py-2.5 shadow-sm">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] font-semibold text-[#64748B]">Diagnóstico empresarial · {projectQuery.data?.name || 'Empresa'}</p>
+          <label className="mt-1 flex min-w-0 items-center gap-2 text-xs font-bold text-[#0A1F44]">
+            <span className="shrink-0">Estudio</span>
+            <select aria-label="Seleccionar estudio de telemetría" className="colmena-input min-w-0 max-w-[440px] flex-1 text-xs"
+              onChange={(event) => setStudyId(event.target.value ? Number(event.target.value) : null)} value={studyId || ''}>
               <option value="">Selecciona un estudio</option>
-              {studies.map((study) => <option key={study.id} value={study.id}>{study.name} ({displayLabel(study.status)})</option>)}
+              {studies.map(study => <option key={study.id} value={study.id}>{study.name} ({displayLabel(study.status)})</option>)}
             </select>
           </label>
-          <div className="flex items-center gap-2 text-[11px] text-muted">
-            <span className={`h-2 w-2 rounded-full ${paused || !pageVisible ? 'bg-warning' : 'bg-success'}`} />
-            {paused ? 'Actualización pausada' : !pageVisible ? 'En espera: página no visible' : 'Actualización automática cada 15 s'}
-          </div>
         </div>
-      </Card>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button onClick={() => setPaused(value => !value)} size="sm" type="button" variant="secondary">
+            {paused ? <Play size={14}/> : <Pause size={14}/>}
+            {paused ? 'Reanudar' : 'Pausar'}
+          </Button>
+          <Button disabled={isRefreshing} onClick={refresh} size="sm" type="button" variant="secondary">
+            <RefreshCcw size={14} className={isRefreshing ? 'animate-spin' : ''}/> Actualizar
+          </Button>
+          <Link to={`/colmena/project/${projectId}/link`}
+            className="rounded-lg border border-[#DCE7F1] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788]">
+            Gestionar enlace
+          </Link>
+        </div>
+      </section>
 
       {hasDataError ? (
         <ErrorState
