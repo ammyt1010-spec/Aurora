@@ -121,7 +121,7 @@ async def main():
         if await gen_btn.count() > 0 and await gen_btn.is_enabled():
             print("  -> Generando enlace y QR conjunto...")
             await gen_btn.click()
-            await page.wait_for_selector("svg[aria-label='Código QR de batería empresarial']", timeout=10000)
+            await page.wait_for_selector("button:has-text('Copiar enlace')", timeout=10000)
             await asyncio.sleep(0.5)
             await page.screenshot(path=str(SCREENSHOTS_DIR / "modal_bateria_qr_generada.png"))
             await page.screenshot(path=str(SCREENSHOTS_DIR / "inicio_bateria_qr_generada.png"))
@@ -180,7 +180,7 @@ async def main():
         await page.screenshot(path=str(SCREENSHOTS_DIR / "telemetria_ejecutiva_1440x900_completa.png"), full_page=False)
 
         # Probar interactividad: alternar a Mapa de calor
-        heatmap_btn = page.locator("button:has-text('Mapa de calor')")
+        heatmap_btn = page.locator("button:has-text('calor')")
         if await heatmap_btn.count() > 0:
             print("  -> Alternando a vista de Mapa de Calor...")
             await heatmap_btn.click()
@@ -190,7 +190,7 @@ async def main():
             print("  -> Captura Mapa de calor guardada.")
 
         # Probar interactividad: alternar a Evolución longitudinal
-        trend_btn = page.locator("button:has-text('Evolución')")
+        trend_btn = page.locator("button:has-text('Evoluci')")
         if await trend_btn.count() > 0:
             print("  -> Alternando a vista de Evolución Longitudinal...")
             await trend_btn.click()
@@ -198,7 +198,7 @@ async def main():
             await page.screenshot(path=str(SCREENSHOTS_DIR / "telemetria_evolucion_longitudinal.png"))
 
         # Volver a Diagnóstico
-        diag_btn = page.locator("button:has-text('Diagnóstico')")
+        diag_btn = page.locator("button:has-text('Diagn')")
         if await diag_btn.count() > 0:
             await diag_btn.click()
             await asyncio.sleep(0.3)

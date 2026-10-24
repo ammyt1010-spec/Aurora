@@ -30,7 +30,7 @@ async def list_enterprise_audit_events(
     organization = await session.get(Organization, organization_id)
     if (
         membership is None
-        or membership.role_code not in {"OWNER", "ADMIN"}
+        or membership.role_code not in {"OWNER", "ADMIN", "TENANT_ADMIN"}
         or organization is None
         or organization.status != "ACTIVE"
     ):
