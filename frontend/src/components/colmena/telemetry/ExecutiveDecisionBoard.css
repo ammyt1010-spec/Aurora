@@ -120,3 +120,14 @@
   .aurora-compact-metric small{display:none}
 }
 @media(prefers-reduced-motion:reduce){.aurora-compact *{transition:none!important;animation:none!important}}
+
+.aurora-compact-views{display:flex;flex:none;gap:2px;border:1px solid #DDE8F2;background:#F5F8FC;border-radius:8px;padding:2px}
+.aurora-compact-views button{border:0;border-radius:6px;background:transparent;color:#698099;
+  padding:5px 8px;font-size:10px;font-weight:800;cursor:pointer}
+.aurora-compact-views button.is-active{background:#fff;color:#1D528B;box-shadow:0 1px 4px rgba(10,31,68,.08)}
+.aurora-compact-trend{height:100%;min-height:0;overflow:auto;padding:8px}
+.aurora-compact-temporal-note{margin:0 0 6px;font-size:10px;color:#526986}
+@media(max-width:430px){
+  .aurora-compact-panelhead{padding:8px}
+  .aurora-compact-views button{font-size:9px;padding:4px 6px}
+}
