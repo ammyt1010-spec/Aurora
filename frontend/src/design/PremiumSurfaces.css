@@ -80,3 +80,73 @@
 @media (prefers-reduced-motion:reduce) {
  .aurora-premium-page * {transition:none!important}
 }
+
+/* Inicio ligero: una elección a la vez, sin catálogos apilados. */
+.aurora-home-focus{gap:12px}
+.aurora-app .aurora-home-hero{min-height:94px;padding:17px 21px;border-radius:15px}
+.aurora-home-hero .aurora-suite-hero-copy h1{margin:5px 0;font-size:clamp(20px,2.1vw,27px)}
+.aurora-home-hero .aurora-suite-hero-copy p{font-size:12px}
+.aurora-home-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:9px;
+  padding:3px 1px}
+.aurora-home-tabs{display:flex;gap:3px;padding:3px;border:1px solid #DCE7F3;background:#F3F7FC;border-radius:11px}
+.aurora-home-tabs button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:8px;
+  padding:9px 13px;font-size:12px;font-weight:800;color:#566F8D;background:transparent;
+  transition:background .17s ease,box-shadow .17s ease,color .17s ease;cursor:pointer}
+.aurora-home-tabs button.is-active{background:#fff;box-shadow:0 2px 9px rgba(10,31,68,.095);color:#163A68}
+.aurora-home-tabs button:hover:not(.is-active){background:#E8F2FA}
+.aurora-home-actions{display:flex;flex-wrap:wrap;gap:7px}
+.aurora-home-action{min-height:38px;display:inline-flex;align-items:center;gap:7px;
+  border-radius:9px;border:1px solid #D6E1ED;background:#fff;padding:8px 12px;
+  color:#284A77;font-size:11px;font-weight:800;cursor:pointer;
+  transition:transform .16s,background .16s,box-shadow .16s}
+.aurora-home-action:hover{transform:translateY(-1px);background:#F5F9FF;box-shadow:0 5px 14px rgba(10,31,68,.08)}
+.aurora-home-action.is-primary{background:linear-gradient(118deg,#0A1F44,#3456A6);color:#fff;border-color:#213D76}
+.aurora-home-action.is-primary:hover{background:linear-gradient(118deg,#162F5B,#4469BB)}
+.aurora-home-counter{display:inline-flex;align-items:center;justify-content:center;min-width:20px;padding:1px 5px;border-radius:6px;
+  font-size:10px;background:#EAF2FF;color:#345A90}
+.aurora-home-section-head{min-height:31px;display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.aurora-home-section-head h2{font-size:13px;font-weight:850;color:#1B3556;margin:0}
+.aurora-home-section-head span{font-size:11px;color:#698099}
+.aurora-home-refresh{display:flex;align-items:center;gap:5px;border:0;border-radius:8px;background:transparent;color:#3B608A;
+  padding:7px 9px;font-size:11px;font-weight:750;cursor:pointer}
+.aurora-home-refresh:hover{background:#EAF3FA}
+.aurora-home-catalog{display:grid;gap:9px;min-width:0}
+.aurora-home-instrument-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.aurora-home-instrument{padding:15px 16px;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.aurora-home-instrument-data{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.aurora-home-instrument h3{font-size:14px;line-height:1.35;font-weight:800;margin:0;color:#193858}
+.aurora-home-instrument p{margin:0;font-size:11px;line-height:1.45;color:#5E7088}
+.aurora-home-instrument small{font-size:10px;line-height:1.35;color:#78889C}
+.aurora-home-state{display:inline-block;border-radius:6px;padding:3px 6px;background:#F8EBEB;color:#A5444D;font-size:10px;font-weight:800}
+.aurora-home-state.is-ready{background:#E6F7F2;color:#087D6A}
+.aurora-home-start{flex:none;display:inline-flex;align-items:center;gap:6px;padding:10px 12px;font-size:11px;border:0}
+.aurora-home-start:disabled{opacity:.45;cursor:not-allowed}
+.aurora-home-projects{padding:12px 14px;border:1px solid #DCE7F3;background:#fff;border-radius:12px;
+  box-shadow:0 8px 25px rgba(10,31,68,.045);display:grid;gap:8px}
+.aurora-home-project-scroll{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:230px;overflow:auto}
+.aurora-home-project{border:1px solid #E1E9F4;background:#FCFDFF;border-radius:9px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.aurora-home-project strong{font-size:11px;color:#244164;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aurora-home-project>div{display:flex;flex-wrap:wrap;gap:6px}
+.aurora-home-project button{font-size:10px;font-weight:800;display:inline-flex;align-items:center;gap:3px;
+  border:1px solid #D8E4EF;color:#355789;border-radius:7px;background:#fff;padding:6px 8px;cursor:pointer}
+.aurora-home-project button:hover{background:#EAF4FF}
+.aurora-home-multidisc{display:grid;gap:10px}
+.aurora-home-multidisc>div:last-child{min-width:0}
+@media(max-width:1100px){
+ .aurora-home-instrument-grid{grid-template-columns:1fr}
+ .aurora-home-project-scroll{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:650px){
+ .aurora-home-toolbar{align-items:stretch}
+ .aurora-home-tabs{width:100%;justify-content:space-around}
+ .aurora-home-tabs button{flex:1;justify-content:center;padding:9px 7px;font-size:11px}
+ .aurora-home-actions{width:100%}
+ .aurora-home-action{flex:1;justify-content:center}
+ .aurora-home-instrument{flex-wrap:wrap}
+ .aurora-home-start{width:100%;justify-content:center}
+ .aurora-home-project-scroll{grid-template-columns:1fr}
+ .aurora-app .aurora-home-hero{padding:16px;min-height:85px}
+}
+@media(prefers-reduced-motion:reduce){
+ .aurora-home-tabs button,.aurora-home-action{transition:none;transform:none!important}
+}
