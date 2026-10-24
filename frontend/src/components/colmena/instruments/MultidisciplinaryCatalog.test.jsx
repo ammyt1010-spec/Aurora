@@ -128,4 +128,19 @@ describe('MultidisciplinaryCatalog', () => {
       expect(linkStudyInstrument).toHaveBeenCalledWith(100, 10);
     });
   });
+  it('shows only actionable authorized instruments in compact home mode', async () => {
+    const onCreateEvaluation = vi.fn();
+    renderWithQueryClient(
+      <MultidisciplinaryCatalog simpleMode onCreateEvaluation={onCreateEvaluation}/>
+    );
+    expect(await screen.findByText('CENSOPAS-COPSOQ Versión Corta')).toBeInTheDocument();
+    const available = screen.getByRole('button', { name: 'Configurar evaluación' });
+    fireEvent.click(available);
+    expect(onCreateEvaluation).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+    const pending = screen.getAllByRole('button', { name: 'Pendiente de autorización' });
+    expect(pending).toHaveLength(2);
+    expect(pending.every(button => button.disabled)).toBe(true);
+    expect(screen.queryByText('Método tarifario:')).not.toBeInTheDocument();
+  });
+
 });

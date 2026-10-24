@@ -1,66 +1,56 @@
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, ChevronRight, FileBarChart2, FolderKanban, Link as LinkIcon, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Link as LinkIcon, Users } from 'lucide-react';
 
 import { getProject } from '../../../api/projects.js';
 
 /**
- * Tres pantallas para el usuario corporativo. La gestión de enlaces y
- * colaboradores permanece accesible como tarea auxiliar del proyecto.
- * projectId explícito cubre las rutas de módulo /colmena/telemetry.
+ * La navegación principal Inicio / Telemetría / Informe ya existe en
+ * Sidebar y MobileJourneyNav. Evitar duplicarla en cada página del proyecto.
  */
-export default function ProjectWorkspaceHeader({ activeTab = 'telemetry', projectId: explicitProjectId, actions }) {
+export default function ProjectWorkspaceHeader({ projectId: explicitProjectId, actions }) {
   const { projectId: routeProjectId } = useParams();
   const projectId = explicitProjectId || routeProjectId;
-  const location = useLocation();
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => getProject(projectId),
     enabled: Boolean(projectId),
   });
-  const navTabs = [
-    { id: 'home', label: '1. Inicio', icon: FolderKanban, path: '/colmena' },
-    { id: 'telemetry', label: '2. Telemetría', icon: BarChart3, path: projectId ? `/colmena/project/${projectId}/telemetry` : '/colmena/telemetry' },
-    { id: 'reports', label: '3. Informe', icon: FileBarChart2, path: projectId ? `/colmena/project/${projectId}/reports` : '/colmena/reports' },
-  ];
+
   return (
-    <header className="mb-4 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 text-[11px] text-muted">
-            <Link className="hover:text-amber" to="/colmena">Inicio</Link>
-            <ChevronRight size={12} />
-            <span className="truncate">{project?.name || 'Evaluación'}</span>
-          </div>
-          <h1 className="mt-1 truncate text-base font-bold text-dark">{project?.name || 'Diagnóstico empresarial'}</h1>
+    <header className="mb-1 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E1E8F2] bg-white px-3 py-2 shadow-sm"
+      aria-label="Contexto de evaluación empresarial">
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1 text-[10px] font-semibold text-[#71829A]">
+          <Link to="/colmena" className="hover:text-[#315A99]">Inicio</Link>
+          <ChevronRight size={11} aria-hidden="true"/>
+          <span className="truncate">Evaluación empresarial</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {projectId ? (
-            <>
-              <Link className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-dark hover:bg-surfaceSoft" to={`/colmena/project/${projectId}/link`}>
-                <LinkIcon className="mr-1 inline" size={13} /> Gestionar enlace
-              </Link>
-              <Link className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-dark hover:bg-surfaceSoft" to={`/colmena/project/${projectId}/team`}>
-                <Users className="mr-1 inline" size={13} /> Equipo
-              </Link>
-            </>
-          ) : null}
-          {actions}
-        </div>
+        <h1 className="mt-0.5 truncate text-sm font-extrabold text-[#17365C]">
+          {project?.name || 'Diagnóstico empresarial'}
+        </h1>
       </div>
-      <nav aria-label="Etapas de evaluación" className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface p-1">
-        {navTabs.map((tab) => {
-          const Icon = tab.icon;
-          const selected = tab.id === activeTab || (tab.id === 'reports' && location.pathname.includes('/reports')) || (tab.id === 'telemetry' && location.pathname.includes('/telemetry'));
-          return (
-            <Link key={tab.id} to={tab.path} aria-current={selected ? 'page' : undefined}
-              className={`flex min-w-0 items-center justify-center gap-2 rounded-lg px-2 py-2.5 text-xs font-semibold transition ${selected ? 'bg-amber text-dark shadow-sm' : 'text-muted hover:bg-surfaceSoft hover:text-dark'}`}>
-              <Icon size={15} />
-              <span className="truncate">{tab.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="flex flex-wrap items-center gap-2">
+        {actions}
+        {projectId && (
+          <details className="group relative">
+            <summary className="flex cursor-pointer list-none items-center gap-1 rounded-lg border border-[#D8E3EF] bg-[#F7FAFD] px-3 py-2 text-[11px] font-bold text-[#33547B] hover:bg-[#E9F2FB]">
+              Gestionar <ChevronDown size={12} className="transition-transform group-open:rotate-180"/>
+            </summary>
+            <nav aria-label="Gestión de evaluación"
+              className="absolute right-0 top-full z-40 mt-1 min-w-[190px] rounded-xl border border-[#DCE5F0] bg-white p-1.5 shadow-xl">
+              <Link className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#284A70] hover:bg-[#EEF5FB]"
+                to={`/colmena/project/${projectId}/link`}>
+                <LinkIcon size={13}/> Campaña y enlaces
+              </Link>
+              <Link className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#284A70] hover:bg-[#EEF5FB]"
+                to={`/colmena/project/${projectId}/team`}>
+                <Users size={13}/> Equipo
+              </Link>
+            </nav>
+          </details>
+        )}
+      </div>
     </header>
   );
 }
