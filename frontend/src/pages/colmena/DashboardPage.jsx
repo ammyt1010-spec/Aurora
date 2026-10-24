@@ -59,41 +59,43 @@ export default function DashboardPage() {
   const catalogVisible = showCatalog || projectItems.length === 0;
 
   return (
-    <div className="colmena-page aurora-premium-page aurora-home-focus">
-      <header className="aurora-suite-hero aurora-home-hero">
+    <div className="colmena-page aurora-premium-page aurora-home-focus !gap-2 !py-2">
+      <header className="aurora-suite-hero aurora-home-hero !min-h-0 !py-2.5 !px-4">
         <div className="aurora-suite-hero-copy">
-          <span>01 / INICIO · AURORA PROFESSIONAL</span>
-          <h1>¿Qué deseas evaluar?</h1>
-          <p>Selecciona la empresa y marca los instrumentos para generar su enlace y código QR.</p>
+          <span className="!text-[10px]">01 / INICIO · AURORA PROFESSIONAL</span>
+          <h1 className="!my-0.5 !text-base">¿Qué deseas evaluar?</h1>
+          <p className="!text-[11px] text-[#c8d5ea]">Selecciona la empresa y marca los instrumentos para generar su enlace y código QR.</p>
         </div>
-        <div className="aurora-suite-hero-icon" aria-hidden="true"><BookOpen size={27}/></div>
+        <div className="aurora-suite-hero-icon !w-10 !h-10 !rounded-xl" aria-hidden="true"><BookOpen size={18}/></div>
       </header>
 
       {/* Banner de Acceso Inmediato a la Demostración Minera */}
-      <section aria-label="Demostración corporativa de minería" className="rounded-xl border border-[#9EE2EC] bg-gradient-to-r from-[#EDF9FB] via-[#F4FBFC] to-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0 max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#108B91]/15 px-3 py-0.5 text-[11px] font-extrabold text-[#0E7176]">
-              <Sparkles size={12} className="text-[#108B91]" /> DEMOSTRACIÓN SINTÉTICA CARGADA
+      <section aria-label="Demostración corporativa de minería" className="rounded-xl border border-[#9EE2EC] bg-gradient-to-r from-[#EDF9FB] via-[#F4FBFC] to-white px-3.5 py-2 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#108B91]/15 px-2 py-0.5 text-[10px] font-extrabold text-[#0E7176]">
+              <Sparkles size={11} className="text-[#108B91]" /> DEMO ACTIVA
+            </span>
+            <div className="min-w-0">
+              <strong className="block truncate text-xs font-extrabold text-[#0A1F44]">
+                Estudio Minero San Cristóbal · CENSOPAS-COPSOQ
+              </strong>
+              <span className="block truncate text-[10px] text-[#526D82]">
+                35 evaluaciones sintéticas completadas y clasificadas por baremos oficiales.
+              </span>
             </div>
-            <h2 className="mt-1.5 text-sm font-extrabold text-[#0A1F44]">
-              Estudio Minero San Cristóbal · CENSOPAS-COPSOQ Oficial
-            </h2>
-            <p className="mt-1 text-xs text-[#526D82] leading-relaxed">
-              35 trabajadores mineros sintéticos evaluados, clasificación por baremos oficiales, matriz de dimensiones, mapa de calor y generación de informes ejecutivos.
-            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => {
                 setActiveProjectId(23);
                 navigate('/colmena/project/23/telemetry');
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#0A1F44] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#153468]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1F44] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#153468]"
             >
-              <BarChart3 size={15} className="text-[#59BFD3]" />
-              Ver Tablero de Telemetría
+              <BarChart3 size={13} className="text-[#59BFD3]" />
+              Ver Tablero
             </button>
             <button
               type="button"
@@ -101,19 +103,19 @@ export default function DashboardPage() {
                 setActiveProjectId(23);
                 navigate('/colmena/project/23/reports');
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#CADAE8] bg-white px-3 py-2 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
+              className="inline-flex items-center gap-1 rounded-lg border border-[#CADAE8] bg-white px-2.5 py-1.5 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
             >
-              <FileText size={14} />
-              Ver Informe
+              <FileText size={13} />
+              Informe
             </button>
             <a
               href="/bateria/83e1755d-af21-4256-bd77-8dd69148e66b"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#CADAE8] bg-white px-3 py-2 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
+              className="inline-flex items-center gap-1 rounded-lg border border-[#CADAE8] bg-white px-2.5 py-1.5 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
             >
-              <ExternalLink size={13} />
-              Probar Cuestionario
+              <ExternalLink size={12} />
+              Cuestionario
             </a>
           </div>
         </div>
