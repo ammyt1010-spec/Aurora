@@ -93,7 +93,7 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
   if (!projectQuery.data) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page !gap-2 !space-y-0">
+    <div className="colmena-page space-y-6">
       <ProjectWorkspaceHeader
         projectId={projectId}
         activeTab="telemetry"
@@ -111,7 +111,7 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
         )}
       />
 
-      <Card padding="compact" className="py-2">
+      <Card padding="compact">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <label className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center">
             <span className="colmena-label shrink-0">Aplicación / estudio</span>
