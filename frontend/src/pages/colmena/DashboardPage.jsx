@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, ClipboardCheck, Layers3, RefreshCcw, ArrowRight, FileText, Plus, ShieldCheck } from 'lucide-react';
+import { BookOpen, ClipboardCheck, Layers3, RefreshCcw, ArrowRight, FileText, Plus, ShieldCheck, BarChart3, Sparkles, ExternalLink } from 'lucide-react';
 
 import { getCensopasPlans } from '../../api/instruments.js';
 import { listProjects } from '../../api/projects.js';
@@ -68,6 +68,56 @@ export default function DashboardPage() {
         </div>
         <div className="aurora-suite-hero-icon" aria-hidden="true"><BookOpen size={27}/></div>
       </header>
+
+      {/* Banner de Acceso Inmediato a la Demostración Minera */}
+      <section aria-label="Demostración corporativa de minería" className="rounded-xl border border-[#9EE2EC] bg-gradient-to-r from-[#EDF9FB] via-[#F4FBFC] to-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0 max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#108B91]/15 px-3 py-0.5 text-[11px] font-extrabold text-[#0E7176]">
+              <Sparkles size={12} className="text-[#108B91]" /> DEMOSTRACIÓN SINTÉTICA CARGADA
+            </div>
+            <h2 className="mt-1.5 text-sm font-extrabold text-[#0A1F44]">
+              Estudio Minero San Cristóbal · CENSOPAS-COPSOQ Oficial
+            </h2>
+            <p className="mt-1 text-xs text-[#526D82] leading-relaxed">
+              35 trabajadores mineros sintéticos evaluados, clasificación por baremos oficiales, matriz de dimensiones, mapa de calor y generación de informes ejecutivos.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveProjectId(23);
+                navigate('/colmena/project/23/telemetry');
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#0A1F44] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#153468]"
+            >
+              <BarChart3 size={15} className="text-[#59BFD3]" />
+              Ver Tablero de Telemetría
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveProjectId(23);
+                navigate('/colmena/project/23/reports');
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#CADAE8] bg-white px-3 py-2 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
+            >
+              <FileText size={14} />
+              Ver Informe
+            </button>
+            <a
+              href="/bateria/83e1755d-af21-4256-bd77-8dd69148e66b"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#CADAE8] bg-white px-3 py-2 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
+            >
+              <ExternalLink size={13} />
+              Probar Cuestionario
+            </a>
+          </div>
+        </div>
+      </section>
 
       <BundleSelectionPanel projects={projectItems} />
       <div className="aurora-home-toolbar">

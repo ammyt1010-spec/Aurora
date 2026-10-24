@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Shield } from 'lucide-react';
+import { Shield, BarChart3 } from 'lucide-react';
 
 import { useAuth } from '../auth/AuthContext.jsx';
 import { ApiError } from '../api/client.js';
@@ -28,7 +28,7 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema) });
 
-  const handleDemoClick = async () => {
+  const handleDemoClick = async (destinationPath = '/colmena/project/23/telemetry') => {
     try {
       try {
         await demoLogin();
@@ -36,8 +36,7 @@ export default function LoginPage() {
         // Fallback para túneles y demostraciones remotas de evaluación
         await login({ email: 'revisor.corporativo@aurora.com', password: 'Aurora2026!' });
       }
-      const redirectTo = location.state?.from?.pathname || '/colmena';
-      navigate(redirectTo, { replace: true });
+      navigate(destinationPath, { replace: true });
     } catch {
       setFormError('No se pudo iniciar el modo demostración sin credenciales.');
     }
@@ -81,17 +80,33 @@ export default function LoginPage() {
         </div>
 
         {isDemoAllowed && (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <Button
               type="button"
               variant="primary"
-              onClick={handleDemoClick} 
-              className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 shadow-md border-none text-white font-bold py-3 transition-all transform hover:-translate-y-0.5"
+              onClick={() => handleDemoClick('/colmena/project/23/telemetry')} 
+              className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 shadow-md border-none text-white font-bold py-3 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm"
             >
-              ⚡ Iniciar Demostración Completa (1 Clic)
+              <BarChart3 size={17} /> ⚡ Ver Demo Minera (Tablero y Telemetría)
             </Button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleDemoClick('/colmena')}
+                className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition text-center"
+              >
+                1. Inicio (Catálogo)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDemoClick('/colmena/project/23/reports')}
+                className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition text-center"
+              >
+                3. Informe Ejecutivo
+              </button>
+            </div>
             <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              Explora el diagnóstico integral de la <strong>Unidad Minera San Cristóbal</strong> con 238 trabajadores, Dashboard BI interactivo, Informes y Cuestionarios en vivo.
+              Carga el estudio de la <strong>Unidad Minera San Cristóbal</strong> con 35 colaboradores sintéticos, cuestionario CENSOPAS oficial y tablero Power BI en vivo.
             </p>
           </div>
         )}

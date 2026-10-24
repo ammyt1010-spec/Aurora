@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, RefreshCcw, Settings2, Wifi, WifiOff, BarChart3, FileBarChart2, Home } from 'lucide-react';
+import { LogOut, RefreshCcw, Settings2, Wifi, WifiOff, BarChart3, FileBarChart2, Home, Sparkles } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { API_ROOT_URL } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
+import { setActiveProjectId } from '../../utils/activeProject.js';
 import ThemeToggle from '../ui/ThemeToggle.jsx';
 import { BrandMark } from '../../brand/BrandMark.jsx';
 import { cn } from '../../utils/cn.js';
@@ -98,6 +99,18 @@ export function Topbar() {
             <FileBarChart2 size={14} />
             <span className="hidden sm:inline">3. Informe</span>
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveProjectId(23);
+              navigate('/colmena/project/23/telemetry');
+            }}
+            className="ml-1 hidden md:inline-flex items-center gap-1.5 rounded-lg border border-[#9EE2EC] bg-[#EDF9FB] px-2.5 py-1 text-xs font-bold text-[#0E7176] hover:bg-[#DCF3F6] transition shadow-xs"
+            title="Ver tablero de telemetría de la Unidad Minera San Cristóbal"
+          >
+            <Sparkles size={13} className="text-[#108B91]" />
+            <span>⚡ Demo Minera</span>
+          </button>
         </nav>
 
         <div className="flex items-center gap-2">
