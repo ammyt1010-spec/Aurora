@@ -135,8 +135,8 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
     setFocusedCode(null);
   };
 
-  if (loading || !classificationKnown) return <div className="aurora-compact-state">Cargando diagnóstico ejecutivo…</div>;
   if (error) return <div className="aurora-compact-state" role="alert">No se pudo consultar el diagnóstico metodológico. Verifica el estudio y vuelve a intentar.</div>;
+  if (loading || !classificationKnown) return <div className="aurora-compact-state">Cargando diagnóstico ejecutivo…</div>;
 
   return (
     <section className="aurora-compact" aria-label="Diagnóstico ejecutivo compacto">
