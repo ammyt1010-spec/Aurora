@@ -15,7 +15,7 @@ import TelemetryOverview from './TelemetryOverview.jsx';
  */
 export default function TelemetryDashboard({
   projectId, organizationId, studyId, telemetry, descriptives, isLoadingTelemetry,
-  onDetailsVisibilityChange,
+  onDetailsVisibilityChange, studies, setStudyId, projectName, onRefresh, isRefreshing,
 }) {
   const [technical, setTechnical] = useState('none');
   useEffect(() => setTechnical('none'), [studyId]);
@@ -34,7 +34,16 @@ export default function TelemetryDashboard({
   ];
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <ExecutiveDecisionBoard projectId={projectId} studyId={studyId} telemetry={telemetry} />
+      <ExecutiveDecisionBoard
+        projectId={projectId}
+        studyId={studyId}
+        telemetry={telemetry}
+        studies={studies}
+        setStudyId={setStudyId}
+        projectName={projectName}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
+      />
       <div className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-[11px] font-bold text-[#536985]">Herramientas técnicas</span>

@@ -97,33 +97,6 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
 
   return (
     <div className="colmena-page !gap-2">
-      <section aria-label="Evaluación activa" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DBE6F1] bg-white px-3 py-2.5 shadow-sm">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[11px] font-semibold text-[#64748B]">Diagnóstico empresarial · {projectQuery.data?.name || 'Empresa'}</p>
-          <label className="mt-1 flex min-w-0 items-center gap-2 text-xs font-bold text-[#0A1F44]">
-            <span className="shrink-0">Estudio</span>
-            <select aria-label="Seleccionar estudio de telemetría" className="colmena-input min-w-0 max-w-[440px] flex-1 text-xs"
-              onChange={(event) => setStudyId(event.target.value ? Number(event.target.value) : null)} value={studyId || ''}>
-              <option value="">Selecciona un estudio</option>
-              {studies.map(study => <option key={study.id} value={study.id}>{study.name} ({displayLabel(study.status)})</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button onClick={() => setPaused(value => !value)} size="sm" type="button" variant="secondary">
-            {paused ? <Play size={14}/> : <Pause size={14}/>}
-            {paused ? 'Reanudar' : 'Pausar'}
-          </Button>
-          <Button disabled={isRefreshing} onClick={refresh} size="sm" type="button" variant="secondary">
-            <RefreshCcw size={14} className={isRefreshing ? 'animate-spin' : ''}/> Actualizar
-          </Button>
-          <Link to={`/colmena/project/${projectId}/link`}
-            className="rounded-lg border border-[#DCE7F1] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788]">
-            Gestionar enlace
-          </Link>
-        </div>
-      </section>
-
       {hasDataError ? (
         <ErrorState
           message="Conservamos la última información disponible. Usa Actualizar para volver a intentar."
@@ -146,6 +119,11 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
           isLoadingTelemetry={telemetryQuery.isLoading}
           studyId={studyId}
           telemetry={selectedTelemetry}
+          studies={studies}
+          setStudyId={setStudyId}
+          projectName={projectQuery.data?.name}
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
         />
       ) : null}
     </div>
