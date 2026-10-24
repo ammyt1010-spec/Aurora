@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Pause, Play, RefreshCcw } from 'lucide-react';
 import { useParams } from 'react-router-dom';
@@ -42,6 +42,8 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
   useActiveProject(projectId);
   const [studyId, setStudyId] = useState(null);
   const [paused, setPaused] = useState(false);
+  const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
+  const setTechnicalDetailsVisibility = useCallback((visible) => setTechnicalDetailsOpen(visible), []);
   const pageVisible = usePageVisibility();
   const refetchInterval = !paused && pageVisible ? 15000 : false;
 
@@ -75,18 +77,18 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
   const descriptivesQuery = useQuery({
     queryKey: ['responseDescriptives', studyId],
     queryFn: () => getResponseDescriptives(studyId),
-    enabled: Boolean(studyId),
-    refetchInterval,
+    enabled: Boolean(studyId && technicalDetailsOpen),
+    refetchInterval: technicalDetailsOpen ? refetchInterval : false,
     refetchIntervalInBackground: false,
   });
 
   const selectedTelemetry = (telemetryQuery.data?.studies || []).find((study) => study.study_id === studyId);
-  const isRefreshing = telemetryQuery.isFetching || descriptivesQuery.isFetching;
-  const hasDataError = telemetryQuery.isError || descriptivesQuery.isError;
+  const isRefreshing = telemetryQuery.isFetching || (technicalDetailsOpen && descriptivesQuery.isFetching);
+  const hasDataError = telemetryQuery.isError || (technicalDetailsOpen && descriptivesQuery.isError);
 
   const refresh = () => {
     telemetryQuery.refetch();
-    if (studyId) descriptivesQuery.refetch();
+    if (studyId && technicalDetailsOpen) descriptivesQuery.refetch();
   };
 
   if (projectQuery.isLoading) return <LoadingState label="Cargando proyecto…" />;
@@ -146,6 +148,7 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
 
       {studyId ? (
         <TelemetryDashboard
+          onDetailsVisibilityChange={setTechnicalDetailsVisibility}
           projectId={projectId}
           organizationId={projectQuery.data?.organization_id}
           descriptives={descriptivesQuery.data}
