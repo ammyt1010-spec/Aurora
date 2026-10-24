@@ -39,8 +39,9 @@ function toResponsePayload(question, value) {
   }
 }
 
-export default function PublicSurveyPage() {
-  const { publicId } = useParams();
+export default function PublicSurveyPage({ publicIdOverride, onCompleted, batteryContext }) {
+  const { publicId: routePublicId } = useParams();
+  const publicId = publicIdOverride || routePublicId;
   const sessionCreatedRef = useRef(false);
   const [session, setSession] = useState(null);
   const [answers, setAnswers] = useState({});
@@ -78,7 +79,10 @@ export default function PublicSurveyPage() {
 
   const completeMutation = useMutation({
     mutationFn: () => completeResponseSession(session.id, {}, session.access_token),
-    onSuccess: () => setCompleted(true),
+    onSuccess: async () => {
+      if (onCompleted) await onCompleted();
+      else setCompleted(true);
+    },
   });
 
   if (isLoadingBundle) {
@@ -137,11 +141,18 @@ export default function PublicSurveyPage() {
     );
   }
 
+  if (!session && !bundle.requires_invitation && createSessionMutation.isError) {
+    return <div role="alert" className="mx-auto max-w-lg p-8 text-red-700">
+      No fue posible iniciar el instrumento. Comprueba el enlace e inténtalo desde la batería.
+    </div>;
+  }
+
   const questions = bundle.questions;
   const total = questions.length;
   const answeredCount = Object.keys(answers).length;
   const isReady = Boolean(session);
-  const submitError = answerMutation.error instanceof ApiError ? answerMutation.error.message : null;
+  const submitError = answerMutation.error instanceof ApiError ? answerMutation.error.message :
+    (completeMutation.error instanceof ApiError ? completeMutation.error.message : null);
   const theme = resolveSurveyTheme(bundle.theme);
   const isSubmitting = answerMutation.isPending || completeMutation.isPending;
 
@@ -166,6 +177,7 @@ export default function PublicSurveyPage() {
 
     return (
       <div className="survey-shell" data-survey-skin={theme.style} data-survey-align={theme.layout.align} style={buildSurveyThemeVars(theme)}>
+        {batteryContext && <p className="mx-auto max-w-4xl px-4 pt-3 text-xs font-bold text-[#31578d]">{batteryContext}</p>}
         <SurveyProgressHeader
           studyName={bundle.study_name}
           answered={answeredCount}

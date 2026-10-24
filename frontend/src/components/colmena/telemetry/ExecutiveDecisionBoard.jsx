@@ -194,7 +194,7 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
         <div className="aurora-compact-metric">
           <span>{comparing ? 'Unidades comparables' : isCensopas ? 'Dimensiones de riesgo alto' : 'Dimensiones disponibles'}</span>
           <strong>{comparing ? (unitQuery.isError ? 'Sin datos' : unitQuery.isLoading ? 'Cargando' : unitsVisible.length) :
-            isCensopas ? visibleRows.filter(row => row.collective_classification === 'RIESGO_ALTO').length : visibleRows.length}</strong>
+            isCensopas ? (visibleRows.length ? visibleRows.filter(row => row.collective_classification === 'RIESGO_ALTO').length : 'Sin datos') : visibleRows.length}</strong>
           <small>{comparing ? 'Solo resultados publicables' : isCensopas ? 'Clasificación según baremo configurado' : 'Sin categorías de riesgo añadidas'}</small>
         </div>
       </div>
@@ -210,13 +210,37 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
               <button type="button" aria-pressed={analysisView === 'diagnosis'}
                 className={analysisView === 'diagnosis' ? 'is-active' : ''}
                 onClick={() => setAnalysisView('diagnosis')}>Diagnóstico</button>
+              {isCensopas && <button type="button" aria-pressed={analysisView === 'heatmap'}
+                className={analysisView === 'heatmap' ? 'is-active' : ''}
+                onClick={() => setAnalysisView('heatmap')}>Mapa de calor</button>}
               <button type="button" aria-pressed={analysisView === 'trend'}
                 className={analysisView === 'trend' ? 'is-active' : ''}
                 onClick={() => setAnalysisView('trend')}>Evolución</button>
             </div>
           </div>
           <div className="aurora-compact-tablewrap" tabIndex={0} aria-label="Matriz desplazable de resultados">
-            {analysisView === 'trend' ? (
+            {analysisView === 'heatmap' && isCensopas ? (
+              <div className="aurora-compact-heatmap" role="group" aria-label="Mapa de calor de dimensiones publicables">
+                <p className="aurora-compact-temporal-note">Intensidad visual del porcentaje desfavorable; no modifica la clasificación del baremo.</p>
+                <div className="aurora-compact-heat-grid">
+                  {visibleRows.map(row => {
+                    const segmentRow = selectedUnit ? safeCells.get(row.construct_code + '::' + selectedUnit.id) : row;
+                    const v = segmentRow?.unfavorable_pct;
+                    const known = Number.isFinite(v) && v >= 0 && v <= 100;
+                    return (
+                      <button type="button" key={row.construct_code}
+                        aria-pressed={focused?.construct_code === row.construct_code}
+                        onClick={() => setFocusedCode(row.construct_code)}
+                        className="aurora-compact-heat-tile"
+                        style={{backgroundColor: known ? 'rgba(216, 94, 112, ' + (0.06 + v / 100 * 0.39) + ')' : '#F3F6F9'}}>
+                        <span>{row.construct_name}</span>
+                        <strong>{known ? percentText(v) : 'N/D'}</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : analysisView === 'trend' ? (
               <div className="aurora-compact-trend">
                 {comparing && <p className="aurora-compact-temporal-note">Evolución global del estudio. No corresponde al filtro de unidad actual.</p>}
                 <LongitudinalBIWidget projectId={projectId} dimension={focused?.construct_code || (dimension !== 'ALL' ? dimension : 'ALL')}/>
