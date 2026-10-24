@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, ClipboardList, Activity, ChevronDown } from 'lucide-react';
 import { Card } from '../../ui/Card.jsx';
 import { EmptyState } from '../../ui/EmptyState.jsx';
@@ -15,17 +15,18 @@ import TelemetryOverview from './TelemetryOverview.jsx';
  */
 export default function TelemetryDashboard({
   projectId, organizationId, studyId, telemetry, descriptives, isLoadingTelemetry,
+  onDetailsVisibilityChange,
 }) {
   const [technical, setTechnical] = useState('none');
+  useEffect(() => setTechnical('none'), [studyId]);
+  useEffect(() => {
+    onDetailsVisibilityChange?.(technical === 'monitor' || technical === 'questions');
+  }, [technical, onDetailsVisibilityChange]);
 
   if (!studyId) {
     return <Card><EmptyState title="Selecciona una evaluación" description="El diagnóstico se organiza por campaña e instrumento." /></Card>;
   }
   if (isLoadingTelemetry) return <LoadingState label="Cargando diagnóstico…" />;
-  if (!telemetry) {
-    return <Card><EmptyState title="Sin datos de seguimiento" description="Selecciona una campaña con respuestas para consultar el diagnóstico." /></Card>;
-  }
-
   const views = [
     { id: 'monitor', label: 'Seguimiento de captura', icon: Activity },
     { id: 'questions', label: 'Evidencia por pregunta', icon: ClipboardList },

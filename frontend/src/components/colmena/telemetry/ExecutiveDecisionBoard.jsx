@@ -195,7 +195,7 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
           <span>{comparing ? 'Unidades comparables' : isCensopas ? 'Dimensiones de riesgo alto' : 'Dimensiones disponibles'}</span>
           <strong>{comparing ? (unitQuery.isError ? 'Sin datos' : unitQuery.isLoading ? 'Cargando' : unitsVisible.length) :
             isCensopas ? visibleRows.filter(row => row.collective_classification === 'RIESGO_ALTO').length : visibleRows.length}</strong>
-          <small>{comparing ? 'Solo resultados publicables' : isCensopas ? 'Clasificaciones oficiales del motor configurado' : 'Sin categorías de riesgo añadidas'}</small>
+          <small>{comparing ? 'Solo resultados publicables' : isCensopas ? 'Clasificación según baremo configurado' : 'Sin categorías de riesgo añadidas'}</small>
         </div>
       </div>
 

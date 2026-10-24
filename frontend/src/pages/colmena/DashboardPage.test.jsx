@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithQueryClient } from '../../test-utils/renderWithQueryClient.jsx';
 import DashboardPage from './DashboardPage.jsx';
@@ -66,4 +66,23 @@ describe('AURORA instrument catalog', () => {
     ] });
     expect(cards[0].instrument_version_id).toBe(2);
   });
+  it('shows one catalog at a time and only reveals previous campaigns on request', async () => {
+    getCensopasPlans.mockResolvedValue({
+      plans: [{ version_kind: 'SHORT', instrument_version_id: 21,
+        version_code: 'SHORT', ready_for_scoring: true, question_count: 40,
+        scored_item_count: 40, dimension_count: 6, subdimension_count: 0 }],
+    });
+    listProjects.mockResolvedValue({ items: [{id:9, name:'Empresa de prueba'}] });
+    renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    expect(await screen.findByText('CENSOPAS-COPSOQ, versión corta')).toBeInTheDocument();
+    expect(screen.queryByText('Empresa de prueba')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', {name:/Mis evaluaciones/}));
+    expect(screen.getByText('Empresa de prueba')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', {name:/Multidisciplinario/}));
+    expect(screen.queryByText('CENSOPAS-COPSOQ, versión corta')).not.toBeInTheDocument();
+    expect(await screen.findByText('No se encontraron instrumentos con estos filtros')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', {name:/Psicosocial/}));
+    expect(screen.getByText('CENSOPAS-COPSOQ, versión corta')).toBeInTheDocument();
+  });
+
 });
