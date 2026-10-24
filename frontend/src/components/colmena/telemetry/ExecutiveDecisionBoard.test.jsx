@@ -88,4 +88,10 @@ describe('AURORA single-screen executive canvas',()=>{
     expect(screen.queryByText('Longitudinal view loaded')).not.toBeInTheDocument();
   });
 
+  it('shows a real error instead of endless loading when study fails',async()=>{
+    getStudy.mockRejectedValue(new Error('Falló conexión'));
+    renderBoard();
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo consultar el diagnóstico metodológico');
+  });
+
 });
