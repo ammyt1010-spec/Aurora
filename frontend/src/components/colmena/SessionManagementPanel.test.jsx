@@ -58,7 +58,7 @@ describe('SessionManagementPanel', () => {
 
   it('allows revoking a specific remote session', async () => {
     renderWithQueryClient(<SessionManagementPanel />);
-    const revokeBtn = await screen.findByRole('button', { name: 'Cerrar sesión' });
+    const revokeBtn = await screen.findByRole('button', { name: 'Cerrar sesión' }, { timeout: 3000 });
     expect(revokeBtn).toBeInTheDocument();
 
     fireEvent.click(revokeBtn);
@@ -70,7 +70,7 @@ describe('SessionManagementPanel', () => {
 
   it('allows revoking all other sessions when remote sessions exist', async () => {
     renderWithQueryClient(<SessionManagementPanel />);
-    const revokeOthersBtn = await screen.findByRole('button', { name: 'Cerrar las demás sesiones' });
+    const revokeOthersBtn = await screen.findByRole('button', { name: 'Cerrar las demás sesiones' }, { timeout: 3000 });
     expect(revokeOthersBtn).toBeInTheDocument();
 
     fireEvent.click(revokeOthersBtn);

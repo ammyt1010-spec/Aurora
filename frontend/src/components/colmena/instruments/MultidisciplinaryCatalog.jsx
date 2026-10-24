@@ -99,6 +99,7 @@ export default function MultidisciplinaryCatalog({
   projectId,
   currentStudyId,
   currentVersionId,
+  selectedIds = [],
   onSelectInstrument,
   onCreateEvaluation,
   simpleMode = false,
@@ -338,6 +339,16 @@ export default function MultidisciplinaryCatalog({
                     </span>
 
                     <div className="flex items-center gap-2">
+                      {onSelectInstrument ? (
+                        <Button
+                          size="sm"
+                          variant={selectedIds?.includes(inst.id) ? "primary" : "secondary"}
+                          className={`text-xs font-semibold ${selectedIds?.includes(inst.id) ? "bg-teal-600 hover:bg-teal-700 text-white border-teal-600" : ""}`}
+                          onClick={() => onSelectInstrument(inst)}
+                        >
+                          {selectedIds?.includes(inst.id) ? "✓ En la batería" : "+ Agregar a batería"}
+                        </Button>
+                      ) : null}
                       <Button
                         size="sm"
                         variant="secondary"

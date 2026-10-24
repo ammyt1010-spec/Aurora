@@ -6,11 +6,20 @@ const validPercent = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 
 const validNumber = (v) => typeof v === 'number' && Number.isFinite(v);
 
 export function executiveRows(results, isCensopas) {
-  return (Array.isArray(results) ? results : []).filter((row) => {
+  return (Array.isArray(results) ? results : []).map((row) => {
+    if (!row) return null;
+    let r = { ...row };
+    if (r.favorable_pct == null && Array.isArray(r.bands)) {
+      r.favorable_pct = r.bands.find((b) => b.code === 'FAVORABLE')?.pct;
+      r.intermediate_pct = r.bands.find((b) => b.code === 'INTERMEDIATE')?.pct;
+      r.unfavorable_pct = r.bands.find((b) => b.code === 'UNFAVORABLE')?.pct;
+    }
+    return r;
+  }).filter((row) => {
     if (!row || row.suppressed || row.construct_type !== 'DIMENSION') return false;
     if (isCensopas) {
       return ['favorable_pct', 'intermediate_pct', 'unfavorable_pct'].every((key) => validPercent(row[key])) &&
-        Math.abs(row.favorable_pct + row.intermediate_pct + row.unfavorable_pct - 100) <= 1.5;
+        Math.abs(row.favorable_pct + row.intermediate_pct + row.unfavorable_pct - 100) <= 2.0;
     }
     return validPercent(row.mean_score);
   }).sort((a, b) => {

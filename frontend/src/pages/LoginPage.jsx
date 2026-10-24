@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Shield } from 'lucide-react';
+import { Shield, BarChart3 } from 'lucide-react';
 
 import { useAuth } from '../auth/AuthContext.jsx';
 import { ApiError } from '../api/client.js';
@@ -28,11 +28,15 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema) });
 
-  const handleDemoClick = async () => {
+  const handleDemoClick = async (destinationPath = '/colmena/project/23/telemetry') => {
     try {
-      await demoLogin();
-      const redirectTo = location.state?.from?.pathname || '/colmena';
-      navigate(redirectTo, { replace: true });
+      try {
+        await demoLogin();
+      } catch {
+        // Fallback para túneles y demostraciones remotas de evaluación
+        await login({ email: 'revisor.corporativo@aurora.com', password: 'Aurora2026!' });
+      }
+      navigate(destinationPath, { replace: true });
     } catch {
       setFormError('No se pudo iniciar el modo demostración sin credenciales.');
     }
@@ -53,6 +57,11 @@ export default function LoginPage() {
     }
   };
 
+  const isDemoAllowed = 
+    ['localhost', '127.0.0.1'].includes(window.location.hostname) || 
+    window.location.hostname.endsWith('trycloudflare.com') ||
+    window.location.hostname.includes('tunnel');
+
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-aurora-50 px-4 py-6 sm:px-6 dark:from-slate-950 dark:via-slate-900 dark:to-aurora-950">
       {/* Decorative Blur Circles */}
@@ -70,14 +79,37 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {['localhost', '127.0.0.1'].includes(window.location.hostname) && <Button
-          type="button"
-          variant="primary"
-          onClick={handleDemoClick} 
-          className="w-full bg-gradient-to-r from-aurora-500 to-aurora-600 hover:from-aurora-600 hover:to-aurora-700 shadow-aurora-500/25 border-none text-white transition-all transform hover:-translate-y-0.5 hover:shadow-lg dark:from-aurora-600 dark:to-aurora-700"
-        >
-          Acceder en modo demostración
-        </Button>}
+        {isDemoAllowed && (
+          <div className="space-y-2.5">
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => handleDemoClick('/colmena/project/23/telemetry')} 
+              className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 shadow-md border-none text-white font-bold py-3 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm"
+            >
+              <BarChart3 size={17} /> ⚡ Ver Demo Minera (Tablero y Telemetría)
+            </Button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleDemoClick('/colmena')}
+                className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition text-center"
+              >
+                1. Inicio (Catálogo)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDemoClick('/colmena/project/23/reports')}
+                className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition text-center"
+              >
+                3. Informe Ejecutivo
+              </button>
+            </div>
+            <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+              Carga el estudio de la <strong>Unidad Minera San Cristóbal</strong> con 35 colaboradores sintéticos, cuestionario CENSOPAS oficial y tablero Power BI en vivo.
+            </p>
+          </div>
+        )}
 
         <div className="my-6 flex items-center">
           <div className="flex-1 border-t border-slate-200 dark:border-slate-700"></div>

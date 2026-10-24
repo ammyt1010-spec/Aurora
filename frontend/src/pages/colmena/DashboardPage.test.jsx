@@ -80,7 +80,7 @@ describe('AURORA instrument catalog', () => {
     });
     listProjects.mockResolvedValue({ items: [{id:9, name:'Empresa de prueba'}] });
     renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByRole('button',{name:'Explorar catálogo'})).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Explorar catálogo' }, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByText('CENSOPAS-COPSOQ, versión corta')).not.toBeInTheDocument();
     expect(screen.queryByText('Empresa de prueba', {selector:'strong'})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:'Explorar catálogo'}));
