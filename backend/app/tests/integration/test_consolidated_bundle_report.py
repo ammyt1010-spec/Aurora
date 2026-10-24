@@ -81,8 +81,11 @@ async def test_merge_only_paid_integrity_checked_pdf(
 
     combined = await combine_paid_bundle_reports(session, bundle, seed_user.id)
     with open(combined.storage_path, "rb") as stream:
-        assert len(PdfReader(stream).pages) == 2
+        assert len(PdfReader(stream).pages) == 3  # 1 portada ejecutiva + 2 originales
     assert len(combined.manifest["reports"]) == 2
+    assert combined.manifest["executive_cover_pages"] == 1
+    assert combined.manifest["reports"][0]["start_page"] == 2
+    assert combined.manifest["reports"][1]["start_page"] == 3
 
     # Los informes PDF renderizados desde un DOCX oficial también deben
     # poder consolidarse, verificando la integridad del archivo original.
@@ -101,7 +104,7 @@ async def test_merge_only_paid_integrity_checked_pdf(
 
     hybrid = await combine_paid_bundle_reports(session, bundle, seed_user.id)
     with open(hybrid.storage_path, "rb") as stream:
-        assert len(PdfReader(stream).pages) == 2
+        assert len(PdfReader(stream).pages) == 3  # 1 portada ejecutiva + 2 originales
     assert hybrid.manifest["reports"][0]["source_format"] == "DOCX"
 
     # Cualquier manipulación posterior invalida el documento fuente.

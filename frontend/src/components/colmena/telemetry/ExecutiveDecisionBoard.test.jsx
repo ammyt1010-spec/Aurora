@@ -82,6 +82,10 @@ describe('AURORA single-screen executive canvas',()=>{
     renderBoard();
     await screen.findByRole('heading',{name:'Dimensiones y comparaciones'});
     expect(screen.queryByText('Longitudinal view loaded')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Mapa de calor'}));
+    expect(screen.getByRole('group',{name:'Mapa de calor de dimensiones publicables'})).toBeInTheDocument();
+    expect(screen.queryByText('Privado')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Diagnóstico'}));
     fireEvent.click(screen.getByRole('button',{name:'Evolución'}));
     expect(screen.getByText('Longitudinal view loaded')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:'Diagnóstico'}));

@@ -9,6 +9,7 @@ import { setActiveProjectId } from '../../utils/activeProject.js';
 import '../../design/PremiumSurfaces.css';
 import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
 import MultidisciplinaryCatalog from '../../components/colmena/instruments/MultidisciplinaryCatalog.jsx';
+import BundleSelectionPanel from '../../components/colmena/instruments/BundleSelectionPanel.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { ErrorState } from '../../components/ui/ErrorState.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [selectedInstrument, setSelectedInstrument] = useState(null);
   const [catalog, setCatalog] = useState('censopas');
   const [showProjects, setShowProjects] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['censopas-plans'],
     queryFn: getCensopasPlans,
@@ -54,6 +56,7 @@ export default function DashboardPage() {
   });
   const cards = availableInstrumentCards(data);
   const projectItems = existingProjects?.items || [];
+  const catalogVisible = showCatalog || projectItems.length === 0;
 
   return (
     <div className="colmena-page aurora-premium-page aurora-home-focus">
@@ -66,8 +69,9 @@ export default function DashboardPage() {
         <div className="aurora-suite-hero-icon" aria-hidden="true"><BookOpen size={27}/></div>
       </header>
 
+      <BundleSelectionPanel projects={projectItems} />
       <div className="aurora-home-toolbar">
-        <div role="tablist" aria-label="Catálogo de instrumentos" className="aurora-home-tabs">
+        {catalogVisible && <div role="tablist" aria-label="Catálogo de instrumentos" className="aurora-home-tabs">
           <button type="button" role="tab" id="aurora-tab-censopas"
             aria-selected={catalog === 'censopas'} aria-controls="aurora-catalog-view"
             className={catalog === 'censopas' ? 'is-active' : ''}
@@ -80,8 +84,13 @@ export default function DashboardPage() {
             onClick={() => setCatalog('multidisc')}>
             <Layers3 size={15}/> Multidisciplinario
           </button>
-        </div>
+        </div>}
         <div className="aurora-home-actions">
+          {projectItems.length > 0 && <button type="button" className="aurora-home-action"
+            onClick={() => setShowCatalog(value => !value)}
+            aria-expanded={catalogVisible}>
+            {catalogVisible ? 'Ocultar catálogo' : 'Explorar catálogo'}
+          </button>}
           {projectItems.length > 0 && (
             <button type="button" aria-expanded={showProjects}
               onClick={() => setShowProjects(x => !x)}
@@ -124,7 +133,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <section id="aurora-catalog-view" role="tabpanel"
+      {catalogVisible && <section id="aurora-catalog-view" role="tabpanel"
         aria-labelledby={catalog === 'censopas' ? 'aurora-tab-censopas' : 'aurora-tab-multidisc'}
         className="aurora-home-catalog" key={catalog}>
         {catalog === 'censopas' ? (
@@ -186,7 +195,7 @@ export default function DashboardPage() {
             <MultidisciplinaryCatalog simpleMode onCreateEvaluation={() => navigate('/colmena/project/new')} />
           </div>
         )}
-      </section>
+      </section>}
       {selectedInstrument && <InstrumentConfirmModal instrument={selectedInstrument} isOpen
         onClose={() => setSelectedInstrument(null)}
         onCreated={result => {
