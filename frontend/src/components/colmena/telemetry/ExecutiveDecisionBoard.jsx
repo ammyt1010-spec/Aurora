@@ -10,6 +10,7 @@ import {
   actionForDimension, comparisonUnits, executiveRows, matrixCells, maxUnfavorable,
   percentText, riskLabel, selectedDimension,
 } from './executiveBoardModel.js';
+import LongitudinalBIWidget from './LongitudinalBIWidget.jsx';
 import './ExecutiveDecisionBoard.css';
 
 const BANDS = [
@@ -48,12 +49,14 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
   const [unitTypeId, setUnitTypeId] = useState('');
   const [unitId, setUnitId] = useState('ALL');
   const [focusedCode, setFocusedCode] = useState(null);
+  const [analysisView, setAnalysisView] = useState('diagnosis');
 
   useEffect(() => {
     setDimension('ALL');
     setUnitTypeId('');
     setUnitId('ALL');
     setFocusedCode(null);
+    setAnalysisView('diagnosis');
   }, [studyId]);
 
   const studyQuery = useQuery({
@@ -203,10 +206,22 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
               <h3>Dimensiones y comparaciones</h3>
               <span>{isCensopas ? 'Desfavorable · Intermedio · Favorable' : 'Puntuación descriptiva (0 a 100)'}</span>
             </div>
-            <span className="aurora-compact-count">{visibleRows.length} dimensiones</span>
+            <div className="aurora-compact-views" role="group" aria-label="Tipo de análisis">
+              <button type="button" aria-pressed={analysisView === 'diagnosis'}
+                className={analysisView === 'diagnosis' ? 'is-active' : ''}
+                onClick={() => setAnalysisView('diagnosis')}>Diagnóstico</button>
+              <button type="button" aria-pressed={analysisView === 'trend'}
+                className={analysisView === 'trend' ? 'is-active' : ''}
+                onClick={() => setAnalysisView('trend')}>Evolución</button>
+            </div>
           </div>
           <div className="aurora-compact-tablewrap" tabIndex={0} aria-label="Matriz desplazable de resultados">
-            {sourceUnavailable ? (
+            {analysisView === 'trend' ? (
+              <div className="aurora-compact-trend">
+                {comparing && <p className="aurora-compact-temporal-note">Evolución global del estudio. No corresponde al filtro de unidad actual.</p>}
+                <LongitudinalBIWidget projectId={projectId} dimension={focused?.construct_code || (dimension !== 'ALL' ? dimension : 'ALL')}/>
+              </div>
+            ) : sourceUnavailable ? (
               <Empty>{unitQuery.isError ? 'No fue posible obtener la segmentación autorizada.' : 'Cargando comparaciones…'}</Empty>
             ) : visibleRows.length === 0 ? (
               <Empty>No hay dimensiones publicables con los filtros actuales.</Empty>
