@@ -54,7 +54,7 @@ export default function PublicBundlePage() {
           </div>}
         </header>
         {query.isLoading && <p role="status" className="rounded-xl bg-white p-6">Preparando los instrumentos autorizados…</p>}
-        {query.isError && <p role="alert" className="rounded-xl border border-red-200 bg-white p-6 text-red-700">
+        {query.isError && !flowError && <p role="alert" className="rounded-xl border border-red-200 bg-white p-6 text-red-700">
           La batería no está disponible. Confirma que el enlace sigue vigente.
         </p>}
         {flowError && <p role="alert" className="rounded-xl border border-red-200 bg-white p-5 text-red-700">{flowError}</p>}
