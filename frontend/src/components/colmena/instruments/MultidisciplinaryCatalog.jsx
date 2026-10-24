@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Brain,
@@ -67,13 +68,13 @@ const STATUS_CONFIG = {
     label: 'Autorizado',
     color: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     icon: CheckCircle2,
-    description: 'Validado metodológicamente y certificado para evaluaciones corporativas.',
+    description: 'Marcado como autorizado en el catálogo. Comprueba la documentación metodológica y los permisos de uso.',
   },
   ACTIVE: {
     label: 'Autorizado / Activo',
     color: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     icon: CheckCircle2,
-    description: 'Activo para emisión de informes con orden pagada.',
+    description: 'Estado activo en la plataforma. Su uso depende de versión autorizada y licenciamiento.',
   },
   LOCKED: {
     label: 'Bloqueado',
@@ -100,8 +101,10 @@ export default function MultidisciplinaryCatalog({
   currentStudyId,
   currentVersionId,
   onSelectInstrument,
+  simpleMode = false,
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selectedDiscipline, setSelectedDiscipline] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,16 +140,16 @@ export default function MultidisciplinaryCatalog({
     mutationFn: (versionId) => validateInstrumentVersion(versionId),
     onSuccess: (data) => {
       setValidationModal(data);
-      queryClient.invalidateQueries(['multidisciplinary-instruments']);
-      queryClient.invalidateQueries(['censopas-readiness']);
+      queryClient.invalidateQueries({ queryKey: ['multidisciplinary-instruments'] });
+      queryClient.invalidateQueries({ queryKey: ['censopas-readiness'] });
     },
   });
 
   const linkMutation = useMutation({
     mutationFn: ({ studyId, versionId }) => linkStudyInstrument(studyId, versionId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['project']);
-      queryClient.invalidateQueries(['study']);
+      queryClient.invalidateQueries({ queryKey: ['project'] });
+      queryClient.invalidateQueries({ queryKey: ['study'] });
       alert('Instrumento vinculado exitosamente al estudio del proyecto.');
     },
   });
@@ -154,9 +157,9 @@ export default function MultidisciplinaryCatalog({
   const instruments = instrumentsResponse?.items || [];
 
   return (
-    <div className="space-y-6">
+    <div className={simpleMode ? "space-y-3" : "space-y-6"}>
       {/* Barra de Búsqueda y Filtros de Disciplina */}
-      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className={simpleMode ? "rounded-xl border border-border bg-card p-3 shadow-sm" : "rounded-2xl border border-border bg-card p-4 shadow-sm"}>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           {/* Campo de búsqueda */}
           <div className="relative flex-1">
@@ -191,7 +194,7 @@ export default function MultidisciplinaryCatalog({
         </div>
 
         {/* Píldoras de Disciplina */}
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className={simpleMode ? "mt-2 flex flex-wrap gap-1.5" : "mt-4 flex flex-wrap gap-2"}>
           <button
             type="button"
             onClick={() => setSelectedDiscipline('ALL')}
@@ -238,7 +241,7 @@ export default function MultidisciplinaryCatalog({
           />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className={simpleMode ? "grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3" : "grid grid-cols-1 gap-4 md:grid-cols-2"}>
           {instruments.map((inst) => {
             const DisciplineIcon = DISCIPLINE_ICONS[inst.discipline] || FileText;
             const statusInfo = STATUS_CONFIG[inst.status] || STATUS_CONFIG.DRAFT;
@@ -248,7 +251,7 @@ export default function MultidisciplinaryCatalog({
             return (
               <Card
                 key={inst.id}
-                className="flex flex-col justify-between transition-all hover:border-amber/40 hover:shadow-md"
+                className={simpleMode ? "flex flex-col justify-between gap-2 p-3 transition-colors hover:border-[#B9D9EF]" : "flex flex-col justify-between transition-all hover:border-amber/40 hover:shadow-md"}
               >
                 <div>
                   {/* Encabezado de la Tarjeta */}
@@ -283,7 +286,7 @@ export default function MultidisciplinaryCatalog({
                   </div>
 
                   {/* Metadatos y Procedencia */}
-                  <div className="mt-4 flex flex-wrap gap-2 text-[11px]">
+                  {!simpleMode && <div className="mt-4 flex flex-wrap gap-2 text-[11px]">
                     <span className="rounded-lg border border-border bg-background/80 px-2.5 py-1 font-medium text-dark">
                       Disciplina: <strong className="font-semibold text-amber">{inst.discipline}</strong>
                     </span>
@@ -294,17 +297,17 @@ export default function MultidisciplinaryCatalog({
                     ) : null}
                     {isSystem ? (
                       <span className="flex items-center gap-1 rounded-lg bg-turquoise/10 px-2.5 py-1 font-semibold text-turquoise">
-                        <Award size={12} /> Núcleo Oficial AURORA
+                        <Award size={12} /> Instrumento del sistema AURORA
                       </span>
                     ) : (
                       <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700">
                         Corporativo Privado
                       </span>
                     )}
-                  </div>
+                  </div>}
 
                   {/* Autorizaciones y Restricciones de Reproducción */}
-                  {inst.reproduction_terms ? (
+                  {!simpleMode && inst.reproduction_terms ? (
                     <div className="mt-3 rounded-xl border border-border/80 bg-background/50 p-2 text-[11px] text-muted">
                       <span className="font-semibold text-dark">Propiedad & Restricción:</span>{' '}
                       {inst.reproduction_terms}
@@ -313,7 +316,18 @@ export default function MultidisciplinaryCatalog({
                 </div>
 
                 {/* Acciones de la Tarjeta */}
-                <div className="mt-5 border-t border-border pt-4">
+                {simpleMode ? (
+                  <div className="mt-2">
+                    <button type="button"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#173968] px-3 py-2 text-xs font-bold text-white hover:bg-[#29538F]"
+                      onClick={() => {
+                        if (onSelectInstrument) onSelectInstrument(inst);
+                        else navigate('/colmena/project/new');
+                      }}>
+                      <ChevronRight size={14}/> Configurar evaluación
+                    </button>
+                  </div>
+                ) : <div className="mt-5 border-t border-border pt-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[11px] font-medium text-muted">
                       Método tarifario:{' '}
@@ -328,10 +342,10 @@ export default function MultidisciplinaryCatalog({
                         variant="secondary"
                         className="text-xs"
                         onClick={() => {
-                          const targetVerId = inst.metadata?.default_version_id || inst.id;
-                          validateMutation.mutate(targetVerId);
+                          const targetVerId = inst.metadata?.default_version_id;
+                          if (targetVerId) validateMutation.mutate(targetVerId);
                         }}
-                        disabled={validateMutation.isPending}
+                        disabled={validateMutation.isPending || !inst.metadata?.default_version_id}
                       >
                         <ShieldCheck size={13} className="mr-1 text-amber" /> Auditoría Metodológica
                       </Button>
@@ -341,19 +355,20 @@ export default function MultidisciplinaryCatalog({
                           variant="secondary"
                           className="text-xs"
                           onClick={() => {
-                            const targetVerId = inst.metadata?.default_version_id || inst.id;
-                            linkMutation.mutate({
+                            const targetVerId = inst.metadata?.default_version_id;
+                            if (targetVerId) linkMutation.mutate({
                               studyId: currentStudyId,
                               versionId: targetVerId,
                             });
                           }}
+                          disabled={!inst.metadata?.default_version_id}
                         >
                           <LinkIcon size={13} className="mr-1" /> Vincular a Estudio
                         </Button>
                       ) : null}
                     </div>
                   </div>
-                </div>
+                </div>}
               </Card>
             );
           })}
