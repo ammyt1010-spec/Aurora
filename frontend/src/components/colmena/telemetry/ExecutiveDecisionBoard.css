@@ -138,3 +138,13 @@
   .aurora-compact-tablewrap{max-height:310px}
   .aurora-compact-insightbody{max-height:310px}
 }
+
+.aurora-compact-heatmap{height:100%;padding:10px;overflow-y:auto}
+.aurora-compact-heat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:9px}
+.aurora-compact-heat-tile{min-height:82px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;
+  text-align:left;gap:8px;padding:11px;border-radius:10px;border:1px solid rgba(135,154,184,.22);cursor:pointer;
+  color:#193654;transition:box-shadow .12s ease,border-color .12s ease}
+.aurora-compact-heat-tile span{font-size:11px;font-weight:750;line-height:1.4}
+.aurora-compact-heat-tile strong{font-size:17px;font-variant-numeric:tabular-nums}
+.aurora-compact-heat-tile[aria-pressed="true"]{outline:2px solid #3158A3;outline-offset:1px}
+@media(prefers-reduced-motion:reduce){.aurora-compact-heat-tile{transition:none}}
