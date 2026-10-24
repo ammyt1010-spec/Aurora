@@ -183,7 +183,7 @@ export default function DashboardPage() {
                 <span>Selecciona un método autorizado y vincúlalo a su evaluación empresarial.</span>
               </div>
             </div>
-            <MultidisciplinaryCatalog simpleMode />
+            <MultidisciplinaryCatalog simpleMode onCreateEvaluation={() => navigate('/colmena/project/new')} />
           </div>
         )}
       </section>
