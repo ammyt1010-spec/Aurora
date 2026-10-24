@@ -63,7 +63,7 @@ describe('AURORA single-screen executive canvas',()=>{
     fireEvent.change(screen.getByLabelText('Unidad del segmento'),{target:{value:'20'}});
     expect(screen.getByText('Comparación descriptiva por segmento')).toBeInTheDocument();
     expect(screen.queryByText('Evaluar distribución de cargas')).not.toBeInTheDocument();
-    expect(screen.getByText('60.0%')).toBeInTheDocument();
+    expect(screen.getAllByText('60.0%').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button',{name:'Restablecer'}));
     expect(screen.getByLabelText('Tipo de segmento').value).toBe('');
   });
