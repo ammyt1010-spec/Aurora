@@ -88,36 +88,65 @@ async def main():
         print(f"Autenticación exitosa y carga de Inicio en {TIMINGS['auth_transition']}s")
 
         # -------------------------------------------------------------
-        # 2. PANTALLA 1: INICIO (Catálogo de instrumentos)
+        # 2. PANTALLA 1: INICIO (Batería por casillas y Catálogo colapsable)
         # -------------------------------------------------------------
         print("\n--- 2. Pantalla 1: INICIO ---")
         t0 = time.time()
         await page.goto(f"{FRONTEND_URL}/colmena", wait_until="networkidle")
         TIMINGS["inicio_page_load"] = round(time.time() - t0, 3)
-        await page.wait_for_selector(".aurora-home-catalog, .aurora-catalog-card", timeout=15000)
-        print(f"Inicio cargado con catálogo en {TIMINGS['inicio_page_load']}s")
+        await page.wait_for_selector("section[aria-label='Seleccionar instrumentos de batería'], .aurora-home-hero", timeout=15000)
+        print(f"Inicio cargado en {TIMINGS['inicio_page_load']}s")
 
-        # Recorrer los 6 viewports para Pantalla 1: INICIO
-        for vp in VIEWPORTS:
-          await page.set_viewport_size({"width": vp["width"], "height": vp["height"]})
-          await asyncio.sleep(0.3)
-          shot_path = SCREENSHOTS_DIR / f"inicio_{vp['name']}.png"
-          await page.screenshot(path=str(shot_path), full_page=True)
-          print(f"  -> Captura guardada: {shot_path.name}")
+        # Seleccionar empresa y generar enlace y QR con casillas de verificación
+        print("Probando selección de empresa e instrumentos de batería...")
+        company_select = page.locator("select[aria-label='Empresa para la batería']")
+        if await company_select.count() > 0:
+            current_val = await company_select.input_value()
+            if current_val != "23":
+                await company_select.select_option("23")
+                await asyncio.sleep(0.8)
 
-        # Probar interacción con catálogo: alternar a Multidisciplinario y volver
-        await page.set_viewport_size({"width": 1440, "height": 900})
-        print("Probando pestañas del catálogo (Psicosocial vs Multidisciplinario)...")
-        multidisc_tab = page.locator("button[role='tab']:has-text('Multidisciplinario')")
-        if await multidisc_tab.count() > 0:
-            await multidisc_tab.click()
+        # Marcar los instrumentos disponibles
+        checkboxes = page.locator("section[aria-label='Seleccionar instrumentos de batería'] input[type='checkbox']")
+        cb_count = await checkboxes.count()
+        print(f"  -> Instrumentos encontrados para la empresa: {cb_count}")
+        for i in range(min(cb_count, 2)):
+            cb = checkboxes.nth(i)
+            if not await cb.is_checked():
+                await cb.check()
+                await asyncio.sleep(0.2)
+
+        # Generar enlace y QR
+        gen_btn = page.locator("button:has-text('Generar enlace y QR')")
+        if await gen_btn.count() > 0 and await gen_btn.is_enabled():
+            print("  -> Generando enlace y QR conjunto...")
+            await gen_btn.click()
+            await page.wait_for_selector("svg[aria-label='Código QR de batería empresarial']", timeout=10000)
             await asyncio.sleep(0.5)
-            await page.screenshot(path=str(SCREENSHOTS_DIR / "inicio_catalogo_multidisciplinario.png"))
+            await page.screenshot(path=str(SCREENSHOTS_DIR / "modal_bateria_qr_generada.png"))
+            await page.screenshot(path=str(SCREENSHOTS_DIR / "inicio_bateria_qr_generada.png"))
+            print("  -> QR y enlace de batería generados con éxito.")
 
-        censopas_tab = page.locator("button[role='tab']:has-text('Psicosocial')")
-        if await censopas_tab.count() > 0:
-            await censopas_tab.click()
-            await asyncio.sleep(0.5)
+        # Probar colapso/despliegue del catálogo secundario
+        cat_toggle = page.locator("button:has-text('Explorar catálogo')")
+        if await cat_toggle.count() > 0:
+            print("  -> Desplegando catálogo secundario...")
+            await cat_toggle.click()
+            await page.wait_for_selector(".aurora-home-catalog", timeout=10000)
+            await asyncio.sleep(0.4)
+
+            # Pestaña Multidisciplinario
+            multidisc_tab = page.locator("button[role='tab']:has-text('Multidisciplinario')")
+            if await multidisc_tab.count() > 0:
+                await multidisc_tab.click()
+                await asyncio.sleep(0.4)
+                await page.screenshot(path=str(SCREENSHOTS_DIR / "inicio_catalogo_multidisciplinario.png"))
+
+            # Pestaña Psicosocial
+            censopas_tab = page.locator("button[role='tab']:has-text('Psicosocial')")
+            if await censopas_tab.count() > 0:
+                await censopas_tab.click()
+                await asyncio.sleep(0.4)
 
         # Probar botón 'Mis evaluaciones'
         eval_btn = page.locator("button:has-text('Mis evaluaciones')")
@@ -127,17 +156,13 @@ async def main():
             await asyncio.sleep(0.4)
             await page.screenshot(path=str(SCREENSHOTS_DIR / "inicio_mis_evaluaciones_desplegadas.png"))
 
-        # Probar modal de Batería QR
-        gen_qr_btn = page.locator("button:has-text('Generar Enlace y QR Batería')")
-        if await gen_qr_btn.count() > 0:
-            print("  -> Generando modal de batería con QR...")
-            await gen_qr_btn.click()
-            await asyncio.sleep(0.4)
-            await page.screenshot(path=str(SCREENSHOTS_DIR / "modal_bateria_qr_generada.png"))
-            close_btn = page.locator("button:has-text('Cerrar')")
-            if await close_btn.count() > 0:
-                await close_btn.click()
-                await asyncio.sleep(0.3)
+        # Recorrer los 6 viewports para Pantalla 1: INICIO
+        for vp in VIEWPORTS:
+            await page.set_viewport_size({"width": vp["width"], "height": vp["height"]})
+            await asyncio.sleep(0.3)
+            shot_path = SCREENSHOTS_DIR / f"inicio_{vp['name']}.png"
+            await page.screenshot(path=str(shot_path), full_page=True)
+            print(f"  -> Captura guardada: {shot_path.name}")
 
         # -------------------------------------------------------------
         # 3. PANTALLA 2: TELEMETRÍA (Estudio Minero San Cristóbal - Proyecto 23)
@@ -149,30 +174,34 @@ async def main():
         await page.wait_for_selector(".aurora-compact, .aurora-bi-panel, table", timeout=20000)
         print(f"Telemetría cargada con diagnóstico ejecutivo en {TIMINGS['telemetry_page_load']}s")
 
-        # Captura en los 6 viewports para Pantalla 2: TELEMETRÍA
-        for vp in VIEWPORTS:
-            await page.set_viewport_size({"width": vp["width"], "height": vp["height"]})
-            await asyncio.sleep(0.4)
-            shot_path = SCREENSHOTS_DIR / f"telemetria_{vp['name']}.png"
-            await page.screenshot(path=str(shot_path), full_page=True)
-            print(f"  -> Captura guardada: {shot_path.name}")
-
         # Captura exacta para revisión directiva a 1440x900 (viewport ejecutivo sin scroll forzado)
         await page.set_viewport_size({"width": 1440, "height": 900})
         await asyncio.sleep(0.5)
         await page.screenshot(path=str(SCREENSHOTS_DIR / "telemetria_ejecutiva_1440x900_completa.png"), full_page=False)
 
-        # Probar interactividad: alternar entre Diagnóstico y Evolución longitudinal
+        # Probar interactividad: alternar a Mapa de calor
+        heatmap_btn = page.locator("button:has-text('Mapa de calor')")
+        if await heatmap_btn.count() > 0:
+            print("  -> Alternando a vista de Mapa de Calor...")
+            await heatmap_btn.click()
+            await page.wait_for_selector(".aurora-compact-heatmap", timeout=5000)
+            await asyncio.sleep(0.5)
+            await page.screenshot(path=str(SCREENSHOTS_DIR / "telemetria_mapa_de_calor.png"))
+            print("  -> Captura Mapa de calor guardada.")
+
+        # Probar interactividad: alternar a Evolución longitudinal
         trend_btn = page.locator("button:has-text('Evolución')")
         if await trend_btn.count() > 0:
             print("  -> Alternando a vista de Evolución Longitudinal...")
             await trend_btn.click()
             await asyncio.sleep(0.5)
             await page.screenshot(path=str(SCREENSHOTS_DIR / "telemetria_evolucion_longitudinal.png"))
-            diag_btn = page.locator("button:has-text('Diagnóstico')")
-            if await diag_btn.count() > 0:
-                await diag_btn.click()
-                await asyncio.sleep(0.3)
+
+        # Volver a Diagnóstico
+        diag_btn = page.locator("button:has-text('Diagnóstico')")
+        if await diag_btn.count() > 0:
+            await diag_btn.click()
+            await asyncio.sleep(0.3)
 
         # Probar herramientas técnicas colapsables (Explorador avanzado Power BI)
         adv_btn = page.locator("button:has-text('Explorador avanzado')")
@@ -182,6 +211,14 @@ async def main():
             await asyncio.sleep(0.6)
             await page.screenshot(path=str(SCREENSHOTS_DIR / "telemetria_explorador_avanzado_powerbi.png"))
 
+        # Captura en los 6 viewports para Pantalla 2: TELEMETRÍA
+        for vp in VIEWPORTS:
+            await page.set_viewport_size({"width": vp["width"], "height": vp["height"]})
+            await asyncio.sleep(0.4)
+            shot_path = SCREENSHOTS_DIR / f"telemetria_{vp['name']}.png"
+            await page.screenshot(path=str(shot_path), full_page=True)
+            print(f"  -> Captura guardada: {shot_path.name}")
+
         # -------------------------------------------------------------
         # 4. PANTALLA 3: INFORME (Proyecto 23)
         # -------------------------------------------------------------
@@ -189,8 +226,29 @@ async def main():
         t0 = time.time()
         await page.goto(f"{FRONTEND_URL}/colmena/project/23/reports", wait_until="networkidle")
         TIMINGS["reports_page_load"] = round(time.time() - t0, 3)
-        await asyncio.sleep(1.0)
+        await page.wait_for_selector("header:has-text('Informe ejecutivo')", timeout=15000)
+        await asyncio.sleep(0.8)
         print(f"Página de Informes cargada en {TIMINGS['reports_page_load']}s")
+
+        # Probar generación de muestra PDF sin consumir licencia si el visor no está listo
+        sample_btn = page.locator("button:has-text('Ver muestra PDF sin consumir licencia')")
+        if await sample_btn.count() > 0:
+            print("  -> Solicitando muestra PDF en visor...")
+            await sample_btn.click()
+            try:
+                await page.wait_for_selector("iframe.aurora-report-preview", timeout=12000)
+                await asyncio.sleep(1.0)
+                await page.screenshot(path=str(SCREENSHOTS_DIR / "informe_visor_pdf_muestra.png"))
+            except Exception as e:
+                print(f"  -> Aviso visor: {e}")
+
+        # Probar panel de Informe de batería consolidado bajo demanda
+        battery_rep_btn = page.locator("button:has-text('Informe de batería')")
+        if await battery_rep_btn.count() > 0:
+            print("  -> Desplegando panel de Informe de Batería...")
+            await battery_rep_btn.click()
+            await asyncio.sleep(0.6)
+            await page.screenshot(path=str(SCREENSHOTS_DIR / "informe_bateria_consolidado.png"))
 
         # Captura en los 6 viewports para Pantalla 3: INFORME
         for vp in VIEWPORTS:
@@ -208,6 +266,7 @@ async def main():
         t0 = time.time()
         await page.goto(f"{FRONTEND_URL}/bateria/{bundle_public_id}", wait_until="networkidle")
         TIMINGS["public_bundle_load"] = round(time.time() - t0, 3)
+        await page.wait_for_selector("main header, .aurora-survey-card, input[type='radio']", timeout=15000)
         print(f"Página pública de batería cargada en {TIMINGS['public_bundle_load']}s")
 
         await page.set_viewport_size({"width": 1440, "height": 900})
@@ -216,12 +275,18 @@ async def main():
         await page.set_viewport_size({"width": 390, "height": 844})
         await page.screenshot(path=str(SCREENSHOTS_DIR / "bateria_publica_mobile_390.png"), full_page=True)
 
-        # Probar responder el primer cuestionario en formato continuo
-        print("  -> Abriendo cuestionario continuo...")
-        start_btn = page.locator("a:has-text('Comenzar'), button:has-text('Comenzar')").first
-        if await start_btn.count() > 0:
-            await start_btn.click()
-            await asyncio.sleep(1.0)
+        # Responder interactivamente algunas preguntas en formato continuo
+        print("  -> Respondiendo interactivamente en formato continuo...")
+        radios = page.locator("input[type='radio']")
+        r_count = await radios.count()
+        if r_count > 0:
+            for idx in range(min(r_count, 5)):
+                try:
+                    await radios.nth(idx).click(force=True)
+                    await asyncio.sleep(0.1)
+                except Exception:
+                    pass
+            await asyncio.sleep(0.5)
             await page.screenshot(path=str(SCREENSHOTS_DIR / "cuestionario_colaborador_continuo_mobile.png"))
 
         await browser.close()
