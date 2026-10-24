@@ -131,3 +131,10 @@
   .aurora-compact-panelhead{padding:8px}
   .aurora-compact-views button{font-size:9px;padding:4px 6px}
 }
+
+/* En pantallas de poca altura, evitar que filas mínimas del grid desborden el contenedor. */
+@media (min-width:851px) and (max-height:820px) {
+  .aurora-compact{height:auto;min-height:0;grid-template-rows:auto}
+  .aurora-compact-tablewrap{max-height:310px}
+  .aurora-compact-insightbody{max-height:310px}
+}
