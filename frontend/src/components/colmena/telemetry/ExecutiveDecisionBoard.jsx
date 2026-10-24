@@ -191,7 +191,7 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }
         <div className="aurora-compact-metric">
           <span>{comparing ? 'Unidades comparables' : isCensopas ? 'Dimensiones de riesgo alto' : 'Dimensiones disponibles'}</span>
           <strong>{comparing ? (unitQuery.isError ? 'Sin datos' : unitQuery.isLoading ? 'Cargando' : unitsVisible.length) :
-            isCensopas ? (executiveQuery.data?.risk_distribution?.high_risk_count ?? 'Sin datos') : visibleRows.length}</strong>
+            isCensopas ? visibleRows.filter(row => row.collective_classification === 'RIESGO_ALTO').length : visibleRows.length}</strong>
           <small>{comparing ? 'Solo resultados publicables' : isCensopas ? 'Clasificaciones oficiales del motor configurado' : 'Sin categorías de riesgo añadidas'}</small>
         </div>
       </div>
