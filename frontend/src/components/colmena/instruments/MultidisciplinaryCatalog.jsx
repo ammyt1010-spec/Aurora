@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Brain,
@@ -101,10 +100,10 @@ export default function MultidisciplinaryCatalog({
   currentStudyId,
   currentVersionId,
   onSelectInstrument,
+  onCreateEvaluation,
   simpleMode = false,
 }) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [selectedDiscipline, setSelectedDiscipline] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -320,9 +319,10 @@ export default function MultidisciplinaryCatalog({
                   <div className="mt-2">
                     <button type="button"
                       className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#173968] px-3 py-2 text-xs font-bold text-white hover:bg-[#29538F]"
+                      disabled={!onSelectInstrument && !onCreateEvaluation}
                       onClick={() => {
                         if (onSelectInstrument) onSelectInstrument(inst);
-                        else navigate('/colmena/project/new');
+                        else onCreateEvaluation?.(inst);
                       }}>
                       <ChevronRight size={14}/> Configurar evaluación
                     </button>
