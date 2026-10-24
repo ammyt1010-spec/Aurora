@@ -86,7 +86,7 @@ describe('AURORA instrument catalog', () => {
     fireEvent.click(screen.getByRole('button',{name:'Explorar catálogo'}));
     expect(await screen.findByText('CENSOPAS-COPSOQ, versión corta')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', {name:/Mis evaluaciones/}));
-    expect(screen.getByText('Empresa de prueba')).toBeInTheDocument();
+    expect(screen.getByText('Empresa de prueba', {selector:'strong'})).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', {name:/Multidisciplinario/}));
     expect(screen.queryByText('CENSOPAS-COPSOQ, versión corta')).not.toBeInTheDocument();
     expect(await screen.findByText('No se encontraron instrumentos con estos filtros')).toBeInTheDocument();
