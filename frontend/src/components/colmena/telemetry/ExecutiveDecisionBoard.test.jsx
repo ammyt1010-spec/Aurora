@@ -7,6 +7,7 @@ import { getCensopasReadiness } from '../../../api/instruments.js';
 import { getExecutiveDashboard } from '../../../api/reports.js';
 import { getCensopasResults, getCensopasUnitResults, getResultsOverview, getStudy, listStudyUnitTypes } from '../../../api/studies.js';
 
+vi.mock('./LongitudinalBIWidget.jsx', () => ({ default: () => <div>Longitudinal view loaded</div> }));
 vi.mock('../../../api/instruments.js', () => ({ getCensopasReadiness: vi.fn() }));
 vi.mock('../../../api/reports.js', () => ({ getExecutiveDashboard: vi.fn() }));
 vi.mock('../../../api/studies.js', () => ({
@@ -77,4 +78,14 @@ describe('AURORA single-screen executive canvas',()=>{
     expect(await screen.findByText('Puntuación descriptiva normalizada, no nivel de riesgo')).toBeInTheDocument();
     expect(screen.queryByText('Riesgo alto')).not.toBeInTheDocument();
   });
+  it('switches analyses in place without adding vertically stacked dashboards',async()=>{
+    renderBoard();
+    await screen.findByRole('heading',{name:'Dimensiones y comparaciones'});
+    expect(screen.queryByText('Longitudinal view loaded')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Evolución'}));
+    expect(screen.getByText('Longitudinal view loaded')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Diagnóstico'}));
+    expect(screen.queryByText('Longitudinal view loaded')).not.toBeInTheDocument();
+  });
+
 });
