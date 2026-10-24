@@ -101,5 +101,5 @@ export function getCensopasUnitResults(studyId, unitTypeId) {
 }
 
 export function getCensopasResults(studyId) {
-  return apiRequest(`/studies/${studyId}/censopas/results`);
+  return apiRequest(`/studies/${studyId}/results/overview`);
 }

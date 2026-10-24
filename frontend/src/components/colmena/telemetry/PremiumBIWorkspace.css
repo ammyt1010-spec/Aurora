@@ -250,3 +250,400 @@ border-radius:12px;padding:13px;background:linear-gradient(145deg,#f7f9ff,#fff);
 .aurora-bi-plan-metrics small{font-size:10px;font-weight:650;color:#718099}
 .aurora-bi-plan-link{display:inline-flex;align-items:center;gap:5px;color:#34589b;font-size:11px;font-weight:800}
 .aurora-bi-plan-link:hover{text-decoration:underline}
+
+/* ==========================================================================
+   AURORA Power BI Executive Canvas Architecture
+   Layout inspirado en tableros de inteligencia ejecutiva corporativa (Power BI)
+   ========================================================================== */
+
+/* 1. Slicers Ribbon (Filtros superiores horizontales) */
+.aurora-pbi-slicer-ribbon {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px 18px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aurora-pbi-slicer-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.aurora-pbi-slicer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.aurora-pbi-slicer-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+.aurora-pbi-slicer-select,
+.aurora-pbi-slicer-box {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 650;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.aurora-pbi-slicer-box {
+  display: flex;
+  align-items: center;
+  background: #f1f5f9;
+  font-weight: 700;
+  color: #1e293b;
+}
+.aurora-pbi-slicer-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+.aurora-pbi-slicer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+.aurora-pbi-slicer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.aurora-pbi-slicer-pill.is-active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+/* 2. Decks (Canvas Grid) */
+.aurora-pbi-deck-upper {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.aurora-pbi-col-kpi-donut {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.aurora-pbi-col-main-chart {
+  min-width: 0;
+  height: 100%;
+}
+.aurora-pbi-deck-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.aurora-pbi-col-rankings {
+  min-width: 0;
+}
+.aurora-pbi-col-matrix {
+  min-width: 0;
+}
+
+/* 3. KPI Big Number Card */
+.aurora-pbi-kpi-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.aurora-pbi-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.aurora-pbi-kpi-caption {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.04em;
+}
+.aurora-pbi-kpi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0f766e;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.aurora-pbi-kpi-num {
+  font-size: 42px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0 2px;
+}
+.aurora-pbi-kpi-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* 4. Donut Chart Component */
+.aurora-pbi-panel-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+.aurora-pbi-panel-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.aurora-pbi-donut-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 4px;
+}
+.aurora-pbi-donut-svg-wrap {
+  width: 140px;
+  height: 140px;
+  flex: none;
+}
+.aurora-pbi-donut-svg {
+  width: 100%;
+  height: 100%;
+}
+.aurora-pbi-donut-slice {
+  transition: stroke-width 0.2s, filter 0.2s;
+  cursor: pointer;
+}
+.aurora-pbi-donut-slice:hover {
+  stroke-width: 28;
+  filter: brightness(1.08);
+}
+.aurora-pbi-donut-center-val {
+  font-size: 26px;
+  font-weight: 900;
+  fill: #0f172a;
+}
+.aurora-pbi-donut-center-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.aurora-pbi-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.aurora-pbi-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.aurora-pbi-legend-item:hover {
+  background: #f8fafc;
+}
+.aurora-pbi-legend-bullet {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.aurora-pbi-legend-item.is-red .aurora-pbi-legend-bullet { background: #ef4444; }
+.aurora-pbi-legend-item.is-amber .aurora-pbi-legend-bullet { background: #f59e0b; }
+.aurora-pbi-legend-item.is-green .aurora-pbi-legend-bullet { background: #10b981; }
+
+.aurora-pbi-legend-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+.aurora-pbi-legend-name {
+  font-size: 11px;
+  font-weight: 650;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aurora-pbi-legend-pct {
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+/* 5. Detailed Breakdown Data Matrix / Table (Power BI Style) */
+.aurora-pbi-matrix-wrap {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+.aurora-pbi-matrix-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.aurora-pbi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.aurora-pbi-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 9px 12px;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.aurora-pbi-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: middle;
+}
+.aurora-pbi-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.aurora-pbi-row:nth-child(even) {
+  background: #fafbfd;
+}
+.aurora-pbi-row:hover {
+  background: #f1f5f9;
+}
+.aurora-pbi-row.is-selected {
+  background: #eff6ff !important;
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+.aurora-pbi-cell-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 160px;
+}
+.aurora-pbi-cell-name strong {
+  font-size: 11.5px;
+  font-weight: 750;
+  color: #0f172a;
+}
+.aurora-pbi-code-pill {
+  font-size: 9px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.aurora-pbi-mini-track {
+  height: 5px;
+  border-radius: 999px;
+}
+.aurora-pbi-mini-track.is-red { background: #ef4444; }
+.aurora-pbi-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.aurora-pbi-badge.is-critical {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+.aurora-pbi-badge.is-medium {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+.aurora-pbi-badge.is-low {
+  background: #d1fae5;
+  color: #047857;
+  border: 1px solid #6ee7b7;
+}
+.aurora-pbi-table-footer {
+  background: #f1f5f9;
+  border-top: 2px solid #cbd5e1;
+  font-weight: 800;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1180px) {
+  .aurora-pbi-slicer-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .aurora-pbi-deck-upper,
+  .aurora-pbi-deck-lower {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 680px) {
+  .aurora-pbi-slicer-grid {
+    grid-template-columns: 1fr;
+  }
+  .aurora-pbi-donut-container {
+    flex-direction: column;
+  }
+}
+

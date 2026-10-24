@@ -64,7 +64,7 @@ export const ALIGN_OPTIONS = [
 ];
 
 export const DEFAULT_LAYOUT = {
-  questionsPerScreen: 'single',
+  questionsPerScreen: 'all',
   align: 'center',
 };
 
@@ -82,7 +82,7 @@ export function resolveSurveyTheme(formTheme) {
       ...(formTheme?.colors || {}),
     },
     layout: {
-      questionsPerScreen: formTheme?.layout?.questionsPerScreen === 'all' ? 'all' : DEFAULT_LAYOUT.questionsPerScreen,
+      questionsPerScreen: formTheme?.layout?.questionsPerScreen || DEFAULT_LAYOUT.questionsPerScreen,
       align: formTheme?.layout?.align === 'left' ? 'left' : DEFAULT_LAYOUT.align,
     },
   };

@@ -156,6 +156,13 @@ async def get_barem_results(study_id: int, session: AsyncSession = Depends(get_d
     return await ScoringService(session).get_overview(study_id)
 
 
+@router.get(
+    "/studies/{study_id}/censopas/results", response_model=StudyResultsOverview
+)
+async def get_censopas_results(study_id: int, session: AsyncSession = Depends(get_db)):
+    return await ScoringService(session).get_overview(study_id)
+
+
 # --- Dataset (harness §19-20, §45) ------------------------------------------------
 
 

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, RefreshCcw, Settings2, Wifi, WifiOff } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LogOut, RefreshCcw, Settings2, Wifi, WifiOff, BarChart3, FileBarChart2, Home } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { API_ROOT_URL } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import ThemeToggle from '../ui/ThemeToggle.jsx';
 import { BrandMark } from '../../brand/BrandMark.jsx';
+import { cn } from '../../utils/cn.js';
 
 async function fetchHealth() {
   const response = await fetch(`${API_ROOT_URL}/health`);
@@ -17,6 +18,7 @@ async function fetchHealth() {
 /** Barra superior: identidad, conexión real al backend, configuración y sesión. */
 export function Topbar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
@@ -28,6 +30,10 @@ export function Topbar() {
   });
 
   const connected = data?.status?.toLowerCase() === 'ok';
+
+  const isInicio = location.pathname === '/colmena' || location.pathname === '/colmena/' || location.pathname.endsWith('/instruments');
+  const isTelemetry = location.pathname.includes('/telemetry') || location.pathname.includes('/results') || location.pathname.includes('/premium') || location.pathname.includes('/dashboard');
+  const isReports = location.pathname.includes('/reports');
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -54,10 +60,45 @@ export function Topbar() {
         </div>
       )}
       <div className="flex h-full w-full items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <p className="truncate text-sm font-bold text-dark">AURORA Professional</p>
-          <p className="text-[11px] text-muted">Diagnóstico y evaluaciones corporativas</p>
+          <p className="text-[11px] text-muted hidden sm:block">Diagnóstico y evaluaciones corporativas</p>
         </div>
+
+        {/* Navegación permanente en cabecera a las 3 pantallas */}
+        <nav aria-label="Navegación principal" className="flex items-center gap-1">
+          <Link
+            to="/colmena"
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition",
+              isInicio ? "bg-amber/15 text-dark font-bold shadow-xs" : "text-muted hover:text-dark hover:bg-slate-100"
+            )}
+          >
+            <Home size={14} />
+            <span className="hidden sm:inline">1. Inicio</span>
+          </Link>
+          <Link
+            to="/colmena/telemetry"
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition",
+              isTelemetry ? "bg-amber/15 text-dark font-bold shadow-xs" : "text-muted hover:text-dark hover:bg-slate-100"
+            )}
+          >
+            <BarChart3 size={14} />
+            <span className="hidden sm:inline">2. Telemetría</span>
+            <span className="sm:hidden">BI</span>
+          </Link>
+          <Link
+            to="/colmena/reports"
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition",
+              isReports ? "bg-amber/15 text-dark font-bold shadow-xs" : "text-muted hover:text-dark hover:bg-slate-100"
+            )}
+          >
+            <FileBarChart2 size={14} />
+            <span className="hidden sm:inline">3. Informe</span>
+          </Link>
+        </nav>
 
         <div className="flex items-center gap-2">
           <div

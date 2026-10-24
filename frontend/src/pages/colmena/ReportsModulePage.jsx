@@ -22,7 +22,10 @@ export default function ReportsModulePage() {
 
   const projects = data?.items ?? [];
   const storedId = selectedProjectId;
-  const activeProject = projects.find((p) => String(p.id) === String(storedId)) || projects[0];
+  const miningProject = projects.find(
+    (p) => p.id === 23 || (p.name && (p.name.toLowerCase().includes('san crist') || p.name.toLowerCase().includes('minera')))
+  );
+  const activeProject = projects.find((p) => String(p.id) === String(storedId)) || miningProject || projects[0];
 
   if (!activeProject) {
     return (

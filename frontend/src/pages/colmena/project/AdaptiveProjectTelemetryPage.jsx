@@ -57,7 +57,10 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
   const studies = studiesQuery.data?.items || [];
 
   useEffect(() => {
-    if (!studyId && studies.length) setStudyId(studies[0].id);
+    if (!studyId && studies.length) {
+      const preferred = studies.find((s) => s.id === 26 || (s.name && s.name.toLowerCase().includes('minero'))) || studies[0];
+      setStudyId(preferred.id);
+    }
     if (studyId && studies.length && !studies.some((study) => study.id === studyId)) {
       setStudyId(studies[0].id);
     }
