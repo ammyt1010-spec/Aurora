@@ -312,8 +312,8 @@ export default function ProjectReportsPage({ overrideProjectId }) {
           {showConsolidated ? 'Cerrar batería' : 'Informe de batería'}
         </button>
       </header>
-      <div className="grid gap-6 md:grid-cols-[380px_1fr]">
-        <div className="space-y-4">
+      <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
           {/* Logo Upload Card */}
           <Card className="p-4 space-y-3">
             <div className="flex items-center justify-between">
