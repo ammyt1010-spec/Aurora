@@ -7,6 +7,9 @@ polaridad, cortes, porcentajes ni reglas de privacidad.
 from __future__ import annotations
 
 import statistics
+import hashlib
+import json
+from decimal import Decimal
 from collections import Counter
 from datetime import UTC, datetime
 
@@ -52,6 +55,29 @@ class ScoringService:
         self.study_repo = StudyRepository(session)
         self.censopas_repo = CensopasRepository(session)
         self.instrument_repo = InstrumentRepository(session)
+
+    @staticmethod
+    def _context_fingerprint(study, barem) -> str:
+        def row_values(row):
+            return {
+                column.name: (
+                    float(getattr(row, column.key)) if isinstance(getattr(row, column.key), (Decimal, float))
+                    else str(getattr(row, column.key))
+                )
+                for column in row.__table__.columns
+                if column.name not in {"created_at", "updated_at", "metadata"}
+            }
+        context = {
+            "instrument_version_id": study.instrument_version_id,
+            "version_config": study.instrument_version.config or {},
+            "methodological_rules": study.instrument_version.methodological_rules or {},
+            "barem": row_values(barem) if barem else None,
+            "barem_metadata": barem.metadata_ if barem else None,
+            "band_metadata": {str(row.id): row.metadata_ for row in barem.bands} if barem else {},
+            "bands": sorted([row_values(row) for row in barem.bands], key=lambda row: row["id"]) if barem else [],
+            "cutoffs": sorted([row_values(row) for row in barem.cutoffs], key=lambda row: row["id"]) if barem else [],
+        }
+        return hashlib.sha256(json.dumps(context, sort_keys=True, default=str).encode()).hexdigest()
 
     async def _get_study(self, study_id: int) -> Study:
         stmt = (
@@ -330,6 +356,9 @@ class ScoringService:
                 "instrument_version_id": study.instrument_version_id,
                 "barem_id": study.barem_id,
                 "scoring": self._scoring_config(study),
+                "n_completed": len(sessions),
+                "min_publishable_n": study.min_publishable_n,
+                "context_fingerprint": self._context_fingerprint(study, barem),
             },
             status="RUNNING",
             started_at=datetime.now(UTC),
@@ -539,17 +568,40 @@ class ScoringService:
         )
         return (await self.session.execute(stmt)).scalars().first()
 
-    async def get_overview(self, study_id: int) -> StudyResultsOverview:
+    async def get_overview(self, study_id: int, analysis_run_id: int | None = None) -> StudyResultsOverview:
         study = await self._get_study(study_id)
-        latest_run = await self._latest_run(study_id)
-        completed_stmt = select(func.count()).select_from(valid_session_ids(study_id).subquery())
-        n_completed = int((await self.session.execute(completed_stmt)).scalar_one())
+        latest_run = (
+            await self.session.get(AnalysisRun, analysis_run_id)
+            if analysis_run_id is not None else await self._latest_run(study_id)
+        )
+        if analysis_run_id is not None:
+            if latest_run is None or latest_run.study_id != study_id:
+                raise NotFoundError("El análisis seleccionado no pertenece a este estudio")
+            if latest_run.status != "COMPLETED" or latest_run.analysis_type not in ("LIKERT_SCORING", "CENSOPAS_SCORING"):
+                raise ValidationDomainError("La ejecución de scoring no está completada")
+            if (latest_run.parameters or {}).get("instrument_version_id") != study.instrument_version_id:
+                raise ValidationDomainError("La versión del scoring no coincide con el estudio")
+        if latest_run is not None:
+            # Historical runs derive their cohort from persisted scores, not live responses.
+            completed_stmt = select(func.count(func.distinct(ConstructScore.response_session_id))).where(
+                ConstructScore.analysis_run_id == latest_run.id
+            )
+            n_completed = (latest_run.parameters or {}).get("n_completed")
+            if n_completed is None:
+                n_completed = int((await self.session.execute(completed_stmt)).scalar_one())
+        else:
+            completed_stmt = select(func.count()).select_from(valid_session_ids(study_id).subquery())
+            n_completed = int((await self.session.execute(completed_stmt)).scalar_one())
         result_barem_id = (
             latest_run.parameters.get("barem_id") if latest_run is not None else study.barem_id
         )
         barem = (
             await self.censopas_repo.get_barem(result_barem_id) if result_barem_id else None
         )
+        if latest_run is not None:
+            fingerprint = (latest_run.parameters or {}).get("context_fingerprint")
+            if fingerprint and fingerprint != self._context_fingerprint(study, barem):
+                raise ValidationDomainError("El instrumento o baremo cambió desde esta ejecución; vuelva a ejecutar el scoring.")
         official_equivalence_enabled = await resolve_official_equivalence_enabled(
             self.instrument_repo, study.instrument_version_id
         )

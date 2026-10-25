@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import PublicResourceUnavailableError
+from app.core.exceptions import PublicResourceUnavailableError, ValidationDomainError
 from app.models.option_set import OptionSet
 from app.models.participant import StudyInvitation
 from app.models.question import Question
@@ -18,6 +18,7 @@ from app.repositories.responses import ResponseRepository
 from app.repositories.studies import StudyRepository
 from app.schemas.public import PublicOption, PublicQuestion, PublicSection, PublicSurveyBundle
 from app.services.audit_service import AuditService
+from app.services.study_service import StudyService
 from app.services.invitation_service import hash_invitation_token
 
 _UNAVAILABLE_MESSAGE = "Esta encuesta no está disponible o ya no acepta respuestas."
@@ -42,6 +43,10 @@ class PublicSurveyService:
             end_at = study.end_at if study.end_at.tzinfo else study.end_at.replace(tzinfo=UTC)
             if datetime.now(UTC) >= end_at:
                 raise PublicResourceUnavailableError(_UNAVAILABLE_MESSAGE)
+        try:
+            await StudyService(self.session).require_current_enterprise_method(study)
+        except ValidationDomainError:
+            raise PublicResourceUnavailableError(_UNAVAILABLE_MESSAGE) from None
         return study
 
     async def _consume_invitation(self, study_id: int, token: str | None) -> StudyInvitation | None:

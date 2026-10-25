@@ -1,12 +1,31 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Download,
+  ExternalLink,
+  FileText,
+  Maximize2,
+  RefreshCw,
+  ShieldCheck,
+  Upload,
+  Image as ImageIcon,
+  Trash2,
+  CheckCircle2,
+} from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
 import { getProject } from '../../../api/projects.js';
-import { getStudy, listStudies } from '../../../api/studies.js';
-import { fetchProtectedBlob, downloadProtectedFile } from '../../../api/protectedFiles.js';
+import {
+  getStudy,
+  listStudies,
+  getResultsOverview,
+} from '../../../api/studies.js';
+import {
+  fetchProtectedBlob,
+  downloadProtectedFile,
+} from '../../../api/protectedFiles.js';
 import { getCensopasReadiness } from '../../../api/instruments.js';
 import {
   createReportPreview,
@@ -88,16 +107,32 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     queryKey: ['enterprise-report-templates'],
     queryFn: () => listReportTemplates(),
   });
-  const { data: billingPolicy } = useQuery({ queryKey: ['billing-policy'], queryFn: getBillingPolicy });
+  const { data: billingPolicy } = useQuery({
+    queryKey: ['billing-policy'],
+    queryFn: getBillingPolicy,
+  });
   const isPaymentRequired = billingPolicy?.enforced !== false;
   const { data: previousReports = [] } = useQuery({
     queryKey: ['reports', studyId],
     queryFn: () => listStudyReports(studyId),
     enabled: Boolean(studyId),
   });
-  const { data: billingOrders = [] } = useQuery({ queryKey: ['report-orders', studyId], queryFn: () => getOrders(studyId), enabled: Boolean(studyId) });
-  const usableOrder = billingOrders.some((order) => order.status === 'PAID' && order.id === Number(selectedOrderId));
-  const canGenerateReport = Boolean(studyId && (!isPaymentRequired || usableOrder));
+  const { data: billingOrders = [] } = useQuery({
+    queryKey: ['report-orders', studyId],
+    queryFn: () => getOrders(studyId),
+    enabled: Boolean(studyId),
+  });
+  const { data: scoringOverview, isSuccess: scoringReady } = useQuery({
+    queryKey: ['results-overview', studyId],
+    queryFn: () => getResultsOverview(studyId),
+    enabled: Boolean(studyId),
+  });
+  const usableOrder = billingOrders.some(
+    (order) => order.status === 'PAID' && order.id === Number(selectedOrderId),
+  );
+  const canGenerateReport = Boolean(
+    studyId && scoringReady && (!isPaymentRequired || usableOrder),
+  );
 
   // Auto-select first study if not selected
   useEffect(() => {
@@ -118,18 +153,36 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     enabled: Boolean(study?.instrument_version_id),
   });
 
-  const currentConfig = { studyId, sections: [...sections].sort(), reportMode, outputFormat, selectedOrderId, selectedTemplateId };
+  const analysisRunId = scoringOverview?.analysis_run_id ?? null;
+  const currentConfig = {
+    analysisRunId,
+    studyId,
+    sections: [...sections].sort(),
+    reportMode,
+    outputFormat,
+    selectedOrderId,
+    selectedTemplateId,
+  };
 
   const previewMutation = useMutation({
     mutationFn: (sample = false) =>
       createReportPreview(studyId, {
+        scoring_run_id: analysisRunId,
         report_mode: sample ? 'SAMPLE' : reportMode,
         is_sample_preview: Boolean(sample),
-        report_template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
-        company_logo_png: companyLogo?.startsWith('data:image/png;base64,') ? companyLogo : null,
+        report_template_id: selectedTemplateId
+          ? Number(selectedTemplateId)
+          : null,
+        company_logo_png: companyLogo?.startsWith('data:image/png;base64,')
+          ? companyLogo
+          : null,
         output_format: sample ? 'PDF' : outputFormat,
         sections,
-        billing_order_id: sample ? null : (isPaymentRequired ? selectedOrderId : null),
+        billing_order_id: sample
+          ? null
+          : isPaymentRequired
+            ? selectedOrderId
+            : null,
       }),
     onMutate: () => setPreviewState('GENERATING'),
     onSuccess: (data) => {
@@ -150,7 +203,9 @@ export default function ProjectReportsPage({ overrideProjectId }) {
           objectUrl = URL.createObjectURL(blob);
           setPreviewBlobUrl(objectUrl);
         })
-        .catch(() => { if (!cancelled) setPreviewBlobUrl(null); });
+        .catch(() => {
+          if (!cancelled) setPreviewBlobUrl(null);
+        });
     }
     return () => {
       cancelled = true;
@@ -162,17 +217,35 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   // Auto generate preview when studyId is first set
   const autoGeneratedRef = useRef(false);
   useEffect(() => {
-    if (studyId && billingPolicy?.enforced === false && !autoGeneratedRef.current && previewState === 'IDLE') {
+    if (
+      studyId &&
+      scoringReady &&
+      billingPolicy?.enforced === false &&
+      !autoGeneratedRef.current &&
+      previewState === 'IDLE'
+    ) {
       autoGeneratedRef.current = true;
       previewMutation.mutate();
     }
-  }, [studyId, billingPolicy?.enforced]);
+  }, [studyId, scoringReady, billingPolicy?.enforced]);
 
   useEffect(() => {
-    if ((previewState === 'READY' || previewState === 'STALE') && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
+    if (
+      (previewState === 'READY' || previewState === 'STALE') &&
+      generatedConfig &&
+      JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)
+    ) {
       setPreviewState('STALE');
     }
-  }, [studyId, sections, reportMode, outputFormat, selectedOrderId, selectedTemplateId]);
+  }, [
+    studyId,
+    analysisRunId,
+    sections,
+    reportMode,
+    outputFormat,
+    selectedOrderId,
+    selectedTemplateId,
+  ]);
 
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
@@ -200,7 +273,9 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   };
 
   const toggleSection = (key) => {
-    setSections((prev) => (prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]));
+    setSections((prev) =>
+      prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key],
+    );
   };
 
   const resetPreview = () => {
@@ -214,20 +289,26 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   const canExport = previewState === 'READY' && preview;
 
-
   return (
     <div className="colmena-page aurora-premium-page space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 shadow-sm">
         <div className="flex min-w-0 items-center gap-2.5">
-          <FileText size={19} className="shrink-0 text-[#245E9C]"/>
+          <FileText size={19} className="shrink-0 text-[#245E9C]" />
           <div>
-            <h1 className="text-base font-extrabold text-[#0A1F44]">Informe ejecutivo</h1>
-            <p className="text-xs text-[#64748B]">Previsualización y emisión de resultados autorizados.</p>
+            <h1 className="text-base font-extrabold text-[#0A1F44]">
+              Informe ejecutivo
+            </h1>
+            <p className="text-xs text-[#64748B]">
+              Previsualización y emisión de resultados autorizados.
+            </p>
           </div>
         </div>
-        <button type="button" onClick={() => setShowConsolidated(value => !value)}
+        <button
+          type="button"
+          onClick={() => setShowConsolidated((value) => !value)}
           aria-expanded={showConsolidated}
-          className="rounded-lg border border-[#CFDDEB] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788] hover:bg-[#EDF5FC]">
+          className="rounded-lg border border-[#CFDDEB] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788] hover:bg-[#EDF5FC]"
+        >
           {showConsolidated ? 'Cerrar batería' : 'Informe de batería'}
         </button>
       </header>
@@ -257,7 +338,11 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
             {companyLogo ? (
               <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-surfaceSoft">
-                <img src={companyLogo} alt="Logo empresa" className="max-h-12 max-w-[160px] object-contain" />
+                <img
+                  src={companyLogo}
+                  alt="Logo empresa"
+                  className="max-h-12 max-w-[160px] object-contain"
+                />
                 <button
                   type="button"
                   onClick={handleRemoveLogo}
@@ -274,31 +359,65 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-border hover:border-amber rounded-xl bg-surfaceSoft/50 hover:bg-surfaceSoft transition text-center space-y-1.5"
               >
                 <Upload size={20} className="text-amber" />
-                <span className="text-xs font-semibold text-dark">Subir Logo de la Empresa</span>
-                <span className="text-[10px] text-muted">PNG (máximo 600 KB). Se incluye en el DOCX/PDF.</span>
+                <span className="text-xs font-semibold text-dark">
+                  Subir Logo de la Empresa
+                </span>
+                <span className="text-[10px] text-muted">
+                  PNG (máximo 600 KB). Se incluye en el DOCX/PDF.
+                </span>
               </button>
             )}
           </Card>
 
-          {isPaymentRequired && <ReportBillingPanel studyId={studyId} study={study} selectedOrderId={selectedOrderId}
-            onSelectOrder={(id) => { setSelectedOrderId(id); resetPreview(); }} />}
+          {isPaymentRequired && (
+            <ReportBillingPanel
+              studyId={studyId}
+              study={study}
+              selectedOrderId={selectedOrderId}
+              onSelectOrder={(id) => {
+                setSelectedOrderId(id);
+                resetPreview();
+              }}
+            />
+          )}
           {previousReports.some((run) => run.status === 'COMPLETED') && (
             <Card className="p-4 space-y-3">
-              <h3 className="text-sm font-bold text-dark">Informes anteriores</h3>
-              <p className="text-xs text-muted">La descarga de un informe ya emitido no genera un nuevo cobro.</p>
-              {previousReports.filter((run) => run.status === 'COMPLETED').map((run) => (
-                <div key={run.id} className="flex flex-wrap gap-2 justify-between items-center rounded-lg bg-surfaceSoft p-2 text-xs">
-                  <span>Informe #{run.id} · {new Date(run.created_at).toLocaleDateString('es-PE')}</span>
-                  <button type="button" className="text-amber font-bold underline"
-                    onClick={async () => {
-                      try {
-                        setDownloadError(null);
-                        await downloadProtectedFile(getReportDownloadUrl(run.id),
-                          `aurora-informe-${run.id}.${run.output_format === 'DOCX' ? 'docx' : run.output_format === 'PDF' ? 'pdf' : 'json'}`);
-                      } catch (e) { setDownloadError(e.message); }
-                    }}>Volver a descargar</button>
-                </div>
-              ))}
+              <h3 className="text-sm font-bold text-dark">
+                Informes anteriores
+              </h3>
+              <p className="text-xs text-muted">
+                La descarga de un informe ya emitido no genera un nuevo cobro.
+              </p>
+              {previousReports
+                .filter((run) => run.status === 'COMPLETED')
+                .map((run) => (
+                  <div
+                    key={run.id}
+                    className="flex flex-wrap gap-2 justify-between items-center rounded-lg bg-surfaceSoft p-2 text-xs"
+                  >
+                    <span>
+                      Informe #{run.id} ·{' '}
+                      {new Date(run.created_at).toLocaleDateString('es-PE')}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-amber font-bold underline"
+                      onClick={async () => {
+                        try {
+                          setDownloadError(null);
+                          await downloadProtectedFile(
+                            getReportDownloadUrl(run.id),
+                            `aurora-informe-${run.id}.${run.output_format === 'DOCX' ? 'docx' : run.output_format === 'PDF' ? 'pdf' : 'json'}`,
+                          );
+                        } catch (e) {
+                          setDownloadError(e.message);
+                        }
+                      }}
+                    >
+                      Volver a descargar
+                    </button>
+                  </div>
+                ))}
             </Card>
           )}
           {/* Report Config Card */}
@@ -315,37 +434,60 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 }}
               />
               {studyId && readiness?.is_censopas_instrument ? (
-                <CensopasReadinessPanel readiness={readiness} isLoading={isLoadingReadiness} />
+                <CensopasReadinessPanel
+                  readiness={readiness}
+                  isLoading={isLoadingReadiness}
+                />
               ) : null}
             </div>
 
             <div>
-              <label htmlFor="report-template-selector" className="colmena-label mb-2 block">Plantilla profesional</label>
-              <select id="report-template-selector" className="colmena-input w-full"
+              <label
+                htmlFor="report-template-selector"
+                className="colmena-label mb-2 block"
+              >
+                Plantilla profesional
+              </label>
+              <select
+                id="report-template-selector"
+                className="colmena-input w-full"
                 value={selectedTemplateId}
                 onChange={(event) => {
                   setSelectedTemplateId(event.target.value);
-                  const template = reportTemplates.find((item) => String(item.id) === event.target.value);
+                  const template = reportTemplates.find(
+                    (item) => String(item.id) === event.target.value,
+                  );
                   const preferredSections = template?.template_config?.sections;
-                  if (Array.isArray(preferredSections) && preferredSections.length) {
+                  if (
+                    Array.isArray(preferredSections) &&
+                    preferredSections.length
+                  ) {
                     setSections(preferredSections);
                   } else {
                     setSections(SECTIONS.map((item) => item.key));
                   }
                   resetPreview();
-                }}>
+                }}
+              >
                 <option value="">Plantilla por defecto del instrumento</option>
-                {reportTemplates.filter((template) => template.status === 'ACTIVE').map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name} · {template.discipline}
-                  </option>
-                ))}
+                {reportTemplates
+                  .filter((template) => template.status === 'ACTIVE')
+                  .map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} · {template.discipline}
+                    </option>
+                  ))}
               </select>
-              <p className="mt-1 text-[11px] text-muted">Las plantillas son gestionadas por el operador central y quedan asociadas al informe emitido.</p>
+              <p className="mt-1 text-[11px] text-muted">
+                Las plantillas son gestionadas por el operador central y quedan
+                asociadas al informe emitido.
+              </p>
             </div>
 
             <div>
-              <p className="colmena-label mb-2">Secciones a incluir en el informe</p>
+              <p className="colmena-label mb-2">
+                Secciones a incluir en el informe
+              </p>
               <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
                 {SECTIONS.map((section) => (
                   <button
@@ -370,27 +512,50 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 <button
                   type="button"
                   onClick={() => setReportMode('PROVISIONAL')}
-                  className={'rounded-xl border p-3 text-left transition ' + (reportMode === 'PROVISIONAL' ? 'border-amber bg-amber/5 ring-1 ring-amber/30' : 'border-border bg-surface')}
+                  className={
+                    'rounded-xl border p-3 text-left transition ' +
+                    (reportMode === 'PROVISIONAL'
+                      ? 'border-amber bg-amber/5 ring-1 ring-amber/30'
+                      : 'border-border bg-surface')
+                  }
                 >
                   <FileText size={16} className="mb-1.5 text-amber" />
-                  <span className="block text-xs font-semibold text-dark">Informe Preliminar</span>
+                  <span className="block text-xs font-semibold text-dark">
+                    Informe Preliminar
+                  </span>
                 </button>
                 <button
                   type="button"
-                  disabled={Boolean(readiness?.is_censopas_instrument) && !readiness?.ready_for_official_reporting}
+                  disabled={
+                    Boolean(readiness?.is_censopas_instrument) &&
+                    !readiness?.ready_for_official_reporting
+                  }
                   onClick={() => setReportMode('OFFICIAL')}
-                  className={'rounded-xl border p-3 text-left transition ' + (reportMode === 'OFFICIAL' ? 'border-turquoise bg-turquoise/5 ring-1 ring-turquoise/30' : 'border-border bg-surface') + ' disabled:cursor-not-allowed disabled:opacity-50'}
+                  className={
+                    'rounded-xl border p-3 text-left transition ' +
+                    (reportMode === 'OFFICIAL'
+                      ? 'border-turquoise bg-turquoise/5 ring-1 ring-turquoise/30'
+                      : 'border-border bg-surface') +
+                    ' disabled:cursor-not-allowed disabled:opacity-50'
+                  }
                 >
                   <ShieldCheck size={16} className="mb-1.5 text-turquoise" />
                   <span className="block text-xs font-semibold text-dark">
-                    {readiness?.is_censopas_instrument ? 'Informe con equivalencia metodológica verificada' : 'Informe profesional de la metodología autorizada'}
+                    {readiness?.is_censopas_instrument
+                      ? 'Informe con equivalencia metodológica verificada'
+                      : 'Informe profesional de la metodología autorizada'}
                   </span>
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="colmena-label mb-2 block" htmlFor="report-output-format">Formato de Salida</label>
+              <label
+                className="colmena-label mb-2 block"
+                htmlFor="report-output-format"
+              >
+                Formato de Salida
+              </label>
               <select
                 id="report-output-format"
                 className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs font-medium text-dark focus:border-amber outline-none"
@@ -413,14 +578,19 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               <RefreshCw size={16} />
               Generar vista previa
             </Button>
-            <button type="button"
+            <button
+              type="button"
               onClick={() => previewMutation.mutate(true)}
-              disabled={!studyId || previewState === 'GENERATING'}
-              className="w-full rounded-xl border border-border bg-surfaceSoft px-4 py-2.5 text-xs font-bold text-dark hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50">
+              disabled={
+                !studyId || !scoringReady || previewState === 'GENERATING'
+              }
+              className="w-full rounded-xl border border-border bg-surfaceSoft px-4 py-2.5 text-xs font-bold text-dark hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            >
               Ver muestra PDF sin consumir licencia
             </button>
             <p className="text-[11px] text-muted">
-              La muestra lleva marca de agua, no tiene validez oficial y nunca habilita la descarga de un informe definitivo.
+              La muestra lleva marca de agua, no tiene validez oficial y nunca
+              habilita la descarga de un informe definitivo.
             </p>
           </Card>
         </div>
@@ -430,55 +600,95 @@ export default function ProjectReportsPage({ overrideProjectId }) {
           {previewState === 'IDLE' ? (
             <EmptyState
               title="Previsualización del informe completo"
-              description={isPaymentRequired ? "Solicita tu cotización, confirma el pago y selecciona la orden aprobada para emitir el informe." : "Selecciona el estudio y genera una vista previa técnica del informe."}
+              description={
+                isPaymentRequired
+                  ? 'Solicita tu cotización, confirma el pago y selecciona la orden aprobada para emitir el informe.'
+                  : 'Selecciona el estudio y genera una vista previa técnica del informe.'
+              }
             />
           ) : null}
-          {previewState === 'GENERATING' ? <LoadingState label="Procesando datos y renderizando el informe PDF..." /> : null}
+          {previewState === 'GENERATING' ? (
+            <LoadingState label="Procesando datos y renderizando el informe PDF..." />
+          ) : null}
           {previewState === 'ERROR' ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <AlertTriangle size={28} className="text-danger" />
-              <p className="text-sm font-medium text-danger">Error al generar la vista previa del informe.</p>
-              <Button variant="secondary" size="sm" onClick={() => previewMutation.mutate()}>
+              <p className="text-sm font-medium text-danger">
+                Error al generar la vista previa del informe.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => previewMutation.mutate()}
+              >
                 Reintentar
               </Button>
             </div>
           ) : null}
-          {(previewState === 'READY' || previewState === 'STALE' || previewState === 'EXPORTING') && preview ? (
+          {(previewState === 'READY' ||
+            previewState === 'STALE' ||
+            previewState === 'EXPORTING') &&
+          preview ? (
             <>
               {previewState === 'STALE' ? (
                 <p className="rounded-xl border border-amber/30 bg-amber/10 px-3 py-2 text-xs font-medium text-yellowDark">
-                  Se modificaron parámetros. Haz clic en actualizar para regenerar la vista previa.
+                  Se modificaron parámetros. Haz clic en actualizar para
+                  regenerar la vista previa.
                 </p>
               ) : null}
               {preview.is_sample && (
                 <p className="rounded-lg border border-amber/30 bg-amber/10 p-2 text-xs font-bold text-yellowDark">
-                  VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL · SIN CONSUMO DE LICENCIA
+                  VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL · SIN CONSUMO DE
+                  LICENCIA
                 </p>
               )}
               <div className="flex items-center justify-between text-xs text-muted">
                 <span>Páginas renderizadas: {preview.pages || '—'}</span>
                 {companyLogo ? (
                   <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Logo incorporado al informe generado
+                    <CheckCircle2 size={12} /> Logo incorporado al informe
+                    generado
                   </span>
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surfaceSoft px-3 py-2">
-                <span className="text-xs font-semibold text-dark">Visor PDF · {preview.is_sample ? 'Muestra sin validez oficial' : 'Documento autorizado'}</span>
+                <span className="text-xs font-semibold text-dark">
+                  Visor PDF ·{' '}
+                  {preview.is_sample
+                    ? 'Muestra sin validez oficial'
+                    : 'Documento autorizado'}
+                </span>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" disabled={!previewBlobUrl}
-                    onClick={() => { if (previewBlobUrl) window.open(previewBlobUrl, '_blank', 'noopener,noreferrer'); }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
+                  <button
+                    type="button"
+                    disabled={!previewBlobUrl}
+                    onClick={() => {
+                      if (previewBlobUrl)
+                        window.open(
+                          previewBlobUrl,
+                          '_blank',
+                          'noopener,noreferrer',
+                        );
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40"
+                  >
                     <ExternalLink size={13} /> Abrir en otra pestaña
                   </button>
-                  <button type="button" disabled={!previewBlobUrl}
+                  <button
+                    type="button"
+                    disabled={!previewBlobUrl}
                     onClick={() => {
                       const result = pdfFrameRef.current?.requestFullscreen?.();
                       if (result && typeof result.catch === 'function') {
-                        result.catch(() => setDownloadError('El navegador no permitió ampliar el visor. Usa «Abrir en otra pestaña».'));
+                        result.catch(() =>
+                          setDownloadError(
+                            'El navegador no permitió ampliar el visor. Usa «Abrir en otra pestaña».',
+                          ),
+                        );
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40"
+                  >
                     <Maximize2 size={13} /> Pantalla completa
                   </button>
                 </div>
@@ -501,9 +711,15 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 if (!preview) return;
                 setDownloadError(null);
                 try {
-                  const isPdf = Boolean(preview.is_sample) || outputFormat === 'PDF';
-                  const url = isPdf ? getReportPreviewPdfUrl(preview.preview_id) : getReportDownloadUrl(preview.preview_id);
-                  await downloadProtectedFile(url, `aurora-${preview.is_sample ? 'muestra-no-oficial' : 'reporte'}-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`);
+                  const isPdf =
+                    Boolean(preview.is_sample) || outputFormat === 'PDF';
+                  const url = isPdf
+                    ? getReportPreviewPdfUrl(preview.preview_id)
+                    : getReportDownloadUrl(preview.preview_id);
+                  await downloadProtectedFile(
+                    url,
+                    `aurora-${preview.is_sample ? 'muestra-no-oficial' : 'reporte'}-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`,
+                  );
                 } catch (error) {
                   setDownloadError(error.message);
                 }
@@ -513,18 +729,37 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               }`}
             >
               <Download size={16} />
-              Descargar {preview?.is_sample ? 'muestra PDF' : outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
+              Descargar{' '}
+              {preview?.is_sample
+                ? 'muestra PDF'
+                : outputFormat === 'PDF'
+                  ? 'PDF'
+                  : 'Word editable'}
             </button>
-            {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p> : null}
+            {downloadError ? (
+              <p role="alert" className="text-xs text-danger">
+                {downloadError}
+              </p>
+            ) : null}
           </div>
         </Card>
       </div>
       <div className="space-y-2">
-        <button type="button" className="flex w-full items-center justify-between rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 text-left text-xs font-bold text-[#315788]"
-          onClick={() => setShowMethodology(value => !value)} aria-expanded={showMethodology}>
-          Resumen metodológico y hallazgos <span aria-hidden="true">{showMethodology ? '−' : '+'}</span>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 text-left text-xs font-bold text-[#315788]"
+          onClick={() => setShowMethodology((value) => !value)}
+          aria-expanded={showMethodology}
+        >
+          Resumen metodológico y hallazgos{' '}
+          <span aria-hidden="true">{showMethodology ? '−' : '+'}</span>
         </button>
-        {showMethodology && <ExecutiveReportDashboard studyId={studyId} />}
+        {showMethodology && (
+          <ExecutiveReportDashboard
+            studyId={studyId}
+            analysisRunId={analysisRunId}
+          />
+        )}
         {showConsolidated && <ConsolidatedReportsPanel projectId={projectId} />}
       </div>
     </div>

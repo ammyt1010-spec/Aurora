@@ -24,6 +24,7 @@ class QuickEvalRequest(BaseModel):
     company_ruc: str = Field(min_length=3, max_length=80)
     company_sector: str | None = Field(default=None, max_length=80)
     instrument_version: Literal["SHORT", "MEDIUM"]
+    instrument_version_id: int | None = Field(default=None, gt=0)
     study_name: str = Field(min_length=1, max_length=255)
     population_invited: int | None = Field(default=None, ge=1)
 
@@ -57,6 +58,7 @@ async def create_quick_eval(
         project_type="CENSO",
         censopas_study=CensopasStudyConfig(
             instrument_version=payload.instrument_version,
+            instrument_version_id=payload.instrument_version_id,
             workplace_name=payload.company_name,
             population_invited=payload.population_invited,
         ),

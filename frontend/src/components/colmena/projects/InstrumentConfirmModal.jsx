@@ -4,21 +4,23 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
   ArrowRight,
-  Building2,
   CheckCircle2,
   Copy,
   ExternalLink,
   QrCode,
   ShieldCheck,
-  Sparkles,
-  Users,
 } from 'lucide-react';
 
 import { apiRequest } from '../../../api/client.js';
 import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
 
-export default function InstrumentConfirmModal({ instrument, isOpen, onClose, onCreated }) {
+export default function InstrumentConfirmModal({
+  instrument,
+  isOpen,
+  onClose,
+  onCreated,
+}) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [copied, setCopied] = useState(false);
@@ -28,7 +30,9 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     company_name: '',
     company_ruc: '',
     company_sector: 'MINING',
-    study_name: instrument ? `Evaluación ${instrument.title} 2026` : 'Evaluación 2026',
+    study_name: instrument
+      ? `Evaluación ${instrument.title} 2026`
+      : 'Evaluación 2026',
     instrument_version: instrument?.version || 'MEDIUM',
     population_invited: 50,
   });
@@ -36,7 +40,8 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
   const [errorMsg, setErrorMsg] = useState(null);
 
   const quickEvalMutation = useMutation({
-    mutationFn: (payload) => apiRequest('/quick-eval', { method: 'POST', body: payload }),
+    mutationFn: (payload) =>
+      apiRequest('/quick-eval', { method: 'POST', body: payload }),
     onSuccess: (data) => {
       setResult(data);
       setStep(2);
@@ -67,12 +72,14 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     quickEvalMutation.mutate({
       ...formData,
       instrument_version: instrument?.version || 'MEDIUM',
+      instrument_version_id: instrument?.id,
       population_invited: Number(formData.population_invited) || 1,
     });
   };
 
   const surveyUrl = result?.public_id
-    ? `${window.location.origin}/encuesta/${result.public_id}` : '';
+    ? `${window.location.origin}/encuesta/${result.public_id}`
+    : '';
 
   const handleCopyLink = () => {
     if (!surveyUrl) return;
@@ -92,19 +99,26 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
   if (!isOpen || !instrument) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`⚡ Confirmar Instrumento — ${instrument.title}`}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`⚡ Confirmar Instrumento — ${instrument.title}`}
+    >
       {step === 1 ? (
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-dark space-y-1">
             <div className="flex items-center justify-between">
               <span className="font-bold text-amber text-xs flex items-center gap-1.5">
-                <ShieldCheck size={14} /> {instrument.badge || 'Instrumento configurado'}
+                <ShieldCheck size={14} />{' '}
+                {instrument.badge || 'Instrumento configurado'}
               </span>
               <span className="text-[10px] font-semibold text-muted bg-surface px-2 py-0.5 rounded-full border border-border">
                 {instrument.items} ítems · ~{instrument.duration}
               </span>
             </div>
-            <p className="text-[11px] text-muted leading-relaxed">{instrument.description}</p>
+            <p className="text-[11px] text-muted leading-relaxed">
+              {instrument.description}
+            </p>
           </div>
 
           {errorMsg ? (
@@ -114,31 +128,53 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
           ) : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="company_name">
+            <label
+              className="flex flex-col gap-2 text-xs font-semibold text-dark"
+              htmlFor="company_name"
+            >
               Razón Social / Empresa *
               <input
-                id="company_name" name="company_name" type="text" required
+                id="company_name"
+                name="company_name"
+                type="text"
+                required
                 placeholder="Ej. Empresa ABC S.A.C."
-                value={formData.company_name} onChange={handleChange}
+                value={formData.company_name}
+                onChange={handleChange}
                 className="colmena-input"
               />
             </label>
-            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="company_ruc">
+            <label
+              className="flex flex-col gap-2 text-xs font-semibold text-dark"
+              htmlFor="company_ruc"
+            >
               RUC / ID Tributario *
               <input
-                id="company_ruc" name="company_ruc" type="text" required
+                id="company_ruc"
+                name="company_ruc"
+                type="text"
+                required
                 placeholder="Ej. 20123456789"
-                value={formData.company_ruc} onChange={handleChange}
+                value={formData.company_ruc}
+                onChange={handleChange}
                 className="colmena-input"
               />
             </label>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="company_sector">
+            <label
+              className="flex flex-col gap-2 text-xs font-semibold text-dark"
+              htmlFor="company_sector"
+            >
               Sector Económico
-              <select id="company_sector" name="company_sector" value={formData.company_sector}
-                onChange={handleChange} className="colmena-input">
+              <select
+                id="company_sector"
+                name="company_sector"
+                value={formData.company_sector}
+                onChange={handleChange}
+                className="colmena-input"
+              >
                 <option value="MINING">Minería e Hidrocarburos</option>
                 <option value="INDUSTRIAL">Industria y Manufactura</option>
                 <option value="CONSTRUCTION">Construcción y Energía</option>
@@ -146,20 +182,43 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
                 <option value="SERVICES">Servicios y Comercio</option>
               </select>
             </label>
-            <label className="flex flex-col gap-2 text-xs font-semibold text-dark" htmlFor="population_invited">
+            <label
+              className="flex flex-col gap-2 text-xs font-semibold text-dark"
+              htmlFor="population_invited"
+            >
               Población de trabajadores
-              <input id="population_invited" name="population_invited" type="number"
-                min="1" max="10000" required value={formData.population_invited}
-                onChange={handleChange} className="colmena-input" />
+              <input
+                id="population_invited"
+                name="population_invited"
+                type="number"
+                min="1"
+                max="10000"
+                required
+                value={formData.population_invited}
+                onChange={handleChange}
+                className="colmena-input"
+              />
             </label>
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onClose}
+            >
               Cancelar
             </Button>
-            <Button type="submit" size="sm" disabled={quickEvalMutation.isPending} className="font-bold">
-              {quickEvalMutation.isPending ? 'Procesando...' : '⚡ Confirmar y Generar Enlace / QR'}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={quickEvalMutation.isPending}
+              className="font-bold"
+            >
+              {quickEvalMutation.isPending
+                ? 'Procesando...'
+                : '⚡ Confirmar y Generar Enlace / QR'}
             </Button>
           </div>
         </form>
@@ -170,9 +229,13 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
           </div>
 
           <div>
-            <h3 className="text-base font-bold text-dark">¡Instrumento Configurado!</h3>
+            <h3 className="text-base font-bold text-dark">
+              ¡Instrumento Configurado!
+            </h3>
             <p className="text-xs text-muted mt-0.5">
-              Empresa: <strong className="text-dark">{formData.company_name}</strong> · Enlace público listo para ser compartido.
+              Empresa:{' '}
+              <strong className="text-dark">{formData.company_name}</strong> ·
+              Enlace público listo para ser compartido.
             </p>
           </div>
 
@@ -203,12 +266,18 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
             <div className="pt-2 border-t border-border/80 flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-dark flex items-center gap-1">
-                  <QrCode size={14} className="text-amber" /> 2. Código QR para Afiches
+                  <QrCode size={14} className="text-amber" /> 2. Código QR para
+                  Afiches
                 </span>
-                <span className="text-[11px] text-muted block">Escaneo directo desde celular</span>
+                <span className="text-[11px] text-muted block">
+                  Escaneo directo desde celular
+                </span>
               </div>
               {surveyUrl ? (
-                <div className="rounded-lg border border-border bg-white p-2" aria-label="QR local de encuesta">
+                <div
+                  className="rounded-lg border border-border bg-white p-2"
+                  aria-label="QR local de encuesta"
+                >
                   <QRCodeSVG value={surveyUrl} size={108} marginSize={1} />
                 </div>
               ) : null}
@@ -225,7 +294,11 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
               <ExternalLink size={14} />
               Probar Demo
             </a>
-            <Button onClick={handleGoToTelemetry} size="sm" className="flex items-center justify-center gap-1.5 font-bold">
+            <Button
+              onClick={handleGoToTelemetry}
+              size="sm"
+              className="flex items-center justify-center gap-1.5 font-bold"
+            >
               Ir a Telemetría en Vivo
               <ArrowRight size={14} />
             </Button>

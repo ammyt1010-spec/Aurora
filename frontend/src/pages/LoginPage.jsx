@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -28,14 +28,12 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema) });
 
-  const handleDemoClick = async (destinationPath = '/colmena/project/23/telemetry') => {
+  const handleDemoClick = async (
+    destinationPath = '/colmena/project/23/telemetry',
+  ) => {
     try {
-      try {
-        await demoLogin();
-      } catch {
-        // Fallback para túneles y demostraciones remotas de evaluación
-        await login({ email: 'revisor.corporativo@aurora.com', password: 'Aurora2026!' });
-      }
+      setFormError(null);
+      await demoLogin();
       navigate(destinationPath, { replace: true });
     } catch {
       setFormError('No se pudo iniciar el modo demostración sin credenciales.');
@@ -57,8 +55,8 @@ export default function LoginPage() {
     }
   };
 
-  const isDemoAllowed = 
-    ['localhost', '127.0.0.1'].includes(window.location.hostname) || 
+  const isDemoAllowed =
+    ['localhost', '127.0.0.1'].includes(window.location.hostname) ||
     window.location.hostname.endsWith('trycloudflare.com') ||
     window.location.hostname.includes('tunnel');
 
@@ -84,7 +82,7 @@ export default function LoginPage() {
             <Button
               type="button"
               variant="primary"
-              onClick={() => handleDemoClick('/colmena/project/23/telemetry')} 
+              onClick={() => handleDemoClick('/colmena/project/23/telemetry')}
               className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 shadow-md border-none text-white font-bold py-3 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm"
             >
               <BarChart3 size={17} /> ⚡ Ver Demo Minera (Tablero y Telemetría)
@@ -106,7 +104,10 @@ export default function LoginPage() {
               </button>
             </div>
             <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              Carga el estudio de la <strong>Unidad Minera San Cristóbal</strong> con 35 colaboradores sintéticos, cuestionario CENSOPAS oficial y tablero Power BI en vivo.
+              Carga el estudio de la{' '}
+              <strong>Unidad Minera San Cristóbal</strong> con 35 colaboradores
+              sintéticos, cuestionario CENSOPAS oficial y tablero Power BI en
+              vivo.
             </p>
           </div>
         )}
@@ -119,13 +120,17 @@ export default function LoginPage() {
           <div className="flex-1 border-t border-slate-200 dark:border-slate-700"></div>
         </div>
 
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-          <FormField 
-            label="Email" 
-            type="email" 
-            autoComplete="email" 
-            error={errors.email?.message} 
-            {...register('email')} 
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={handleSubmit(onSubmit)}
+          noValidate
+        >
+          <FormField
+            label="Email"
+            type="email"
+            autoComplete="email"
+            error={errors.email?.message}
+            {...register('email')}
           />
           <FormField
             label="Contraseña"
@@ -141,10 +146,10 @@ export default function LoginPage() {
             </p>
           ) : null}
 
-          <Button 
-            type="submit" 
-            variant="secondary" 
-            loading={isSubmitting} 
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={isSubmitting}
             className="mt-2 w-full dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/50"
           >
             Ingresar con credenciales

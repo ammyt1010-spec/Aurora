@@ -28,6 +28,7 @@ from app.models.project import Project
 from app.models.study import Study
 from app.models.user import OrganizationMembership, User
 from app.services.audit_service import AuditService
+from app.services.study_service import StudyService
 
 router = APIRouter(tags=["evaluation-bundles"])
 
@@ -117,6 +118,8 @@ async def create_bundle(
     ids = payload.study_ids
     studies = (await db.execute(select(Study).where(Study.id.in_(ids)))).scalars().all()
     _validate_studies(studies, project_id, ids)
+    for study in studies:
+        await StudyService(db).require_current_enterprise_method(study)
     bundle = EvaluationBundle(
         project_id=project_id,
         organization_id=project.organization_id,
@@ -195,6 +198,8 @@ async def public_bundle(public_id: UUID, db: AsyncSession = Depends(get_db)):
     )).scalars().all()
     try:
         _validate_studies(studies, bundle.project_id, list(bundle.study_ids))
+        for study in studies:
+            await StudyService(db).require_current_enterprise_method(study)
     except ValidationDomainError:
         raise PublicResourceUnavailableError("El enlace no está disponible.")
     by_id = {study.id: study for study in studies}

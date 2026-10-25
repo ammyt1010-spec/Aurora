@@ -48,7 +48,9 @@ class CensopasProvisioningService:
                 f"requested_version_kind inválido: '{requested_kind}'. Debe ser 'SHORT' o 'MEDIUM'.",
                 convention="CENSOPAS_PROJECT_PROVISIONING",
             )
-        version = await self._default_version(requested_kind)
+        version = await self._default_version(
+            requested_kind, (project.metadata_ or {}).get("requested_version_id")
+        )
         questions = await self._exogenous_questions(version.id)
         if not questions:
             raise ValidationDomainError(
@@ -75,7 +77,7 @@ class CensopasProvisioningService:
         }
         await self.session.flush()
 
-    async def _default_version(self, version_kind: str) -> InstrumentVersion:
+    async def _default_version(self, version_kind: str, version_id: int | None = None) -> InstrumentVersion:
         stmt = (
             select(InstrumentVersion)
             .join(Instrument, InstrumentVersion.instrument_id == Instrument.id)
@@ -93,6 +95,7 @@ class CensopasProvisioningService:
                 item
                 for item in versions
                 if (item.config or {}).get("censopas_version_kind") == version_kind
+                and (version_id is None or item.id == version_id)
             ),
             None,
         )

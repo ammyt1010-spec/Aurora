@@ -48,6 +48,7 @@ class ReportRunCreate(BaseModel):
     billing_order_id: int | None = Field(default=None, gt=0)
     report_template_id: int | None = None
     analysis_run_id: int | None = None
+    scoring_run_id: int | None = Field(default=None, gt=0)
     output_format: OutputFormat = "DOCX"
     requested_by_user_id: int | None = None
     report_mode: Literal["PROVISIONAL", "OFFICIAL", "SAMPLE"] = "PROVISIONAL"
@@ -98,6 +99,11 @@ class ConstructExecutiveRanking(BaseModel):
 
 
 class ExecutiveDashboardResponse(BaseModel):
+    analysis_run_id: int | None = None
+    instrument_version_id: int | None = None
+    barem_id: int | None = None
+    algorithm_version: str | None = None
+    scoring_sample_n: int | None = None
     study_id: int
     study_name: str
     company_name: str | None = None

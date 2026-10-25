@@ -344,8 +344,12 @@ async def get_censopas_results(study_id: int, session: AsyncSession = Depends(ge
     ]
     payload = [ConstructResultRead(**row) for row in service.attach_priority_ranks(payload)]
 
+    # Identify the persisted source, not a separately queried latest run.
+    run_ids = {r.analysis_run_id for r in results}
+    analysis_run_id = next(iter(run_ids)) if len(run_ids) == 1 else None
     return CensopasResultsResponse(
         study_id=study_id,
+        analysis_run_id=analysis_run_id,
         scoring_status=scoring_status,
         official_equivalence_enabled=official_equivalence_enabled,
         results=payload,

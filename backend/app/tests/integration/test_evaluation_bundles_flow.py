@@ -49,3 +49,30 @@ async def test_bundle_multi_study_link_and_revocation(
     assert revoked.status_code == 200
     blocked = await client.get(f"/api/v1/public/bundles/{bundle['public_id']}")
     assert blocked.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_multidisciplinary_campaign_keeps_own_version_in_censopas_project(
+    client, session, seed_project, seed_user, seed_instrument_draft,
+):
+    _, version = seed_instrument_draft
+    seed_project.project_type = "CENSO"
+    # Deliberately different CENSOPAS version/barem: must not leak into research.
+    seed_project.metadata_ = {"instrument_version_id": version.id + 1000, "barem_id": 99999}
+    survey = Survey(project_id=seed_project.id, instrument_version_id=version.id,
+                    created_by_user_id=seed_user.id, name="Synthetic ergonomics", survey_type="INSTRUMENT")
+    session.add(survey)
+    await session.commit()
+    created = await client.post(f"/api/v1/projects/{seed_project.id}/studies", json={
+        "survey_id": survey.id, "name": "Independent research", "study_type": "RESEARCH",
+    })
+    assert created.status_code == 201, created.text
+    assert created.json()["instrument_version_id"] == version.id
+    assert created.json()["study_type"] == "RESEARCH"
+    assert created.json()["barem_id"] is None
+    assert created.json()["status"] == "DRAFT"
+    # Existing CENSOPAS mismatch guard still rejects a wrongly paired survey.
+    censopas = await client.post(f"/api/v1/projects/{seed_project.id}/studies", json={
+        "survey_id": survey.id, "name": "Incorrect CENSOPAS pairing", "study_type": "CENSO",
+    })
+    assert censopas.status_code == 422

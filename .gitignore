@@ -24,3 +24,8 @@ backend/.pytest_tmp/
 playwright_reports/
 run_audit_playwright.py
 .db_backups/
+
+# Python verification caches
+__pycache__/
+*.py[cod]
+.pytest_cache/

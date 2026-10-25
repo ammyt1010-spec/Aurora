@@ -10,6 +10,7 @@ from app.core.business_access import _project, _study
 from app.models.instrument import INSTRUMENT_DISCIPLINES, INSTRUMENT_STATUSES, Instrument, InstrumentVersion
 from app.models.project import Project
 from app.models.study import Study
+from app.models.survey import Survey
 from app.models.user import OrganizationMembership, User
 from sqlalchemy.orm import selectinload
 from app.core.pagination import Page, PageParams, page_params
@@ -251,8 +252,8 @@ async def link_study_instrument(
     study = await session.get(Study, study_id)
     if study is None:
         raise NotFoundError("Estudio no encontrado")
-    if study.status in ("CLOSED", "ARCHIVED"):
-        raise ConflictError("No se puede vincular un instrumento a un estudio concluido o archivado.")
+    if study.status != "DRAFT":
+        raise ConflictError("Solo se puede vincular un instrumento a un estudio en borrador.")
 
     stmt = (
         select(InstrumentVersion)
@@ -281,6 +282,12 @@ async def link_study_instrument(
         raise ConflictError("No se puede vincular un instrumento en borrador. Debe someterse primero a validación.")
     if version.status in ("LOCKED", "ARCHIVED"):
         raise ConflictError("La versión seleccionada está bloqueada.")
+
+    survey = await session.get(Survey, study.survey_id)
+    if survey is None or survey.instrument_version_id != version.id:
+        raise ConflictError(
+            "El cuestionario debe corresponder a la versión seleccionada; cree un estudio con el cuestionario correcto."
+        )
 
     study.instrument_version_id = version.id
     await session.commit()

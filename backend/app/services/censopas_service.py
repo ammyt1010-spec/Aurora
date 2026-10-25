@@ -948,6 +948,7 @@ class CensopasScoringService:
         return {
             "study_id": study_id,
             "unit_type_id": unit_type_id,
+            "analysis_run_id": latest_run.id,
             "min_publishable_n": study.min_publishable_n,
             "secondary_suppression_applied": bool(secondary_ids),
             "results": payload_results,

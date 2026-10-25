@@ -22,6 +22,20 @@ MAX_SOURCE_BYTES = 30 * 1024 * 1024
 MAX_TOTAL_BYTES = 120 * 1024 * 1024
 
 
+def verified_executive_snapshot(report) -> dict | None:
+    """Only server-produced snapshots bound to this exact report execution."""
+    meta = report.metadata_ or {}
+    snapshot = meta.get("executive_snapshot") or {}
+    context = meta.get("scoring_context") or {}
+    if (snapshot.get("source") != "persisted_scoring_run"
+            or not report.analysis_run_id
+            or snapshot.get("analysis_run_id") != report.analysis_run_id
+            or context.get("analysis_run_id") != report.analysis_run_id
+            or context.get("study_id") != report.study_id):
+        return None
+    return snapshot
+
+
 def build_executive_cover(bundle_label: str, entries: list[tuple]) -> bytes:
     """Portada AURORA con indicadores documentales verificables.
 
@@ -69,13 +83,27 @@ def build_executive_cover(bundle_label: str, entries: list[tuple]) -> bytes:
         ))
         ax.text(left + .025, .593, label, fontsize=8, weight="bold", color="#5D7492")
         ax.text(left + .025, .548, str(value), fontsize=23, weight="bold", color="#153B67")
-    ax.text(.086, .472, "CONTENIDO DOCUMENTAL", fontsize=10, weight="bold", color="#0A1F44")
+    ax.text(.086, .472, "RESULTADOS POR INSTRUMENTO · SIN ÍNDICE GLOBAL", fontsize=9, weight="bold", color="#0A1F44")
     ax.plot([.086, .916], [.459, .459], color="#CFDFEE", linewidth=.8)
-    # La batería admite un máximo de 12 estudios; caben todos en una página.
     for i, (study, report, digest, pdf_content) in enumerate(entries):
-        y = .434 - i * .022
-        ax.text(.09, y, f"{i+1:02d}", fontsize=9, weight="bold", color="#2779AC")
-        ax.text(.14, y, study.name[:82], fontsize=8.6, color="#264262")
+        y = .434 - i * .027
+        ax.text(.09, y, f"{i+1:02d}  {study.name[:65]}", fontsize=8, weight="bold", color="#264262")
+        snapshot = verified_executive_snapshot(report)
+        if snapshot:
+            minimum = ((report.metadata_ or {}).get("scoring_context", {}).get("privacy") or {}).get("min_publishable_n", 1)
+            n = snapshot.get("n_completed")
+            sample = str(n) if isinstance(n, int) and n >= minimum else "no publicable"
+            detail = (f"N scoring: {sample} · Constructos publicables: {snapshot.get('publishable_constructs', '—')}"
+                      f" · Run {report.analysis_run_id} · Versión {snapshot.get('instrument_version_id')}"
+                      f" · Baremo {snapshot.get('barem_id') or 'no disponible'}")
+        else:
+            detail = "Indicadores no disponibles: fuente histórica sin snapshot de scoring verificable."
+        ax.text(.10, y - .010, detail, fontsize=6.1, color="#506981")
+        indicator = snapshot.get("indicator") if snapshot else None
+        if indicator and indicator.get("mean_score") is not None:
+            metric = (f"{str(indicator.get('construct_name') or indicator.get('construct_code'))[:65]}: "
+                      f"media {indicator['mean_score']:.1f}/100 · No es un índice global")
+            ax.text(.10, y - .019, metric, fontsize=6.3, color="#264262")
     ax.text(.087, .106, "LECTURA RESPONSABLE", fontsize=9, weight="bold", color="#0A1F44")
     ax.text(.087, .081,
             "Cada instrumento conserva su metodología, baremos, muestra y conclusiones.",
@@ -118,7 +146,7 @@ async def combine_paid_bundle_reports(db, bundle: EvaluationBundle, user_id: int
         if not report or (report.metadata_ or {}).get("is_sample_preview"):
             raise ConflictError(f"El estudio {study.name} requiere un informe PDF definitivo con orden pagada.")
         order = await db.get(ReportOrder, report.billing_order_id)
-        if order is None or order.study_id != study_id or order.status != "CONSUMED":
+        if order is None or order.study_id != study_id or order.organization_id != bundle.organization_id or order.status != "CONSUMED":
             raise ConflictError("Se detectó una orden comercial no válida para consolidar el informe.")
         path = Path(report.storage_path or "").resolve()
         expected_ext = ".pdf" if report.output_format == "PDF" else ".docx"
@@ -164,6 +192,9 @@ async def combine_paid_bundle_reports(db, bundle: EvaluationBundle, user_id: int
             "study_name": study.name,
             "report_id": report.id,
             "source_hash": digest,
+            "analysis_run_id": report.analysis_run_id,
+            "scoring_context": (report.metadata_ or {}).get("scoring_context"),
+            "executive_snapshot": verified_executive_snapshot(report),
             "source_format": report.output_format,
             "compiled_pdf_hash": hashlib.sha256(content).hexdigest(),
             "pages": len(reader.pages),

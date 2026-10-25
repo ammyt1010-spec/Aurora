@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +34,6 @@ from app.services.project_service import ProjectService
 from scripts.seed_censopas_official import run as seed_official_catalog
 
 SEED_VERSION = "TWO_CENSOPAS_USERS_V1"
-DEMO_PASSWORD = "ColmenaDemo2026!"
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ DEMO_SPECS = (
 )
 
 
-async def _upsert_user(session: AsyncSession, spec: DemoSpec) -> User:
+async def _upsert_user(session: AsyncSession, spec: DemoSpec, password: str) -> User:
     user = (
         await session.execute(select(User).where(User.email == spec.email))
     ).scalars().first()
@@ -94,7 +94,7 @@ async def _upsert_user(session: AsyncSession, spec: DemoSpec) -> User:
         session.add(user)
 
     user.username = spec.username
-    user.password_hash = hash_password(DEMO_PASSWORD)
+    user.password_hash = hash_password(password)
     user.first_name = spec.first_name
     user.last_name = spec.last_name
     user.status = "ACTIVE"
@@ -220,12 +220,15 @@ async def _upsert_project(
 
 
 async def run() -> list[dict]:
+    password = os.environ.get("AURORA_SEED_PASSWORD", "")
+    if len(password) < 16:
+        raise RuntimeError("Set AURORA_SEED_PASSWORD to a unique secret of at least 16 characters")
     await seed_official_catalog()
     results: list[dict] = []
     async with AsyncSessionLocal() as session:
         for spec in DEMO_SPECS:
             try:
-                user = await _upsert_user(session, spec)
+                user = await _upsert_user(session, spec, password)
                 organization = await _upsert_organization(session, user, spec)
                 await session.commit()
                 project = await _upsert_project(session, user, organization, spec)
@@ -236,7 +239,7 @@ async def run() -> list[dict]:
             results.append(
                 {
                     "email": user.email,
-                    "password": DEMO_PASSWORD,
+
                     "user_id": user.id,
                     "organization_id": organization.id,
                     "project_id": project.id,

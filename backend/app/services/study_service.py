@@ -61,6 +61,13 @@ class StudyService:
         project = await self.session.get(Project, project_id)
         if project is None:
             raise NotFoundError(f"Proyecto {project_id} no encontrado")
+        # Enterprise projects can host independent instruments in one battery.
+        # Only explicit non-CENSOPAS research campaigns avoid the project's
+        # CENSOPAS barem; never apply that barem to a different instrument.
+        is_censopas_campaign = project.project_type == "CENSO" and (
+            payload.study_type != "RESEARCH"
+            or survey.instrument_version_id == (project.metadata_ or {}).get("instrument_version_id")
+        )
         study_type = payload.study_type
         barem_id = None
         analytics_plan_id = None
@@ -72,10 +79,10 @@ class StudyService:
                 )
             )
         ).scalars().first()
-        if plan is None and project.project_type == "CENSO":
+        if plan is None and is_censopas_campaign:
             raise ValidationDomainError(f"El plan analítico '{payload.analytics_plan}' no está disponible.")
         analytics_plan_id = plan.id if plan is not None else None
-        if project.project_type == "CENSO":
+        if is_censopas_campaign:
             study_type = "CENSO"
             configured_barem_id = (project.metadata_ or {}).get("barem_id")
             if configured_barem_id is not None:
@@ -255,12 +262,39 @@ class StudyService:
 
         return False
 
+    async def require_current_enterprise_method(self, study: Study) -> None:
+        """Recheck revocable catalog authorization, without changing personal studies.
+
+        OPEN is a lifecycle state, not a permanent authorization grant. Official
+        system versions may remain LOCKED (immutable) while their instrument is
+        active; private versions must remain ACTIVE/AUTHORIZED and configured.
+        """
+        if not await self._is_enterprise_evaluation(study):
+            return
+        version = (
+            await self.instrument_repo.get_version_with_instrument(study.instrument_version_id)
+            if study.instrument_version_id is not None else None
+        )
+        if version is None or version.instrument is None:
+            raise ValidationDomainError("El método empresarial no está disponible.")
+        instrument = version.instrument
+        allowed_versions = {"AUTHORIZED", "ACTIVE"}
+        if instrument.is_system:
+            allowed_versions.add("LOCKED")
+        if instrument.status not in {"AUTHORIZED", "ACTIVE"}:
+            raise ValidationDomainError("El instrumento no está en estado AUTHORIZED o ACTIVE.")
+        if version.status not in allowed_versions:
+            raise ValidationDomainError("La versión del instrumento no está en estado AUTHORIZED o ACTIVE.")
+        if not instrument.is_system and version.scoring_status != "CONFIGURED":
+            raise ValidationDomainError("El método empresarial no tiene configuración de puntuación vigente.")
+
     async def open(self, study_id: int) -> Study:
         """harness §15: al abrir un estudio se valida survey/instrument_version,
         se congela una snapshot de configuración y se impiden cambios
         destructivos posteriores (delegado a InstrumentEditPolicy)."""
         study = await self.get(study_id)
         self._transition(study, "OPEN")
+        await self.require_current_enterprise_method(study)
 
         survey_stmt = (
             select(Survey)

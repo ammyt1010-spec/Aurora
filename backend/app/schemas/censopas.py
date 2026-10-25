@@ -169,6 +169,7 @@ class ConstructResultRead(BaseModel):
 
 class CensopasResultsResponse(BaseModel):
     study_id: int
+    analysis_run_id: int | None = None
     scoring_status: str
     official_equivalence_enabled: bool
     results: list[ConstructResultRead]
@@ -336,6 +337,7 @@ class CensopasUnitResultRead(ConstructResultRead):
 
 class CensopasUnitResultsResponse(BaseModel):
     study_id: int
+    analysis_run_id: int | None = None
     unit_type_id: int
     min_publishable_n: int
     secondary_suppression_applied: bool

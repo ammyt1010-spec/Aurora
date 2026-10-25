@@ -516,6 +516,11 @@ async def test_08_regresion_censopas_y_suseso_sin_degradacion(session, monkeypat
         config={"censopas_version_kind": "SHORT"},
     )
     session.add(ver_censopas)
+    await session.flush()
+    # Link only a draft study whose questionnaire represents the selected version.
+    study_a.status = "DRAFT"
+    survey = await session.get(Survey, study_a.survey_id)
+    survey.instrument_version_id = ver_censopas.id
     await session.commit()
 
     # Guardar tarifa para CENSOPAS_CORTA
