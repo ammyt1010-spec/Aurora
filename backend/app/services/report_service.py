@@ -33,7 +33,7 @@ from app.models.analysis import AnalysisResult, AnalysisRun
 from app.models.audit import AuditLog
 from app.models.billing import ReportOrder
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi
-from app.models.censopas import Barem
+from app.models.censopas import Barem, ConstructResult
 from app.models.construct import Construct
 from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
@@ -195,15 +195,14 @@ class ReportService:
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
 
-        # In production a report, including its preview, consumes exactly
-        # one paid company order. No tariff is pre-filled before approval.
-        billing = BillingService(self.session)
-        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id, request=request)
-
         if payload.analysis_run_id is not None:
             analysis = await self.session.get(AnalysisRun, payload.analysis_run_id)
             if analysis is None or analysis.study_id != study_id:
                 raise NotFoundError("El análisis seleccionado no pertenece a este estudio")
+
+        # Invalid context must not reserve a paid entitlement.
+        billing = BillingService(self.session)
+        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id, request=request)
 
         template_name = None
         template_code = None
@@ -247,6 +246,7 @@ class ReportService:
             bundle = await self._build_bundle(
                 study,
                 payload.analysis_run_id,
+                scoring_run_id=payload.scoring_run_id,
                 report_mode=payload.report_mode,
                 sections=payload.sections,
                 report_run=report_run,
@@ -362,6 +362,7 @@ class ReportService:
                 bundle = await self._build_bundle(
                     study,
                     payload.analysis_run_id,
+                    scoring_run_id=payload.scoring_run_id,
                     report_mode="SAMPLE",
                     sections=payload.sections,
                     report_run=report_run,
@@ -447,6 +448,7 @@ class ReportService:
         study,
         analysis_run_id: int | None,
         *,
+        scoring_run_id: int | None = None,
         report_mode: str = "PROVISIONAL",
         sections: list[str] | None = None,
         report_run=None,
@@ -491,27 +493,58 @@ class ReportService:
             "executive_summary": None,
         }
 
-        if analysis_run_id is not None:
-            run = await self.analytics_repo.get_run(analysis_run_id)
-            if run is not None:
-                bundle["analysis_results"] = [self._serialize_result(r) for r in run.results]
-        else:
-            stmt = (
-                select(AnalysisResult)
-                .join(AnalysisRun, AnalysisResult.analysis_run_id == AnalysisRun.id)
-                .where(AnalysisRun.study_id == study.id)
-                .order_by(AnalysisResult.created_at.desc())
-                .limit(50)
-            )
-            results = list((await self.session.execute(stmt)).scalars().all())
-            bundle["analysis_results"] = [self._serialize_result(r) for r in results]
+        # Resolve once; every scored section must use the same immutable execution.
+        # Legacy callers may omit the id, but never mix the latest 50 results.
+        scoring = ScoringService(self.session)
+        supplemental_run = None
+        selected_id = scoring_run_id if scoring_run_id is not None else analysis_run_id
+        run = await self.analytics_repo.get_run(selected_id) if selected_id is not None else await scoring._latest_run(study.id)
+        if selected_id is not None and (run is None or run.study_id != study.id):
+            raise NotFoundError("El análisis seleccionado no pertenece a este estudio")
+        if run is not None and run.analysis_type not in ("LIKERT_SCORING", "CENSOPAS_SCORING"):
+            if scoring_run_id is not None or run.status != "COMPLETED":
+                raise ConflictError("El informe requiere una ejecución completada.")
+            # Backward-compatible explicit analytical runs remain supplemental;
+            # they never select the cohort used in the scored sections.
+            supplemental_run = run
+            run = await scoring._latest_run(study.id)
+        if run is not None:
+            if run.status != "COMPLETED":
+                raise ConflictError("El informe requiere una ejecución de scoring completada.")
+            if (run.parameters or {}).get("instrument_version_id") != study.instrument_version_id:
+                raise ConflictError("La versión del análisis no coincide con el instrumento del estudio.")
+            run = await self.analytics_repo.get_run(run.id)
+            bundle["analysis_results"] = [self._serialize_result(r) for r in run.results]
+        elif supplemental_run is None:
+            # No scored cohort exists: retain a single completed analytical run,
+            # explicitly identified as supplemental (not a synthetic score).
+            supplemental_run = (await self.session.execute(select(AnalysisRun).where(
+                AnalysisRun.study_id == study.id, AnalysisRun.status == "COMPLETED",
+                AnalysisRun.analysis_type.notin_(("LIKERT_SCORING", "CENSOPAS_SCORING")),
+            ).order_by(AnalysisRun.completed_at.desc(), AnalysisRun.id.desc()).limit(1))).scalar_one_or_none()
+            if supplemental_run:
+                supplemental_run = await self.analytics_repo.get_run(supplemental_run.id)
+        analysis_run_id = run.id if run else None
+        if supplemental_run:
+            bundle["analysis_results"] = [self._serialize_result(r) for r in supplemental_run.results]
+            bundle["supplemental_analysis_run_id"] = supplemental_run.id
+        if report_run is not None:
+            report_run.analysis_run_id = analysis_run_id
 
         censopas_service = CensopasScoringService(self.session)
-        construct_results = await censopas_service.get_results(study.id)
+        construct_results = []
+        if analysis_run_id is not None:
+            stmt = select(ConstructResult).where(
+                ConstructResult.study_id == study.id,
+                ConstructResult.analysis_run_id == analysis_run_id,
+                ConstructResult.unit_id.is_(None),
+            ).options(selectinload(ConstructResult.construct))
+            construct_results = list((await self.session.execute(stmt)).scalars().all())
+        result_barem_id = (run.parameters or {}).get("barem_id") if run else study.barem_id
         official_equivalence_enabled = await resolve_official_equivalence_enabled(
             censopas_service.instrument_repo, study.instrument_version_id
         )
-        barem = await censopas_service.repo.get_barem(study.barem_id) if study.barem_id else None
+        barem = await censopas_service.repo.get_barem(result_barem_id) if result_barem_id else None
         # Fase 1/7 (harness §31): única autoridad para "oficial"/"referencia" —
         # nunca inferir localmente, siempre censopas_methodology.py.
         bundle["methodological_label"] = resolve_censopas_methodological_status(
@@ -557,15 +590,16 @@ class ReportService:
                     "El reporte oficial está bloqueado porque la versión CENSOPAS no cumple readiness.",
                     readiness=readiness,
                 )
-            overview = await ScoringService(self.session).get_overview(study.id)
+            overview = await ScoringService(self.session).get_overview(study.id, analysis_run_id=analysis_run_id)
             bundle["barem_results"] = overview.model_dump(mode="json")
+            bundle["executive_summary"]["n_valid"] = overview.n_completed
             if not bundle["is_censopas"]:
                 visible_results = [
                     result for result in overview.results
                     if not result.suppressed and result.mean_score is not None
                 ]
                 bundle["executive_summary"] = {
-                    "n_valid": bundle["data_quality"].get("valid_count"),
+                    "n_valid": overview.n_completed,
                     "completion_rate": bundle["data_quality"].get("completion_rate"),
                     "headline": (
                         f"{len(visible_results)} constructos con resultados colectivos publicables. "
@@ -625,6 +659,32 @@ class ReportService:
             study, bundle, report_run, analysis_run_id
         )
         bundle["conclusions"] = self._build_conclusions(bundle)
+        if report_run is not None:
+            report_run.metadata_ = {
+                **(report_run.metadata_ or {}),
+                "scoring_context": bundle["traceability"],
+                "executive_snapshot": {
+                    "source": "persisted_scoring_run",
+                    "analysis_run_id": analysis_run_id,
+                    "instrument_name": study.instrument_name,
+                    "instrument_version_id": study.instrument_version_id,
+                    "barem_id": result_barem_id,
+                    "n_completed": (bundle.get("barem_results") or {}).get("n_completed"),
+                    "publishable_constructs": sum(
+                        not result.get("suppressed", True) and result.get("mean_score") is not None
+                        for result in (bundle.get("barem_results") or {}).get("results", [])
+                    ),
+                    "methodological_label": bundle["methodological_label"],
+                    "indicator": next(({
+                        "construct_code": result.get("construct_code"),
+                        "construct_name": result.get("construct_name"),
+                        "mean_score": result.get("mean_score"),
+                        "n_valid": result.get("n_valid"),
+                        "scale": "0–100",
+                    } for result in (bundle.get("barem_results") or {}).get("results", [])
+                        if not result.get("suppressed", True) and result.get("mean_score") is not None), None),
+                },
+            }
         return bundle
 
     async def _build_cover(self, study, bundle: dict, report_run) -> dict:
@@ -664,6 +724,10 @@ class ReportService:
 
         return {
             "organization_name": organization_name,
+            "analysis_run_id": (bundle.get("barem_results") or {}).get("analysis_run_id"),
+            "instrument_version_id": study.instrument_version_id,
+            "barem_id": (bundle.get("barem_results") or {}).get("barem_id"),
+            "sample_n": (bundle.get("barem_results") or {}).get("n_completed"),
             "study_code": bundle["study"]["code"],
             "period_start": bundle["study"]["period_start"],
             "period_end": bundle["study"]["period_end"],
@@ -1086,13 +1150,15 @@ class ReportService:
     ) -> dict:
         runs_stmt = (
             select(AnalysisRun)
-            .where(AnalysisRun.study_id == study.id)
+            .where(AnalysisRun.study_id == study.id, AnalysisRun.id.in_([value for value in (requested_analysis_run_id, bundle.get("supplemental_analysis_run_id")) if value is not None]))
             .order_by(AnalysisRun.created_at, AnalysisRun.id)
         )
         runs = list((await self.session.execute(runs_stmt)).scalars().all())
+        scoring_run = next((run for run in runs if run.id == requested_analysis_run_id), None)
         barem_payload = None
-        if study.barem_id is not None:
-            barem = await self.session.get(Barem, study.barem_id)
+        result_barem_id = (bundle.get("barem_results") or {}).get("barem_id")
+        if result_barem_id is not None:
+            barem = await self.session.get(Barem, result_barem_id)
             if barem is not None:
                 barem_payload = {
                     "id": barem.id,
@@ -1114,6 +1180,11 @@ class ReportService:
             "study_id": study.id,
             "study_code": bundle.get("study", {}).get("code"),
             "analysis_run_id": requested_analysis_run_id,
+            "supplemental_analysis_run_id": bundle.get("supplemental_analysis_run_id"),
+            "sample_n": (bundle.get("barem_results") or {}).get("n_completed"),
+            "context_fingerprint": (scoring_run.parameters or {}).get("context_fingerprint") if scoring_run else None,
+            "context_integrity": "VERIFIED" if scoring_run and (scoring_run.parameters or {}).get("context_fingerprint") else "LEGACY_WITHOUT_FINGERPRINT",
+            "operational_context_note": "Participación, perfil sociolaboral y planes reflejan el estado al emitir; no son la muestra histórica de scoring.",
             "lineage": [
                 "responses.raw_code",
                 "response_scores.risk_value",
@@ -1143,6 +1214,7 @@ class ReportService:
             },
             "analysis_runs": [
                 {
+                    "id": run.id,
                     "analysis_type": run.analysis_type,
                     "status": run.status,
                     "engine": run.engine,
@@ -1229,7 +1301,7 @@ class ReportService:
             "result_data": result_data,
         }
 
-    async def get_executive_dashboard(self, study_id: int) -> dict:
+    async def get_executive_dashboard(self, study_id: int, analysis_run_id: int | None = None) -> dict:
         study = await self.study_repo.get(study_id)
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
@@ -1251,7 +1323,7 @@ class ReportService:
                 inst_name = version.instrument.name or inst_name
 
         telemetry = await TelemetryService(self.session).get_study_telemetry(study.id)
-        scoring_overview = await ScoringService(self.session).get_overview(study.id)
+        scoring_overview = await ScoringService(self.session).get_overview(study.id, analysis_run_id=analysis_run_id)
 
         plans_stmt = select(ActionPlan).where(ActionPlan.study_id == study_id).options(selectinload(ActionPlan.items))
         plans = list((await self.session.execute(plans_stmt)).scalars().all())
@@ -1286,6 +1358,17 @@ class ReportService:
         normalized_discipline = discipline_aliases.get(discipline, discipline)
         disc_key = normalized_discipline if normalized_discipline in recommendations_catalog else "GENERAL"
 
+        persisted_classifications = {}
+        if scoring_overview.analysis_run_id is not None:
+            persisted_rows = (await self.session.execute(select(ConstructResult).where(
+                ConstructResult.study_id == study_id,
+                ConstructResult.analysis_run_id == scoring_overview.analysis_run_id,
+                ConstructResult.unit_id.is_(None),
+            ))).scalars().all()
+            persisted_classifications = {
+                row.construct_id: row.classification for row in persisted_rows
+                if row.n_valid >= study.min_publishable_n
+            }
         construct_rankings = []
         high_risk_count = 0
         medium_risk_count = 0
@@ -1298,31 +1381,30 @@ class ReportService:
                 continue
             score = float(r.mean_score) if r.mean_score is not None else float(r.median_score)
 
-            unfav_pct = None
-            predominant_band = None
-            if r.bands:
-                for b in r.bands:
-                    b_code = (b.code or "").upper()
-                    b_class = (b.classification_code or "").upper()
-                    if any(k in b_code or k in b_class for k in ("ALTO", "CRITICO", "DESFAVORABLE")):
-                        unfav_pct = (unfav_pct or 0.0) + (b.pct or 0.0)
-                predominant_band = max(r.bands, key=lambda b: (b.pct or 0.0))
-
-            level = (predominant_band.classification_code or predominant_band.label) if predominant_band else (getattr(r, "classification_code", None) or "EVALUADO")
-            code_upper = ((predominant_band.code or "") + " " + (predominant_band.classification_code or "") + " " + (getattr(r, "classification_code", None) or "")).upper() if predominant_band else (getattr(r, "classification_code", None) or "").upper()
-
-            if "ALTO" in code_upper or "CRITICO" in code_upper or "DESFAVORABLE" in code_upper:
-                t_light = "RED"
+            # Exact classification codes only: "UNFAVORABLE" must never match
+            # "FAVORABLE", nor may labels/colors invent a methodology.
+            classifications = {
+                "UNFAVORABLE": "RED", "RIESGO_ALTO": "RED",
+                "INTERMEDIATE": "AMBER", "RIESGO_MEDIO": "AMBER", "REVISION": "AMBER",
+                "FAVORABLE": "GREEN", "FACTOR_PROTECTOR": "GREEN", "RIESGO_BAJO": "GREEN",
+            }
+            usable_bands = [band for band in r.bands if not band.suppressed and band.pct is not None]
+            unfavorable = [band for band in usable_bands if band.classification_code == "UNFAVORABLE"]
+            unfav_pct = sum(band.pct for band in unfavorable) if unfavorable else None
+            predominant = max(usable_bands, key=lambda band: band.pct) if usable_bands else None
+            tied = predominant is not None and sum(band.pct == predominant.pct for band in usable_bands) > 1
+            code = predominant.classification_code if predominant and predominant.pct > 0 and not tied else None
+            aggregate_code = persisted_classifications.get(r.construct_id)
+            if aggregate_code:
+                code = aggregate_code
+            t_light = classifications.get(code, "GRAY")
+            level = aggregate_code or (predominant.label if code and predominant else "SIN CLASIFICACIÓN VERIFICABLE")
+            if t_light == "RED":
                 high_risk_count += 1
-            elif "MEDIO" in code_upper or "INTERMEDIO" in code_upper or "REVISION" in code_upper:
-                t_light = "AMBER"
+            elif t_light == "AMBER":
                 medium_risk_count += 1
-            elif any(label in code_upper for label in ("BAJO", "FAVORABLE", "ADECUADO")):
-                t_light = "GREEN"
+            elif t_light == "GREEN":
                 low_risk_count += 1
-            else:
-                # No methodologically grounded band: never infer "favorable".
-                t_light = "GRAY"
 
             recom = (
                 "Sin categoría de riesgo verificable: revisar el baremo y la configuración metodológica antes de interpretar."
@@ -1353,11 +1435,16 @@ class ReportService:
         else:
             headline = "No se identificaron alertas rojas en los constructos con clasificación verificable."
 
-        signature_material = f"{study_id}:{scoring_overview.analysis_run_id}:{high_risk_count}:{telemetry.valid_count}"
+        signature_material = json.dumps({"study_id": study_id, "run_id": scoring_overview.analysis_run_id, "version_id": scoring_overview.instrument_version_id, "barem_id": scoring_overview.barem_id, "sample_n": scoring_overview.n_completed, "rankings": construct_rankings}, sort_keys=True, ensure_ascii=False)
         sig_hash = hashlib.sha256(signature_material.encode("utf-8")).hexdigest()
 
         return {
             "study_id": study_id,
+            "analysis_run_id": scoring_overview.analysis_run_id,
+            "instrument_version_id": scoring_overview.instrument_version_id,
+            "barem_id": scoring_overview.barem_id,
+            "algorithm_version": scoring_overview.algorithm_version,
+            "scoring_sample_n": scoring_overview.n_completed,
             "study_name": study.name,
             "company_name": org.name if org else None,
             "company_tax_id": org.tax_id if org else None,
@@ -1366,7 +1453,8 @@ class ReportService:
             "period_start": study.start_at.isoformat() if study.start_at else None,
             "period_end": study.end_at.isoformat() if study.end_at else None,
             "participation": {
-                "total_target": telemetry.invited_count or telemetry.valid_count,
+                "total_target": telemetry.invited_count,
+                "context": "current_operational_state_not_scoring_cohort",
                 "valid_count": telemetry.valid_count,
                 "completion_rate": telemetry.completion_rate,
                 "min_publishable_n": study.min_publishable_n,

@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, ClipboardCheck, Layers3, RefreshCcw, ArrowRight, FileText, Plus, ShieldCheck, BarChart3, Sparkles, ExternalLink } from 'lucide-react';
+import {
+  BookOpen,
+  ClipboardCheck,
+  Layers3,
+  RefreshCcw,
+  ArrowRight,
+  FileText,
+  Plus,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { getCensopasPlans } from '../../api/instruments.js';
 import { listProjects } from '../../api/projects.js';
@@ -9,6 +18,8 @@ import { setActiveProjectId } from '../../utils/activeProject.js';
 import '../../design/PremiumSurfaces.css';
 import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
 import MultidisciplinaryCatalog from '../../components/colmena/instruments/MultidisciplinaryCatalog.jsx';
+import DirectCatalogBatteryPanel from '../../components/colmena/instruments/DirectCatalogBatteryPanel.jsx';
+import CatalogCampaignModal from '../../components/colmena/instruments/CatalogCampaignModal.jsx';
 import BundleSelectionPanel from '../../components/colmena/instruments/BundleSelectionPanel.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { ErrorState } from '../../components/ui/ErrorState.jsx';
@@ -25,11 +36,16 @@ export function availableInstrumentCards(response) {
   for (const plan of plans) {
     const kind = plan?.version_kind;
     if (!VERSION_LABELS[kind]) continue;
-    if (!byKind.has(kind) || (plan.ready_for_scoring && !byKind.get(kind).ready_for_scoring)) {
+    if (
+      !byKind.has(kind) ||
+      (plan.ready_for_scoring && !byKind.get(kind).ready_for_scoring)
+    ) {
       byKind.set(kind, plan);
     }
   }
-  return [...byKind.values()].sort((a, b) => a.version_kind.localeCompare(b.version_kind));
+  return [...byKind.values()].sort((a, b) =>
+    a.version_kind.localeCompare(b.version_kind),
+  );
 }
 
 /**
@@ -40,6 +56,7 @@ export function availableInstrumentCards(response) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [selectedInstrument, setSelectedInstrument] = useState(null);
+  const [catalogInstrument, setCatalogInstrument] = useState(null);
   const [catalog, setCatalog] = useState('censopas');
   const [showProjects, setShowProjects] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
@@ -62,69 +79,37 @@ export default function DashboardPage() {
     <div className="colmena-page aurora-premium-page aurora-home-focus !gap-2 !py-2">
       <header className="aurora-suite-hero aurora-home-hero !min-h-0 !py-2.5 !px-4">
         <div className="aurora-suite-hero-copy">
-          <span className="!text-[10px]">01 / INICIO · AURORA PROFESSIONAL</span>
+          <span className="!text-[10px]">
+            01 / INICIO · AURORA PROFESSIONAL
+          </span>
           <h1 className="!my-0.5 !text-base">¿Qué deseas evaluar?</h1>
-          <p className="!text-[11px] text-[#c8d5ea]">Selecciona la empresa y marca los instrumentos para generar su enlace y código QR.</p>
+          <p className="!text-[11px] text-[#c8d5ea]">
+            Selecciona la empresa y marca los instrumentos para generar su
+            enlace y código QR.
+          </p>
         </div>
-        <div className="aurora-suite-hero-icon !w-10 !h-10 !rounded-xl" aria-hidden="true"><BookOpen size={18}/></div>
+        <div
+          className="aurora-suite-hero-icon !w-10 !h-10 !rounded-xl"
+          aria-hidden="true"
+        >
+          <BookOpen size={18} />
+        </div>
       </header>
 
-      {/* Banner de Acceso Inmediato a la Demostración Minera */}
-      <section aria-label="Demostración corporativa de minería" className="rounded-xl border border-[#9EE2EC] bg-gradient-to-r from-[#EDF9FB] via-[#F4FBFC] to-white px-3.5 py-2 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#108B91]/15 px-2 py-0.5 text-[10px] font-extrabold text-[#0E7176]">
-              <Sparkles size={11} className="text-[#108B91]" /> DEMO ACTIVA
-            </span>
-            <div className="min-w-0">
-              <strong className="block truncate text-xs font-extrabold text-[#0A1F44]">
-                Estudio Minero San Cristóbal · CENSOPAS-COPSOQ
-              </strong>
-              <span className="block truncate text-[10px] text-[#526D82]">
-                35 evaluaciones sintéticas completadas y clasificadas por baremos oficiales.
-              </span>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveProjectId(23);
-                navigate('/colmena/project/23/telemetry');
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A1F44] px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#153468]"
-            >
-              <BarChart3 size={13} className="text-[#59BFD3]" />
-              Ver Tablero
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveProjectId(23);
-                navigate('/colmena/project/23/reports');
-              }}
-              className="inline-flex items-center gap-1 rounded-lg border border-[#CADAE8] bg-white px-2.5 py-1.5 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
-            >
-              <FileText size={13} />
-              Informe
-            </button>
-            <a
-              href="/bateria/83e1755d-af21-4256-bd77-8dd69148e66b"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-lg border border-[#CADAE8] bg-white px-2.5 py-1.5 text-xs font-bold text-[#2A527A] hover:bg-[#F6FAFD]"
-            >
-              <ExternalLink size={12} />
-              Cuestionario
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <BundleSelectionPanel projects={projectItems} />
+      <DirectCatalogBatteryPanel projects={projectItems} />
+      <details className="rounded-lg border bg-white p-3">
+        <summary className="cursor-pointer text-xs font-semibold">
+          Enlaces de campañas ya abiertas
+        </summary>
+        <BundleSelectionPanel projects={projectItems} />
+      </details>
       <div className="aurora-home-toolbar">
         {catalogVisible && (
-          <div role="tablist" aria-label="Catálogo de instrumentos" className="aurora-home-tabs">
+          <div
+            role="tablist"
+            aria-label="Catálogo de instrumentos"
+            className="aurora-home-tabs"
+          >
             <button
               type="button"
               role="tab"
@@ -134,7 +119,7 @@ export default function DashboardPage() {
               className={catalog === 'censopas' ? 'is-active' : ''}
               onClick={() => setCatalog('censopas')}
             >
-              <ShieldCheck size={15}/> Psicosocial
+              <ShieldCheck size={15} /> Psicosocial
             </button>
             <button
               type="button"
@@ -145,7 +130,7 @@ export default function DashboardPage() {
               className={catalog === 'multidisc' ? 'is-active' : ''}
               onClick={() => setCatalog('multidisc')}
             >
-              <Layers3 size={15}/> Multidisciplinario
+              <Layers3 size={15} /> Multidisciplinario
             </button>
           </div>
         )}
@@ -167,7 +152,8 @@ export default function DashboardPage() {
               onClick={() => setShowProjects((x) => !x)}
               className="aurora-home-action"
             >
-              Mis evaluaciones <span className="aurora-home-counter">{projectItems.length}</span>
+              Mis evaluaciones{' '}
+              <span className="aurora-home-counter">{projectItems.length}</span>
             </button>
           )}
           <button
@@ -175,7 +161,7 @@ export default function DashboardPage() {
             className="aurora-home-action is-primary"
             onClick={() => navigate('/colmena/project/new')}
           >
-            <Plus size={15}/> Nueva evaluación
+            <Plus size={15} /> Nueva evaluación
           </button>
         </div>
       </div>
@@ -187,7 +173,10 @@ export default function DashboardPage() {
       )}
 
       {showProjects && projectItems.length > 0 && (
-        <section aria-label="Mis evaluaciones corporativas" className="aurora-home-projects">
+        <section
+          aria-label="Mis evaluaciones corporativas"
+          className="aurora-home-projects"
+        >
           <div className="aurora-home-section-head">
             <h2>Evaluaciones existentes</h2>
             <span>Selecciona la pantalla que necesitas</span>
@@ -204,7 +193,7 @@ export default function DashboardPage() {
                       navigate('/colmena/telemetry');
                     }}
                   >
-                    <ArrowRight size={12}/> Telemetría
+                    <ArrowRight size={12} /> Telemetría
                   </button>
                   <button
                     type="button"
@@ -213,7 +202,7 @@ export default function DashboardPage() {
                       navigate('/colmena/reports');
                     }}
                   >
-                    <FileText size={12}/> Informe
+                    <FileText size={12} /> Informe
                   </button>
                 </div>
               </article>
@@ -226,7 +215,11 @@ export default function DashboardPage() {
         <section
           id="aurora-catalog-view"
           role="tabpanel"
-          aria-labelledby={catalog === 'censopas' ? 'aurora-tab-censopas' : 'aurora-tab-multidisc'}
+          aria-labelledby={
+            catalog === 'censopas'
+              ? 'aurora-tab-censopas'
+              : 'aurora-tab-multidisc'
+          }
           className="aurora-home-catalog"
           key={catalog}
         >
@@ -241,14 +234,23 @@ export default function DashboardPage() {
                   aria-label="Actualizar catálogo"
                   className="aurora-home-refresh"
                 >
-                  <RefreshCcw size={14} className={isFetching ? 'animate-spin' : ''}/> Actualizar
+                  <RefreshCcw
+                    size={14}
+                    className={isFetching ? 'animate-spin' : ''}
+                  />{' '}
+                  Actualizar
                 </button>
               </div>
-              {isLoading ? <LoadingState label="Consultando instrumentos del servidor..." /> : null}
+              {isLoading ? (
+                <LoadingState label="Consultando instrumentos del servidor..." />
+              ) : null}
               {isError ? (
                 <ErrorState
                   title="No se pudo cargar el catálogo"
-                  message={error?.message || 'Comprueba la conexión con el backend de AURORA.'}
+                  message={
+                    error?.message ||
+                    'Comprueba la conexión con el backend de AURORA.'
+                  }
                 />
               ) : null}
               {!isLoading && !isError && !cards.length ? (
@@ -263,17 +265,33 @@ export default function DashboardPage() {
                     const ready = plan.ready_for_scoring === true;
                     const title = VERSION_LABELS[plan.version_kind];
                     return (
-                      <article key={plan.instrument_version_id} className="aurora-catalog-card aurora-home-instrument">
+                      <article
+                        key={plan.instrument_version_id}
+                        className="aurora-catalog-card aurora-home-instrument"
+                      >
                         <div className="aurora-home-instrument-data">
-                          <span className={ready ? 'aurora-home-state is-ready' : 'aurora-home-state'}>
-                            {ready ? 'Lista para aplicar' : 'Requiere validación'}
+                          <span
+                            className={
+                              ready
+                                ? 'aurora-home-state is-ready'
+                                : 'aurora-home-state'
+                            }
+                          >
+                            {ready
+                              ? 'Lista para aplicar'
+                              : 'Requiere validación'}
                           </span>
                           <h3>{title}</h3>
                           <p>
-                            {plan.question_count} preguntas, {plan.scored_item_count} ítems puntuables
-                            · {plan.dimension_count} dimensiones · {plan.subdimension_count} subdimensiones
+                            {plan.question_count} preguntas,{' '}
+                            {plan.scored_item_count} ítems puntuables ·{' '}
+                            {plan.dimension_count} dimensiones ·{' '}
+                            {plan.subdimension_count} subdimensiones
                           </p>
-                          <small>Versión {plan.version_code} · La clasificación depende del baremo configurado.</small>
+                          <small>
+                            Versión {plan.version_code} · La clasificación
+                            depende del baremo configurado.
+                          </small>
                         </div>
                         <button
                           type="button"
@@ -287,11 +305,13 @@ export default function DashboardPage() {
                               items: plan.question_count,
                               duration: 'según el participante',
                               badge: 'Versión configurada en AURORA',
-                              description: plan.plan_description || 'Evaluación empresarial basada en una versión del instrumento.',
+                              description:
+                                plan.plan_description ||
+                                'Evaluación empresarial basada en una versión del instrumento.',
                             })
                           }
                         >
-                          <ClipboardCheck size={15}/>
+                          <ClipboardCheck size={15} />
                           {ready ? 'Aplicar instrumento' : 'No disponible'}
                         </button>
                       </article>
@@ -305,13 +325,31 @@ export default function DashboardPage() {
               <div className="aurora-home-section-head">
                 <div>
                   <h2>Evaluaciones multidisciplinarias</h2>
-                  <span>Selecciona un método autorizado y vincúlalo a su evaluación empresarial.</span>
+                  <span>
+                    Selecciona un método autorizado y vincúlalo a su evaluación
+                    empresarial.
+                  </span>
                 </div>
               </div>
-              <MultidisciplinaryCatalog simpleMode onCreateEvaluation={() => navigate('/colmena/project/new')} />
+              <MultidisciplinaryCatalog
+                simpleMode
+                onCreateEvaluation={setCatalogInstrument}
+              />
             </div>
           )}
         </section>
+      )}
+      {catalogInstrument && (
+        <CatalogCampaignModal
+          instrument={catalogInstrument}
+          projects={projectItems}
+          onClose={() => setCatalogInstrument(null)}
+          onCreated={({ projectId, studyId }) => {
+            setCatalogInstrument(null);
+            setActiveProjectId(projectId);
+            navigate(`/colmena/project/${projectId}/link?studyId=${studyId}`);
+          }}
+        />
       )}
       {selectedInstrument && (
         <InstrumentConfirmModal

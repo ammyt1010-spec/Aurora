@@ -80,6 +80,7 @@ class ProjectService:
             project_metadata = dict(payload.metadata or {})
             if payload.project_type == "CENSO" and payload.censopas_study is not None:
                 project_metadata["requested_version_kind"] = payload.censopas_study.instrument_version
+                project_metadata["requested_version_id"] = payload.censopas_study.instrument_version_id
                 project_metadata["analytics_plan_code"] = payload.censopas_study.analytics_plan
             project = Project(
                 owner_user_id=payload.owner_user_id,

@@ -300,6 +300,7 @@ async def test_censopas_media_dimension_gets_bands_from_subdimension_items(
 
     results_resp = await client.get(f"/api/v1/studies/{study['id']}/censopas/results")
     assert results_resp.status_code == 200, results_resp.text
+    assert results_resp.json()["analysis_run_id"] is not None
     results = results_resp.json()["results"]
 
     d1_result = next(r for r in results if r["construct_id"] == dimension["id"])
@@ -361,6 +362,7 @@ async def test_censopas_unit_results_apply_secondary_suppression(
     )
     assert response.status_code == 200, response.text
     body = response.json()
+    assert body["analysis_run_id"] == scoring_resp.json()["id"]
     assert body["secondary_suppression_applied"] is True
     assert len(body["results"]) == 2
     assert all(result["suppressed"] for result in body["results"])

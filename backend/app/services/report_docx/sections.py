@@ -192,6 +192,12 @@ def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, 
     else:
         mode_label = f"Instrumento: {cover.get('instrument_label') or study.get('instrument_name') or 'Evaluación profesional'}"
     add_cover_subtitle(document, mode_label)
+    add_muted(document,
+        f"Scoring #{cover.get('analysis_run_id') or 'no disponible'} · "
+        f"Versión ID {cover.get('instrument_version_id') or '—'} · "
+        f"Baremo ID {cover.get('barem_id') or 'no disponible'} · "
+        f"N scoring {cover.get('sample_n') if cover.get('sample_n') is not None else '—'}"
+    )
 
     pairs = [
         ("RUC", cover.get("ruc") or study.get("ruc") or "—"),
@@ -583,6 +589,10 @@ def _add_traceability_appendix(document, number, traceability: dict) -> None:
         add_body(document, "No hay metadatos de trazabilidad disponibles.")
         return
     pairs = [
+        ("Ejecución de scoring", str(traceability.get("analysis_run_id") or "No disponible")),
+        ("Versión del instrumento (ID)", str(traceability.get("instrument_version_id") or "—")),
+        ("Muestra del scoring", str(traceability.get("sample_n") if traceability.get("sample_n") is not None else "No disponible")),
+        ("Contexto operativo", traceability.get("operational_context_note") or "—"),
         ("Versión del instrumento", traceability.get("version_kind") or "—"),
         ("Hash del manifiesto", traceability.get("manifest_hash") or "—"),
         ("Linaje", " → ".join(traceability.get("lineage") or [])),

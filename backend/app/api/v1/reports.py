@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -315,12 +315,13 @@ async def list_study_reports(
 async def get_study_executive_dashboard(
     study_id: int,
     request: Request,
+    analysis_run_id: int | None = Query(default=None, gt=0),
     session: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
     await _assert_study_access(session, study_id, current_user, request)
     service = ReportService(session)
-    data = await service.get_executive_dashboard(study_id)
+    data = await service.get_executive_dashboard(study_id, analysis_run_id=analysis_run_id)
     return ExecutiveDashboardResponse(**data)
 
 

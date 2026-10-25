@@ -63,10 +63,11 @@ cd backend
 .venv/bin/python scripts/seed_two_censopas_users.py
 ```
 
-Ambas cuentas usan la contraseña `ColmenaDemo2026!`:
-
-- `ana.torres@censopas.demo`
-- `carlos.mendoza@censopas.demo`
+Antes de ejecutar el seed, configure `AURORA_SEED_PASSWORD` mediante su gestor de
+secretos (mínimo 16 caracteres, valor único para el entorno). No hay contraseña
+predeterminada y el seed nunca imprime contraseñas. Este seed modifica cuentas
+persistentes: ejecútelo solamente con autorización sobre el entorno destino.
+Volver a ejecutarlo establece la contraseña suministrada en ambas cuentas demo.
 
 ## Tests
 

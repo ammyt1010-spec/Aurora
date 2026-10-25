@@ -15,6 +15,7 @@ AnalyticsPlanCode = Literal["STANDARD", "ADVANCED", "PREMIUM"]
 
 class CensopasStudyConfig(BaseModel):
     instrument_version: InstrumentKind = "SHORT"
+    instrument_version_id: int | None = Field(default=None, gt=0)
     analytics_plan: AnalyticsPlanCode = "STANDARD"
     workplace_name: str | None = Field(default=None, max_length=200)
     population_invited: int | None = Field(default=None, ge=1)

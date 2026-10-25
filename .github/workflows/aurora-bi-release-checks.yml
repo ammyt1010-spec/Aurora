@@ -3,12 +3,16 @@ name: AURORA BI release checks
 on:
   push:
     branches:
+      - fix/aurora-authentic-results-20261025
+      - integration/aurora-pr21-final-20261024
       - feat/aurora-three-screen-ux-20261021
       - feat/aurora-executive-single-screen-20261023
       - feat/aurora-final-ux-cleanup-20261023
       - feat/aurora-battery-flow-bi-report-20261024
   pull_request:
     branches:
+      - integration/aurora-pr21-final-20261024
+      - feat/aurora-battery-flow-bi-report-20261024
       - feat/aurora-campaign-invitations-control-20261017
   workflow_dispatch:
 
@@ -16,6 +20,16 @@ permissions:
   contents: read
 
 jobs:
+  qa-source:
+    name: Isolated QA and credential regression checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s scripts/tests -v
+
   web:
     name: Frontend checks
     runs-on: ubuntu-latest
@@ -46,7 +60,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: python -m pip install 'poetry>=1.8,<2'
+      - run: python -m pip install 'poetry==2.5.1'
       - run: poetry install --with dev --no-interaction --no-ansi
       - run: poetry run python -m compileall -q app
       - name: Install PDF renderer
@@ -82,7 +96,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install 'poetry>=1.8,<2'
+      - run: python -m pip install 'poetry==2.5.1'
       - run: poetry install --with dev --no-interaction --no-ansi
       - run: poetry run alembic upgrade head
       - run: poetry run alembic current
