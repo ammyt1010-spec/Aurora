@@ -48,7 +48,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["app/tests"]
-addopts = "--basetemp=tmp/pytest"
+# Use pytest-managed temporary directories. A fresh checkout has no tmp/ parent.
 
 [tool.ruff]
 line-length = 100

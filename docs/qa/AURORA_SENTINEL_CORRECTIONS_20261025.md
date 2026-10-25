@@ -24,7 +24,7 @@ Rama: `fix/aurora-authentic-results-20261025`. Destino: PR en borrador hacia int
 | AUR-02 | P0 | Filtros visibles deben cambiar datos reales o figurar inhabilitados | FILTROS REALES dimensión/tipo/unidad; cruces no soportados no se simulan |
 | AUR-03 | P0 | Prohibido contar dimensiones de alto riesgo como personas de alto riesgo | CORREGIDO: no se presentan dimensiones como personas |
 | AUR-04 | P0 | No filtrar/gráficar datos suprimidos ni permitir reidentificación | PARCIAL: supresión y guardas de corrida conservadas; aceptación de privacidad completa pendiente |
-| AUR-05 | P0 | Eliminar credenciales de ejemplo expuestas y rotarlas | PARCIAL P0: retiradas credenciales del código; rotación, PR histórico e historial pendientes de autorización |
+| AUR-05 | P0 | Eliminar credenciales de ejemplo expuestas y rotarlas | PARCIAL P0: retiradas credenciales del código; rotación e historial pendientes; descripción pública del PR 22 saneada |
 | AUR-06 | P0 | Clasificación y recomendaciones metodológicamente fundamentadas | PARCIAL: contexto de scoring/baremo; revisión metodológica profesional pendiente |
 | AUR-07 | P1 | Inicio: seleccionar instrumentos **del catálogo** directamente con checkbox | CORREGIDO + tests: catálogo directo con casillas, versión/empresa, apertura validada, enlace/QR; navegador pendiente |
 | AUR-08 | P1 | Un solo enlace/QR y batería ordenada | IMPLEMENTADO + pruebas automáticas; QR móvil pendiente |
@@ -81,4 +81,11 @@ Verificado sobre el árbol de corrección integrado el 25 de octubre de 2026, an
 2. Los gráficos visibles utilizan la misma fuente normalizada que sus datos accesibles. No hay tabla oculta como sustituto de una visualización real. Los filtros no implementados se muestran no disponibles.
 3. Informes y recomendaciones se fijan a scoring, versión y baremo; cambios de corrida invalidan previews. Comparaciones segmentadas se ocultan ante diferencia de corrida. Los historiales sin fingerprint se identifican, no se certifican retroactivamente.
 4. Autorización vigente se revalida al abrir, crear/consultar baterías, abrir encuesta pública y crear sesión. Métodos revocados no heredan un permiso perpetuo por conservar estado OPEN.
-5. No se probaron credenciales expuestas ni se rotaron. No se reescribió historial, modificó el PR 22, fusionó main ni desplegó.
+5. No se probaron credenciales expuestas ni se rotaron. Se retiró la línea de credenciales de la descripción del PR 22, sin cambiar sus afirmaciones históricas. No se reescribió historial, fusionó main ni desplegó.
+
+
+## Comprobación de CI y reparación del entorno de pruebas
+
+El primer CI del PR 23 sobre `393855af9eb244bf9bdb7c3905ddc81d650dbe90` ejecutó realmente los trabajos: frontend, controles de fuente y migración PostgreSQL 16 aprobaron. Backend: 355 PASS y 3 errores de preparación, no aserciones funcionales fallidas. El origen fue `--basetemp=tmp/pytest`: el directorio padre no existe en una copia nueva. Se retiró ese supuesto y se utiliza el directorio temporal gestionado por pytest. Ocho pruebas afectadas aprobaron en nube con configuración por defecto; `poetry check --lock` correcto, sin cambios del lock.
+
+Run inicial: https://github.com/ammyt1010-spec/Aurora/actions/runs/40173940013 . El siguiente CI debe confirmar la suite completa de esta reparación. Las migraciones de CI no son prueba de despliegue Windows ni restauración operativa.
