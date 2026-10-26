@@ -19,6 +19,7 @@ from app.models.study import Study, StudySnapshot, StudyUnit, StudyUnitType
 from app.models.censopas import Barem
 from app.models.analytics_plan import AnalyticsPlan
 from app.models.construct import Construct
+from app.models.instrument import InstrumentVersion
 from app.models.option_set import OptionSet
 from app.models.project import Project
 from app.models.question import Question
@@ -52,6 +53,48 @@ class StudyService:
         self.survey_repo = SurveyRepository(session)
         self.instrument_repo = InstrumentRepository(session)
         self.audit = AuditService(session)
+
+    async def _validate_censopas_survey_completeness(
+        self,
+        survey: Survey,
+        version: InstrumentVersion,
+        study_version_id: int | None,
+    ) -> None:
+        """Require a CENSOPAS survey to preserve the exact version item set.
+
+        Generic and intentionally partial surveys remain valid. CENSOPAS
+        snapshots, however, must not silently omit scored or contextual items.
+        """
+        instrument = version.instrument
+        if instrument is None or instrument.code != "CENSOPAS_COPSOQ":
+            return
+        if survey.instrument_version_id != version.id or study_version_id != version.id:
+            raise ValidationDomainError(
+                "El survey CENSOPAS debe estar vinculado a la misma versión del estudio."
+            )
+
+        expected_ids = set(
+            (
+                await self.session.execute(
+                    select(Question.id).where(Question.instrument_version_id == version.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        actual_ids = {link.question_id for link in survey.survey_questions}
+        if not expected_ids:
+            raise ValidationDomainError(
+                "La versión CENSOPAS no tiene ítems y no puede abrirse como un survey completo."
+            )
+
+        missing_count = len(expected_ids - actual_ids)
+        unexpected_count = len(actual_ids - expected_ids)
+        if missing_count or unexpected_count:
+            raise ValidationDomainError(
+                "El survey CENSOPAS debe incluir exactamente los ítems de su versión; "
+                f"faltan {missing_count} y hay {unexpected_count} que no pertenecen."
+            )
 
     async def create(self, project_id: int, payload: StudyCreate) -> Study:
         survey = await self.survey_repo.get(payload.survey_id)
@@ -311,6 +354,16 @@ class StudyService:
         if survey is None:
             raise NotFoundError(f"Survey {study.survey_id} no encontrado")
 
+        if survey.instrument_version_id is not None and survey.instrument_version_id != study.instrument_version_id:
+            survey_version = await self.instrument_repo.get_version_with_instrument(
+                survey.instrument_version_id
+            )
+            if survey_version is not None and survey_version.instrument is not None:
+                if survey_version.instrument.code == "CENSOPAS_COPSOQ":
+                    await self._validate_censopas_survey_completeness(
+                        survey, survey_version, study.instrument_version_id
+                    )
+
         for link in survey.survey_questions:
             question = link.question
             if not question.is_scored:
@@ -398,6 +451,9 @@ class StudyService:
                 raise NotFoundError(
                     f"Versión de instrumento {study.instrument_version_id} no encontrada"
                 )
+            await self._validate_censopas_survey_completeness(
+                survey, version, study.instrument_version_id
+            )
             instrument = version.instrument
 
             # Aislamiento multiempresa (A1):
