@@ -3,6 +3,7 @@ name: AURORA BI release checks
 on:
   push:
     branches:
+      - fix/censopas-short-survey-integrity-20261026
       - fix/aurora-authentic-results-20261025
       - integration/aurora-pr21-final-20261024
       - feat/aurora-three-screen-ux-20261021
@@ -11,6 +12,7 @@ on:
       - feat/aurora-battery-flow-bi-report-20261024
   pull_request:
     branches:
+      - fix/aurora-report-responsive-barem-regressions-20261025
       - integration/aurora-pr21-final-20261024
       - feat/aurora-battery-flow-bi-report-20261024
       - feat/aurora-campaign-invitations-control-20261017
