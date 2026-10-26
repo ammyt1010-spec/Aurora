@@ -66,7 +66,13 @@ jobs:
       - run: poetry install --with dev --no-interaction --no-ansi
       - run: poetry run python -m compileall -q app
       - name: Install PDF renderer
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libreoffice-writer
+        timeout-minutes: 10
+        run: |
+          set -euxo pipefail
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get "${apt_options[@]}" install -y libreoffice-writer
+          libreoffice --headless --version
       - name: Run full backend test suite
         run: poetry run pytest -q app/tests
 
