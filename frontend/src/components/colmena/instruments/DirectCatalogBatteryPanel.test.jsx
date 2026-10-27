@@ -114,6 +114,73 @@ it('creates two selected catalog instruments in click order and one shared QR', 
   });
   expect(openStudy.mock.calls).toEqual([[22], [12]]);
 });
+it('retries a mixed-version battery by reusing prepared campaigns without duplicates', async () => {
+  const surveys = [];
+  const studies = [];
+  listStudies.mockImplementation(() =>
+    Promise.resolve({ items: [...studies], total: studies.length }),
+  );
+  listSurveys.mockImplementation(() =>
+    Promise.resolve({ items: [...surveys], total: surveys.length }),
+  );
+  createSurveyFromInstrument.mockImplementation((project, payload) => {
+    const survey = {
+      id: payload.instrument_version_id + 1,
+      instrument_version_id: payload.instrument_version_id,
+    };
+    surveys.push(survey);
+    return Promise.resolve(survey);
+  });
+  createStudy
+    .mockImplementationOnce((project, payload) => {
+      const study = {
+        id: payload.survey_id + 1,
+        survey_id: payload.survey_id,
+        instrument_version_id: payload.survey_id - 1,
+        status: 'DRAFT',
+      };
+      studies.push(study);
+      return Promise.resolve(study);
+    })
+    .mockRejectedValueOnce(new Error('temporary preparation failure'))
+    .mockImplementationOnce((project, payload) => {
+      const study = {
+        id: payload.survey_id + 1,
+        survey_id: payload.survey_id,
+        instrument_version_id: payload.survey_id - 1,
+        status: 'DRAFT',
+      };
+      studies.push(study);
+      return Promise.resolve(study);
+    });
+  openStudy.mockImplementation((id) => {
+    const study = studies.find((item) => item.id === id);
+    if (study) {
+      study.status = 'OPEN';
+      study.public_id = 'study-' + id;
+    }
+    return Promise.resolve({ id, status: 'OPEN', public_id: 'study-' + id });
+  });
+
+  const boxes = await renderPanel();
+  fireEvent.click(boxes[0]);
+  fireEvent.click(boxes[1]);
+  fireEvent.click(screen.getByText('Generar enlace y QR'));
+  expect(await screen.findByText(/temporary preparation failure/)).toBeInTheDocument();
+  expect(createEvaluationBundle).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByText('Generar enlace y QR'));
+  expect(await screen.findByRole('link')).toHaveAttribute(
+    'href',
+    window.location.origin + '/bateria/ordered-battery',
+  );
+  expect(createStudy).toHaveBeenCalledTimes(3);
+  expect(studies.map((study) => study.instrument_version_id)).toEqual([10, 20]);
+  expect(createEvaluationBundle).toHaveBeenCalledWith('9', {
+    label: 'Batería de instrumentos autorizados',
+    study_ids: [12, 22],
+  });
+});
 it('shows the exact blocked method and no fake URL after server readiness refusal', async () => {
   openStudy.mockImplementation((id) =>
     id === 22

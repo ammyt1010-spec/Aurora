@@ -193,7 +193,25 @@ describe('AURORA single-screen executive canvas', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Restablecer' }));
     expect(screen.getByLabelText('Tipo de segmento').value).toBe('');
   });
-  it('keeps generic scores distinct from CENSOPAS categories', async () => {
+it('labels displayed CENSOPAS reference classifications as provisional', async () => {
+  getCensopasResults.mockResolvedValue({
+    analysis_run_id: 41,
+    official_equivalence_enabled: false,
+    results: [dimension],
+  });
+  renderBoard();
+
+  const notice = await screen.findByRole('note', {
+    name: 'Resultados provisionales',
+  });
+  expect(notice).toHaveTextContent('Baremo de referencia');
+  expect(notice).toHaveTextContent('equivalencia metodológica oficial no está acreditada');
+  expect(
+    await screen.findByRole('img', { name: /Carga laboral: Favorable/ }),
+  ).toBeInTheDocument();
+});
+
+it('keeps generic scores distinct from CENSOPAS categories', async () => {
     getCensopasReadiness.mockResolvedValue({ is_censopas_instrument: false });
     getResultsOverview.mockResolvedValue({
       results: [

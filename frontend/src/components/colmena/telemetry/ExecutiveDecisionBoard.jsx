@@ -204,6 +204,12 @@ export default function ExecutiveDecisionBoard({
       ),
     [isCensopas, resultQuery.data, genericQuery.data],
   );
+  const provisionalResults = Boolean(
+    isCensopas &&
+      analysisRunId &&
+      (resultQuery.data?.official_equivalence_enabled === false ||
+        allRows.some((row) => row.official_equivalence === false)),
+  );
   const sameUnitRun = Boolean(
     analysisRunId && unitQuery.data?.analysis_run_id === analysisRunId,
   );
@@ -494,6 +500,17 @@ export default function ExecutiveDecisionBoard({
         </button>
       </section>
       <h2 className="aurora-card-bi-title">Diagnóstico ejecutivo</h2>
+      {provisionalResults && (
+        <p
+          className="aurora-methodology-notice"
+          role="note"
+          aria-label="Resultados provisionales"
+        >
+          <strong>Resultados provisionales.</strong> Baremo de referencia; la
+          equivalencia metodológica oficial no está acreditada. No presentes
+          estas clasificaciones como un resultado oficial.
+        </p>
+      )}
       {genericMode && (
         <p className="aurora-bi-help">
           Puntuación descriptiva normalizada, no nivel de riesgo

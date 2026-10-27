@@ -37,6 +37,7 @@ from app.schemas.studies import (
     StudyUpdate,
 )
 from app.services.audit_service import AuditService
+from app.services.censopas_provisioning_service import CensopasProvisioningService
 
 # Transiciones válidas de estudio (harness §15).
 _ALLOWED_TRANSITIONS = {
@@ -127,8 +128,45 @@ class StudyService:
         analytics_plan_id = plan.id if plan is not None else None
         if is_censopas_campaign:
             study_type = "CENSO"
+            metadata = project.metadata_ or {}
+            project_version_id = metadata.get("instrument_version_id")
             configured_barem_id = (project.metadata_ or {}).get("barem_id")
-            if configured_barem_id is not None:
+            if (
+                project_version_id is not None
+                and str(project_version_id) != str(survey.instrument_version_id)
+            ):
+                # A CENSO project can contain multiple CENSOPAS versions for a
+                # battery. Its metadata barem belongs only to the project's
+                # original version; create/reuse a project-scoped reference
+                # barem for this survey's exact version instead of cross-using it.
+                if configured_barem_id is not None:
+                    project_barem = await self.session.get(
+                        Barem, int(configured_barem_id)
+                    )
+                    if (
+                        project_barem is None
+                        or str(project_barem.instrument_version_id)
+                        != str(project_version_id)
+                    ):
+                        raise ValidationDomainError(
+                            "El baremo predeterminado no corresponde a la versión base del proyecto."
+                        )
+                version = await self.instrument_repo.get_version_with_instrument(
+                    survey.instrument_version_id
+                )
+                if version is None:
+                    raise NotFoundError(
+                        f"Versión de instrumento {survey.instrument_version_id} no encontrada"
+                    )
+                if version.instrument is None or version.instrument.code != "CENSOPAS_COPSOQ":
+                    raise ValidationDomainError(
+                        "La versión de otro instrumento no puede usar la metodología CensoPÁS del proyecto."
+                    )
+                barem = await CensopasProvisioningService(
+                    self.session
+                )._ensure_reference_barem(project, version)
+                barem_id = barem.id
+            elif configured_barem_id is not None:
                 barem = await self.session.get(Barem, int(configured_barem_id))
                 if barem is None or barem.instrument_version_id != survey.instrument_version_id:
                     raise ValidationDomainError(
