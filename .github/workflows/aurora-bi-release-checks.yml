@@ -3,6 +3,7 @@ name: AURORA BI release checks
 on:
   push:
     branches:
+      - fix/censopas-short-survey-integrity-20261026
       - fix/aurora-authentic-results-20261025
       - integration/aurora-pr21-final-20261024
       - feat/aurora-three-screen-ux-20261021
@@ -11,6 +12,7 @@ on:
       - feat/aurora-battery-flow-bi-report-20261024
   pull_request:
     branches:
+      - fix/aurora-report-responsive-barem-regressions-20261025
       - integration/aurora-pr21-final-20261024
       - feat/aurora-battery-flow-bi-report-20261024
       - feat/aurora-campaign-invitations-control-20261017
@@ -64,7 +66,13 @@ jobs:
       - run: poetry install --with dev --no-interaction --no-ansi
       - run: poetry run python -m compileall -q app
       - name: Install PDF renderer
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libreoffice-writer
+        timeout-minutes: 10
+        run: |
+          set -euxo pipefail
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get "${apt_options[@]}" install -y libreoffice-writer
+          libreoffice --headless --version
       - name: Run full backend test suite
         run: poetry run pytest -q app/tests
 

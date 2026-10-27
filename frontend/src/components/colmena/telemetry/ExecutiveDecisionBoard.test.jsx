@@ -99,6 +99,57 @@ beforeEach(() => {
 });
 
 describe('AURORA single-screen executive canvas', () => {
+  it('keeps capture telemetry visible when no scoring run exists and marks analysis N/D', async () => {
+    getCensopasResults.mockRejectedValue(
+      Object.assign(new Error('scoring not completed'), {
+        status: 409,
+        errorCode: 'CONFLICT',
+        body: { latest_run_status: null },
+      }),
+    );
+    renderBoard({ valid_count: 1 });
+
+    expect(
+      await screen.findByRole('status'),
+    ).toHaveTextContent('todavía no tiene una corrida de scoring completada');
+    expect(screen.getByTestId('metric-Respuestas válidas')).toHaveTextContent('1');
+    expect(screen.getByTestId('metric-Dimensiones publicables')).toHaveTextContent('N/D');
+    expect(screen.queryByRole('img', { name: /Distribución de/ })).not.toBeInTheDocument();
+    expect(getExecutiveDashboard).not.toHaveBeenCalled();
+  });
+
+  it('still surfaces a failed scoring run as an actual diagnostic error', async () => {
+    getCensopasResults.mockRejectedValue(
+      Object.assign(new Error('scoring failed'), {
+        status: 409,
+        errorCode: 'CONFLICT',
+        body: { latest_run_status: 'FAILED' },
+      }),
+    );
+    renderBoard({ valid_count: 1 });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se pudo consultar el diagnóstico metodológico',
+    );
+    expect(screen.queryByTestId('metric-Respuestas válidas')).not.toBeInTheDocument();
+  });
+
+  it.each([401, 403, 500])('does not treat HTTP %i as an absent scoring run', async (status) => {
+    getCensopasResults.mockRejectedValue(
+      Object.assign(new Error('request failed'), {
+        status,
+        errorCode: status === 401 ? 'AUTHENTICATION_ERROR' : status === 403 ? 'FORBIDDEN' : 'SERVER_ERROR',
+        body: { latest_run_status: null },
+      }),
+    );
+    renderBoard({ valid_count: 1 });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se pudo consultar el diagnóstico metodológico',
+    );
+    expect(screen.queryByTestId('metric-Respuestas válidas')).not.toBeInTheDocument();
+  });
+
   it('unifies management diagnosis and excludes private rows', async () => {
     renderBoard();
     expect(

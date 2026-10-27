@@ -44,6 +44,13 @@ function Empty({ children }) {
     </div>
   );
 }
+function hasNoCompletedScoringRun(error) {
+  return (
+    error?.status === 409 &&
+    error?.errorCode === 'CONFLICT' &&
+    error?.body?.latest_run_status == null
+  );
+}
 function Card({ title, children }) {
   return (
     <section className="aurora-card-bi">
@@ -160,6 +167,8 @@ export default function ExecutiveDecisionBoard({
     enabled: Boolean(studyId && isCensopas),
     retry: false,
   });
+  const noCompletedScoringRun =
+    isCensopas && resultQuery.isError && hasNoCompletedScoringRun(resultQuery.error);
   const genericQuery = useQuery({
     queryKey: ['compact-results', studyId],
     queryFn: () => getResultsOverview(studyId),
@@ -258,7 +267,7 @@ export default function ExecutiveDecisionBoard({
   const error =
     studyQuery.isError ||
     readinessQuery.isError ||
-    (isCensopas ? resultQuery.isError : genericQuery.isError);
+    (isCensopas ? resultQuery.isError && !noCompletedScoringRun : genericQuery.isError);
   const comparing = Boolean(unitTypeId);
   const sourceUnavailable =
     comparing && (unitQuery.isLoading || unitQuery.isError || !sameUnitRun);
@@ -334,7 +343,9 @@ export default function ExecutiveDecisionBoard({
     ],
     [
       'Dimensiones publicables',
-      selectionUnavailable ? 'N/D' : String(displayedRows.length),
+      selectionUnavailable || noCompletedScoringRun
+        ? 'N/D'
+        : String(displayedRows.length),
       activeFilter,
     ],
     [
@@ -407,6 +418,13 @@ export default function ExecutiveDecisionBoard({
           </button>
         </div>
       </header>
+      {noCompletedScoringRun ? (
+        <div className="aurora-compact-empty" role="status">
+          Hay respuestas registradas, pero este estudio todavía no tiene una
+          corrida de scoring completada. Las dimensiones y clasificaciones se
+          muestran como N/D hasta que exista una corrida válida.
+        </div>
+      ) : null}
       <section
         className="aurora-slicers-bar"
         role="group"
