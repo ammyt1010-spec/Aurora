@@ -44,6 +44,13 @@ function Empty({ children }) {
     </div>
   );
 }
+function hasNoCompletedScoringRun(error) {
+  return (
+    error?.status === 409 &&
+    error?.errorCode === 'CONFLICT' &&
+    error?.body?.latest_run_status == null
+  );
+}
 function Card({ title, children }) {
   return (
     <section className="aurora-card-bi">
@@ -63,7 +70,7 @@ function Distribution({ row }) {
         height="104"
         viewBox="0 0 104 104"
         role="img"
-        aria-label={`Distribución de ${row.construct_name}`}
+        aria-label={`Distribuci�n de ${row.construct_name}`}
       >
         {BANDS.map((b) => {
           const length = row[b.key] * 2.513274;
@@ -87,7 +94,7 @@ function Distribution({ row }) {
           );
         })}
         <text x="52" y="55" textAnchor="middle" fontSize="11">
-          Dimensión
+          Dimensi�n
         </text>
       </svg>
       <div className="aurora-donut-legend-list">
@@ -160,6 +167,8 @@ export default function ExecutiveDecisionBoard({
     enabled: Boolean(studyId && isCensopas),
     retry: false,
   });
+  const noCompletedScoringRun =
+    isCensopas && resultQuery.isError && hasNoCompletedScoringRun(resultQuery.error);
   const genericQuery = useQuery({
     queryKey: ['compact-results', studyId],
     queryFn: () => getResultsOverview(studyId),
@@ -258,7 +267,7 @@ export default function ExecutiveDecisionBoard({
   const error =
     studyQuery.isError ||
     readinessQuery.isError ||
-    (isCensopas ? resultQuery.isError : genericQuery.isError);
+    (isCensopas ? resultQuery.isError && !noCompletedScoringRun : genericQuery.isError);
   const comparing = Boolean(unitTypeId);
   const sourceUnavailable =
     comparing && (unitQuery.isLoading || unitQuery.isError || !sameUnitRun);
@@ -267,14 +276,14 @@ export default function ExecutiveDecisionBoard({
   if (error)
     return (
       <div className="aurora-compact-state" role="alert">
-        No se pudo consultar el diagnóstico metodológico. Verifica el estudio y
+        No se pudo consultar el diagn�stico metodol�gico. Verifica el estudio y
         vuelve a intentar.
       </div>
     );
   if (loading || !classificationKnown)
     return (
       <div className="aurora-compact-state">
-        Cargando diagnóstico ejecutivo…
+        Cargando diagn�stico ejecutivo.
       </div>
     );
 
@@ -316,41 +325,43 @@ export default function ExecutiveDecisionBoard({
     if (genericMode) genericQuery.refetch();
   };
   const metrics = [
-    ['Respuestas válidas', validCount, 'Captura actual · estudio completo'],
+    ['Respuestas v�lidas', validCount, 'Captura actual � estudio completo'],
     [
       'Invitaciones',
       countText(telemetry?.invited_count),
-      'Población registrada, si está disponible',
+      'Poblaci�n registrada, si est� disponible',
     ],
     [
-      'Cobertura válida',
+      'Cobertura v�lida',
       rateText(telemetry?.valid_rate),
-      'Válidas / invitaciones · estudio completo',
+      'V�lidas / invitaciones � estudio completo',
     ],
     [
-      'Participación',
+      'Participaci�n',
       rateText(telemetry?.response_rate),
-      'Iniciadas / invitaciones · estudio completo',
+      'Iniciadas / invitaciones � estudio completo',
     ],
     [
       'Dimensiones publicables',
-      selectionUnavailable ? 'N/D' : String(displayedRows.length),
+      selectionUnavailable || noCompletedScoringRun
+        ? 'N/D'
+        : String(displayedRows.length),
       activeFilter,
     ],
     [
-      isCensopas ? 'Mayor % desfavorable' : 'Puntuación seleccionada',
+      isCensopas ? 'Mayor % desfavorable' : 'Puntuaci�n seleccionada',
       isCensopas
         ? percentText(selectionUnavailable ? null : worstValue)
         : (contextRow?.mean_score?.toFixed(1) ?? 'N/D'),
       isCensopas
-        ? 'Máximo entre dimensiones; no personas'
-        : 'Escala 0–100; no nivel de riesgo',
+        ? 'M�ximo entre dimensiones; no personas'
+        : 'Escala 0-100; no nivel de riesgo',
     ],
   ];
   return (
     <div
       className="aurora-exec-telemetry-root"
-      aria-label="Tablero Ejecutivo de Telemetría Dinámica"
+      aria-label="Tablero Ejecutivo de Telemetr�a Din�mica"
     >
       <header className="aurora-telemetry-topbar">
         <div className="aurora-telemetry-title-group">
@@ -358,11 +369,11 @@ export default function ExecutiveDecisionBoard({
             <BarChart3 size={20} />
           </div>
           <div>
-            <h1 className="aurora-telemetry-title">Telemetría</h1>
+            <h1 className="aurora-telemetry-title">Telemetr�a</h1>
             <div className="aurora-telemetry-subtitle">
               <span>
                 {projectName || executiveQuery.data?.company_name || 'Proyecto'}{' '}
-                ·{' '}
+                �{' '}
                 {telemetry?.instrument_name ||
                   executiveQuery.data?.instrument_name ||
                   'Instrumento no disponible'}
@@ -370,7 +381,7 @@ export default function ExecutiveDecisionBoard({
               {studies?.length && setStudyId ? (
                 <select
                   className="aurora-telemetry-study-pill"
-                  aria-label="Seleccionar estudio de telemetría"
+                  aria-label="Seleccionar estudio de telemetr�a"
                   value={studyId || ''}
                   onChange={(e) =>
                     setStudyId(e.target.value ? Number(e.target.value) : null)
@@ -407,6 +418,13 @@ export default function ExecutiveDecisionBoard({
           </button>
         </div>
       </header>
+      {noCompletedScoringRun ? (
+        <div className="aurora-compact-empty" role="status">
+          Hay respuestas registradas, pero este estudio todav�a no tiene una
+          corrida de scoring completada. Las dimensiones y clasificaciones se
+          muestran como N/D hasta que exista una corrida v�lida.
+        </div>
+      ) : null}
       <section
         className="aurora-slicers-bar"
         role="group"
@@ -414,9 +432,9 @@ export default function ExecutiveDecisionBoard({
       >
         <div className="aurora-slicers-group">
           <label className="aurora-slicer-item">
-            Dimensión
+            Dimensi�n
             <select
-              aria-label="Dimensión del diagnóstico"
+              aria-label="Dimensi�n del diagn�stico"
               value={dimension}
               onChange={(e) => setDimension(e.target.value)}
             >
@@ -465,7 +483,7 @@ export default function ExecutiveDecisionBoard({
           </label>
           <label className="aurora-slicer-item">
             Sexo / turno / edad
-            <select disabled aria-label="Filtros demográficos no disponibles">
+            <select disabled aria-label="Filtros demogr�ficos no disponibles">
               <option>No disponibles</option>
             </select>
           </label>
@@ -475,16 +493,16 @@ export default function ExecutiveDecisionBoard({
           Restablecer
         </button>
       </section>
-      <h2 className="aurora-card-bi-title">Diagnóstico ejecutivo</h2>
+      <h2 className="aurora-card-bi-title">Diagn�stico ejecutivo</h2>
       {genericMode && (
         <p className="aurora-bi-help">
-          Puntuación descriptiva normalizada, no nivel de riesgo
+          Puntuaci�n descriptiva normalizada, no nivel de riesgo
         </p>
       )}
       {executiveQuery.isError && (
         <p role="status">
           N/D: no se pudo consultar el informe ejecutivo; las dimensiones se
-          muestran desde su fuente metodológica.
+          muestran desde su fuente metodol�gica.
         </p>
       )}
       {unitTypesQuery.isError && (
@@ -492,7 +510,7 @@ export default function ExecutiveDecisionBoard({
       )}
       <section
         className="aurora-kpi-grid"
-        aria-label="Indicadores clave de telemetría"
+        aria-label="Indicadores clave de telemetr�a"
       >
         {metrics.map(([label, value, note]) => (
           <div className="aurora-kpi-card" key={label}>
@@ -517,9 +535,9 @@ export default function ExecutiveDecisionBoard({
       <div className="aurora-dashboard-canvas">
         <div className="aurora-main-analytics-column">
           <div className="aurora-analytics-row-1">
-            <Card title="Resultados por dimensión">
+            <Card title="Resultados por dimensi�n">
               {!displayedRows.length ? (
-                <Empty>N/D · Sin dimensiones publicables</Empty>
+                <Empty>N/D � Sin dimensiones publicables</Empty>
               ) : (
                 <div className="aurora-dimension-bars-list">
                   {displayedRows.map((row) => (
@@ -586,20 +604,20 @@ export default function ExecutiveDecisionBoard({
                         {b.label}
                       </span>
                     ))
-                  : 'Puntaje descriptivo 0–100'}
+                  : 'Puntaje descriptivo 0-100'}
               </div>
             </Card>
             <Card
               title={
                 isCensopas
-                  ? 'Distribución de dimensión seleccionada'
+                  ? 'Distribuci�n de dimensi�n seleccionada'
                   : 'Detalle descriptivo'
               }
             >
               {contextRow ? (
                 <>
                   <p className="aurora-bi-help">
-                    {contextRow.construct_name} · {activeFilter}
+                    {contextRow.construct_name} � {activeFilter}
                   </p>
                   {isCensopas ? (
                     <Distribution row={contextRow} />
@@ -610,20 +628,20 @@ export default function ExecutiveDecisionBoard({
                   )}
                 </>
               ) : (
-                <Empty>N/D · Sin distribución publicable</Empty>
+                <Empty>N/D � Sin distribuci�n publicable</Empty>
               )}
             </Card>
-            <Card title="Evolución temporal">
+            <Card title="Evoluci�n temporal">
               <div
                 className="aurora-compact-views"
                 role="group"
-                aria-label="Tipo de análisis"
+                aria-label="Tipo de an�lisis"
               >
                 <button
                   type="button"
                   onClick={() => setAnalysisView('diagnosis')}
                 >
-                  Diagnóstico
+                  Diagn�stico
                 </button>
                 <button
                   type="button"
@@ -636,7 +654,7 @@ export default function ExecutiveDecisionBoard({
                   disabled={!isCensopas || comparing}
                   onClick={() => setAnalysisView('trend')}
                 >
-                  Evolución
+                  Evoluci�n
                 </button>
               </div>
               {analysisView === 'trend' && isCensopas && !comparing ? (
@@ -647,10 +665,10 @@ export default function ExecutiveDecisionBoard({
               ) : (
                 <Empty>
                   {comparing
-                    ? 'N/D · Evolución por segmento no disponible'
+                    ? 'N/D � Evoluci�n por segmento no disponible'
                     : genericMode
-                      ? 'N/D · Comparabilidad de este instrumento no disponible'
-                      : 'Selecciona Evolución para consultar mediciones equivalentes'}
+                      ? 'N/D � Comparabilidad de este instrumento no disponible'
+                      : 'Selecciona Evoluci�n para consultar mediciones equivalentes'}
                 </Empty>
               )}
             </Card>
@@ -662,8 +680,8 @@ export default function ExecutiveDecisionBoard({
                   {unitQuery.isError
                     ? 'No se pudieron consultar los segmentos. N/D'
                     : unitQuery.isLoading
-                      ? 'Consultando segmentos…'
-                      : 'N/D · La corrida del segmento no coincide con los resultados. Actualiza para comparar.'}
+                      ? 'Consultando segmentos.'
+                      : 'N/D � La corrida del segmento no coincide con los resultados. Actualiza para comparar.'}
                 </Empty>
               ) : (
                 <div
@@ -677,13 +695,13 @@ export default function ExecutiveDecisionBoard({
                 >
                   <p className="aurora-bi-help">
                     {comparing && !selectedUnit
-                      ? 'Los gráficos muestran la empresa completa; esta matriz compara unidades por separado, sin agregarlas.'
+                      ? 'Los gr�ficos muestran la empresa completa; esta matriz compara unidades por separado, sin agregarlas.'
                       : activeFilter}
                   </p>
                   <table className="aurora-heatmap-table">
                     <thead>
                       <tr>
-                        <th scope="col">Dimensión</th>
+                        <th scope="col">Dimensi�n</th>
                         <th scope="col">
                           {isCensopas ? '% desf. empresa' : 'Puntaje'}
                         </th>
@@ -727,7 +745,7 @@ export default function ExecutiveDecisionBoard({
                     </tbody>
                   </table>
                   {!visibleRows.length && (
-                    <Empty>N/D · Sin resultados publicables</Empty>
+                    <Empty>N/D � Sin resultados publicables</Empty>
                   )}
                   {isCensopas && !comparing && (
                     <p className="aurora-bi-help">
@@ -741,8 +759,8 @@ export default function ExecutiveDecisionBoard({
             <Card
               title={
                 isCensopas
-                  ? 'Clasificación por dimensión'
-                  : 'Puntajes por dimensión'
+                  ? 'Clasificaci�n por dimensi�n'
+                  : 'Puntajes por dimensi�n'
               }
             >
               <div className="aurora-persp-card-list">
@@ -761,55 +779,56 @@ export default function ExecutiveDecisionBoard({
               </div>
               <p className="aurora-bi-help">
                 {isCensopas
-                  ? 'Clasificación por dimensión, no distribución de personas.'
-                  : 'Puntajes descriptivos; no categorías de riesgo.'}
+                  ? 'Clasificaci�n por dimensi�n, no distribuci�n de personas.'
+                  : 'Puntajes descriptivos; no categor�as de riesgo.'}
               </p>
             </Card>
             <Card title="Indicadores complementarios">
               <Empty>
-                N/D · Indicadores complementarios no disponibles en esta vista
+                N/D � Indicadores complementarios no disponibles en esta vista
               </Empty>
             </Card>
           </div>
         </div>
         <aside className="aurora-sidebar-analytics-column">
-          <Card title="Qué significa">
+          <Card title="Qu� significa">
             {contextRow ? (
               <div className="aurora-compact-insightbody">
                 <h4>{contextRow.construct_name}</h4>
                 {isCensopas && (
                   <p>
-                    Baremo: {contextRow.barem_id ?? 'N/D'} ·{' '}
-                    {contextRow.barem_status || 'Estado no disponible'} ·{' '}
+                    Baremo: {contextRow.barem_id ?? 'N/D'} �{' '}
+                    {contextRow.barem_status || 'Estado no disponible'} �{' '}
                     {contextRow.official_equivalence === true
                       ? 'Equivalencia oficial validada'
                       : 'Equivalencia oficial no acreditada'}
                   </p>
                 )}
                 {selectedUnit ? (
-                  <p>Comparación descriptiva por segmento</p>
+                  <p>Comparaci�n descriptiva por segmento</p>
                 ) : isCensopas && interpretation ? (
                   <p>{interpretation.recommendation}</p>
                 ) : (
-                  <p>N/D · Sin interpretación metodológica publicada</p>
+                  <p>N/D � Sin interpretaci�n metodol�gica publicada</p>
                 )}
               </div>
             ) : (
-              <Empty>N/D · Sin resultado seleccionable</Empty>
+              <Empty>N/D � Sin resultado seleccionable</Empty>
             )}
           </Card>
-          <Card title="Distribución por sexo">
-            <Empty>N/D · Sin agregados demográficos publicables</Empty>
+          <Card title="Distribuci�n por sexo">
+            <Empty>N/D � Sin agregados demogr�ficos publicables</Empty>
           </Card>
         </aside>
       </div>
       <p className="aurora-bi-help">
-        Corrida de resultados: {analysisRunId ?? 'N/D'}. La participación
-        refleja la captura actual, no la muestra histórica de scoring. N/D: dato
-        no disponible o protegido por confidencialidad. Los filtros de dimensión
-        y unidad afectan los resultados, no los indicadores de participación del
+        Corrida de resultados: {analysisRunId ?? 'N/D'}. La participaci�n
+        refleja la captura actual, no la muestra hist�rica de scoring. N/D: dato
+        no disponible o protegido por confidencialidad. Los filtros de dimensi�n
+        y unidad afectan los resultados, no los indicadores de participaci�n del
         estudio.
       </p>
     </div>
   );
 }
+
