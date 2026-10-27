@@ -77,6 +77,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.aurora-methodology-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #d58b24;
+  border-left-width: 4px;
+  border-radius: 10px;
+  background: #fff8e8;
+  color: #4a3108;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
 .aurora-compact-live {
   display: block;
   flex: none;
