@@ -75,13 +75,13 @@ beforeEach(() => {
     construct_rankings: [
       {
         construct_code: 'D1',
-        recommendation: 'Evaluar distribución de cargas',
+        recommendation: 'Evaluar distribuci�n de cargas',
       },
     ],
     risk_distribution: { high_risk_count: 1 },
     participation: { valid_count: 80 },
   });
-  listStudyUnitTypes.mockResolvedValue([{ id: 3, name: 'Áreas' }]);
+  listStudyUnitTypes.mockResolvedValue([{ id: 3, name: '�reas' }]);
   getCensopasUnitResults.mockResolvedValue({
     analysis_run_id: 41,
     results: [
@@ -111,10 +111,10 @@ describe('AURORA single-screen executive canvas', () => {
 
     expect(
       await screen.findByRole('status'),
-    ).toHaveTextContent('todavía no tiene una corrida de scoring completada');
-    expect(screen.getByTestId('metric-Respuestas válidas')).toHaveTextContent('1');
+    ).toHaveTextContent('todav�a no tiene una corrida de scoring completada');
+    expect(screen.getByTestId('metric-Respuestas v�lidas')).toHaveTextContent('1');
     expect(screen.getByTestId('metric-Dimensiones publicables')).toHaveTextContent('N/D');
-    expect(screen.queryByRole('img', { name: /Distribución de/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /Distribuci�n de/ })).not.toBeInTheDocument();
     expect(getExecutiveDashboard).not.toHaveBeenCalled();
   });
 
@@ -129,9 +129,9 @@ describe('AURORA single-screen executive canvas', () => {
     renderBoard({ valid_count: 1 });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo consultar el diagnóstico metodológico',
+      'No se pudo consultar el diagn�stico metodol�gico',
     );
-    expect(screen.queryByTestId('metric-Respuestas válidas')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('metric-Respuestas v�lidas')).not.toBeInTheDocument();
   });
 
   it.each([401, 403, 500])('does not treat HTTP %i as an absent scoring run', async (status) => {
@@ -145,9 +145,9 @@ describe('AURORA single-screen executive canvas', () => {
     renderBoard({ valid_count: 1 });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo consultar el diagnóstico metodológico',
+      'No se pudo consultar el diagn�stico metodol�gico',
     );
-    expect(screen.queryByTestId('metric-Respuestas válidas')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('metric-Respuestas v�lidas')).not.toBeInTheDocument();
   });
 
   it('unifies management diagnosis and excludes private rows', async () => {
@@ -158,10 +158,10 @@ describe('AURORA single-screen executive canvas', () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Qué significa' }),
+      screen.getByRole('heading', { name: 'Qu� significa' }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText('Evaluar distribución de cargas'),
+      await screen.findByText('Evaluar distribuci�n de cargas'),
     ).toBeInTheDocument();
     expect(screen.queryByText('Privado')).not.toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe('AURORA single-screen executive canvas', () => {
   it('filters authorized segments without exposing suppressed units', async () => {
     renderBoard();
     expect(
-      await screen.findByRole('heading', { name: 'Diagnóstico ejecutivo' }),
+      await screen.findByRole('heading', { name: 'Diagn�stico ejecutivo' }),
     ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Tipo de segmento'), {
       target: { value: '3' },
@@ -184,34 +184,36 @@ describe('AURORA single-screen executive canvas', () => {
       target: { value: '20' },
     });
     expect(
-      screen.getByText('Comparación descriptiva por segmento'),
+      screen.getByText('Comparaci�n descriptiva por segmento'),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText('Evaluar distribución de cargas'),
+      screen.queryByText('Evaluar distribuci�n de cargas'),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText('60.0%').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Restablecer' }));
     expect(screen.getByLabelText('Tipo de segmento').value).toBe('');
   });
-it('labels displayed CENSOPAS reference classifications as provisional', async () => {
-  getCensopasResults.mockResolvedValue({
-    analysis_run_id: 41,
-    official_equivalence_enabled: false,
-    results: [dimension],
-  });
-  renderBoard();
+  it('labels displayed CENSOPAS reference classifications as provisional', async () => {
+    getCensopasResults.mockResolvedValue({
+      analysis_run_id: 41,
+      official_equivalence_enabled: false,
+      results: [dimension],
+    });
+    renderBoard();
 
-  const notice = await screen.findByRole('note', {
-    name: 'Resultados provisionales',
+    const notice = await screen.findByRole('note', {
+      name: 'Resultados provisionales',
+    });
+    expect(notice).toHaveTextContent('Baremo de referencia');
+    expect(notice).toHaveTextContent(
+      'equivalencia metodol�gica oficial no est� acreditada',
+    );
+    expect(
+      await screen.findByRole('img', { name: /Carga laboral: Favorable/ }),
+    ).toBeInTheDocument();
   });
-  expect(notice).toHaveTextContent('Baremo de referencia');
-  expect(notice).toHaveTextContent('equivalencia metodológica oficial no está acreditada');
-  expect(
-    await screen.findByRole('img', { name: /Carga laboral: Favorable/ }),
-  ).toBeInTheDocument();
-});
 
-it('keeps generic scores distinct from CENSOPAS categories', async () => {
+  it('keeps generic scores distinct from CENSOPAS categories', async () => {
     getCensopasReadiness.mockResolvedValue({ is_censopas_instrument: false });
     getResultsOverview.mockResolvedValue({
       results: [
@@ -227,7 +229,7 @@ it('keeps generic scores distinct from CENSOPAS categories', async () => {
     renderBoard();
     expect(
       await screen.findByText(
-        'Puntuación descriptiva normalizada, no nivel de riesgo',
+        'Puntuaci�n descriptiva normalizada, no nivel de riesgo',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('Riesgo alto')).not.toBeInTheDocument();
@@ -245,20 +247,20 @@ it('keeps generic scores distinct from CENSOPAS categories', async () => {
       }),
     ).toBeInTheDocument();
     expect(screen.queryByText('Privado')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Diagnóstico' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Evolución' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Diagn�stico' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Evoluci�n' }));
     expect(screen.getByText('Longitudinal view loaded')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Diagnóstico' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Diagn�stico' }));
     expect(
       screen.queryByText('Longitudinal view loaded'),
     ).not.toBeInTheDocument();
   });
 
   it('shows a real error instead of endless loading when study fails', async () => {
-    getStudy.mockRejectedValue(new Error('Falló conexión'));
+    getStudy.mockRejectedValue(new Error('Fall� conexi�n'));
     renderBoard();
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo consultar el diagnóstico metodológico',
+      'No se pudo consultar el diagn�stico metodol�gico',
     );
   });
 });
@@ -273,15 +275,15 @@ describe('visible authenticated metrics and geometry', () => {
       valid_rate: null,
     });
     expect(
-      await screen.findByTestId('metric-Respuestas válidas'),
+      await screen.findByTestId('metric-Respuestas v�lidas'),
     ).toHaveTextContent(String(n));
     expect(screen.getByTestId('metric-Invitaciones')).toHaveTextContent('N/D');
-    expect(screen.getByTestId('metric-Cobertura válida')).toHaveTextContent(
+    expect(screen.getByTestId('metric-Cobertura v�lida')).toHaveTextContent(
       'N/D',
     );
     expect(screen.queryByText('20 personas')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Unidad Minera San Cristóbal'),
+      screen.queryByText('Unidad Minera San Crist�bal'),
     ).not.toBeInTheDocument();
     expect(document.querySelector('.aurora-kpi-sparkline')).toBeNull();
     if (n === 0)
@@ -316,7 +318,7 @@ describe('visible authenticated metrics and geometry', () => {
         width: `${pct}%`,
       });
       const donut = screen.getByRole('img', {
-        name: 'Distribución de Carga laboral',
+        name: 'Distribuci�n de Carga laboral',
       });
       expect(donut).toBeVisible();
       expect(
@@ -325,10 +327,10 @@ describe('visible authenticated metrics and geometry', () => {
       expect(
         screen.getByTestId('metric-Mayor % desfavorable'),
       ).toHaveTextContent(`${pct}.0%`);
-      expect(screen.getByTestId('metric-Cobertura válida')).toHaveTextContent(
+      expect(screen.getByTestId('metric-Cobertura v�lida')).toHaveTextContent(
         '70.0%',
       );
-      expect(screen.getByTestId('metric-Participación')).toHaveTextContent(
+      expect(screen.getByTestId('metric-Participaci�n')).toHaveTextContent(
         '80.0%',
       );
       expect(document.querySelector('.sr-only')).toBeNull();
@@ -340,14 +342,14 @@ describe('visible authenticated metrics and geometry', () => {
     });
     renderBoard({});
     expect(
-      await screen.findByTestId('metric-Respuestas válidas'),
+      await screen.findByTestId('metric-Respuestas v�lidas'),
     ).toHaveTextContent('N/D');
     expect(screen.getByTestId('metric-Mayor % desfavorable')).toHaveTextContent(
       'N/D',
     );
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(
-      screen.getByLabelText('Filtros demográficos no disponibles'),
+      screen.getByLabelText('Filtros demogr�ficos no disponibles'),
     ).toBeDisabled();
     expect(screen.getByLabelText('Unidad del segmento')).toBeDisabled();
   });
@@ -370,7 +372,7 @@ describe('visible authenticated metrics and geometry', () => {
   it('reports failed segment requests without invented matrix cells', async () => {
     getCensopasUnitResults.mockRejectedValue(new Error('unavailable'));
     renderBoard();
-    await screen.findByRole('heading', { name: 'Diagnóstico ejecutivo' });
+    await screen.findByRole('heading', { name: 'Diagn�stico ejecutivo' });
     fireEvent.change(screen.getByLabelText('Tipo de segmento'), {
       target: { value: '3' },
     });
@@ -391,7 +393,7 @@ it('changes visible results when the dimension and unit filters change', async (
       {
         ...dimension,
         construct_code: 'D3',
-        construct_name: 'Autonomía',
+        construct_name: 'Autonom�a',
         favorable_pct: 60,
         intermediate_pct: 30,
         unfavorable_pct: 10,
@@ -400,19 +402,19 @@ it('changes visible results when the dimension and unit filters change', async (
   });
   renderBoard();
   await screen.findByRole('img', { name: /Carga laboral: Favorable/ });
-  fireEvent.change(screen.getByLabelText('Dimensión del diagnóstico'), {
+  fireEvent.change(screen.getByLabelText('Dimensi�n del diagn�stico'), {
     target: { value: 'D3' },
   });
   expect(
     screen.queryByRole('img', { name: /Carga laboral: Favorable/ }),
   ).not.toBeInTheDocument();
   expect(
-    screen.getByRole('img', { name: /Autonomía: Favorable/ }),
+    screen.getByRole('img', { name: /Autonom�a: Favorable/ }),
   ).toBeVisible();
   expect(screen.getByTestId('metric-Mayor % desfavorable')).toHaveTextContent(
     '10.0%',
   );
-  fireEvent.change(screen.getByLabelText('Dimensión del diagnóstico'), {
+  fireEvent.change(screen.getByLabelText('Dimensi�n del diagn�stico'), {
     target: { value: 'D1' },
   });
   fireEvent.change(screen.getByLabelText('Tipo de segmento'), {
@@ -427,12 +429,12 @@ it('changes visible results when the dimension and unit filters change', async (
       .getByRole('img', { name: /Carga laboral: Favorable/ })
       .querySelector('[data-band="unfavorable_pct"]'),
   ).toHaveStyle({ width: '60%' });
-  expect(screen.getByRole('button', { name: 'Evolución' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Evoluci�n' })).toBeDisabled();
 });
 
 it('pins executive recommendations to the primary result run', async () => {
   renderBoard();
-  await screen.findByText('Evaluar distribución de cargas');
+  await screen.findByText('Evaluar distribuci�n de cargas');
   expect(getExecutiveDashboard).toHaveBeenCalledWith(19, 41);
 });
 it('does not consult unpinned executive interpretations when the run is unknown', async () => {
@@ -441,7 +443,7 @@ it('does not consult unpinned executive interpretations when the run is unknown'
   await screen.findByRole('img', { name: /Carga laboral: Favorable/ });
   expect(getExecutiveDashboard).not.toHaveBeenCalled();
   expect(
-    screen.queryByText('Evaluar distribución de cargas'),
+    screen.queryByText('Evaluar distribuci�n de cargas'),
   ).not.toBeInTheDocument();
 });
 
@@ -453,7 +455,7 @@ it('fails closed when segment and primary result runs differ', async () => {
     ],
   });
   renderBoard();
-  await screen.findByRole('heading', { name: 'Diagnóstico ejecutivo' });
+  await screen.findByRole('heading', { name: 'Diagn�stico ejecutivo' });
   fireEvent.change(screen.getByLabelText('Tipo de segmento'), {
     target: { value: '3' },
   });
@@ -481,3 +483,4 @@ it('withholds interpretations returned for a different scoring run', async () =>
     screen.queryByText('Wrong run interpretation'),
   ).not.toBeInTheDocument();
 });
+
