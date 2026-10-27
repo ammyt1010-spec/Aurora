@@ -1,4 +1,4 @@
-﻿# AURORA Professional — matriz independiente de 36 requisitos
+# AURORA Professional — matriz independiente de 36 requisitos
 
 Fecha: 2026-10-27 UTC. Fuente de requisitos: `D:\Aurora_PR23_QA\docs\qa\AURORA_SENTINEL_CORRECTIONS_20261025.md` (AUR-01…AUR-36). Este archivo está en el workspace de auditoría; no modifica el checkout QA.
 
