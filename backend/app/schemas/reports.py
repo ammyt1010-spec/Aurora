@@ -4,12 +4,19 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # DOCX (Word, con tablas de baremación + gráficas embebidas) es el formato
 # por defecto — ver report_docx.py. JSON se conserva como salida "cruda"
 # del mismo bundle, útil para integraciones (Power BI, etc.).
 OutputFormat = Literal["JSON", "DOCX", "PDF"]
+
+
+class ReportSignatory(BaseModel):
+    role: Literal["PROFESSIONAL", "COMPANY", "SST", "PSYCHOLOGY"]
+    name: str = Field(min_length=1, max_length=120)
+    registry: str | None = Field(default=None, max_length=80)
+    signature_png: str | None = Field(default=None, max_length=450000)
 
 
 class ReportTemplateCreate(BaseModel):
@@ -55,6 +62,18 @@ class ReportRunCreate(BaseModel):
     sections: list[str] = Field(default_factory=list)
     # Logo PNG de uso efímero para renderizado; nunca guardar como metadata/BD.
     company_logo_png: str | None = Field(default=None, max_length=850000)
+    signatories: list[ReportSignatory] = Field(default_factory=list, max_length=4)
+    signatures_authorized: bool = False
+
+    @model_validator(mode="after")
+    def validate_signatures(self) -> "ReportRunCreate":
+        if len({person.role for person in self.signatories}) != len(self.signatories):
+            raise ValueError("Cada responsable debe tener una función distinta.")
+        if any(not person.name.strip() for person in self.signatories):
+            raise ValueError("Cada responsable debe tener un nombre válido.")
+        if any(person.signature_png for person in self.signatories) and not self.signatures_authorized:
+            raise ValueError("Confirma la autorización para incorporar las imágenes de firma.")
+        return self
 
 
 class ReportPreviewRead(BaseModel):

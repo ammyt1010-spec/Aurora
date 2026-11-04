@@ -7,10 +7,10 @@ Garantiza:
 4. Soporte para documentos sintéticos complejos con tablas, imágenes, encabezados, gráficos y saltos de página.
 """
 
-import asyncio
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from subprocess import CompletedProcess
+from unittest.mock import patch
 
 import pytest
 from docx import Document
@@ -116,7 +116,7 @@ async def test_libreoffice_not_installed_raises_controlled_error():
     """Si soffice no existe en el sistema, se eleva DocxToPdfError controlado."""
     docx_bytes = create_synthetic_complex_docx()
 
-    with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError("soffice no encontrado")):
+    with patch("app.services.report_pdf_convert.subprocess.run", side_effect=FileNotFoundError("soffice no encontrado")):
         with pytest.raises(DocxToPdfError) as exc_info:
             await docx_to_pdf(docx_bytes)
         assert "LibreOffice no está instalado" in str(exc_info.value)
@@ -127,11 +127,9 @@ async def test_libreoffice_process_failure_raises_controlled_error():
     """Si soffice termina con código de error, se eleva DocxToPdfError con el detalle."""
     docx_bytes = create_synthetic_complex_docx()
 
-    mock_process = AsyncMock()
-    mock_process.returncode = 1
-    mock_process.communicate.return_value = (b"", b"Error general de conversion soffice")
+    mock_process = CompletedProcess(args=["soffice"], returncode=1, stdout=b"", stderr=b"Error general de conversion soffice")
 
-    with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+    with patch("app.services.report_pdf_convert.subprocess.run", return_value=mock_process):
         with pytest.raises(DocxToPdfError) as exc_info:
             await docx_to_pdf(docx_bytes)
         assert "LibreOffice falló con código 1" in str(exc_info.value)
@@ -144,17 +142,14 @@ async def test_libreoffice_success_produces_pdf(tmp_path):
     docx_bytes = create_synthetic_complex_docx()
     synthetic_pdf = create_minimal_valid_pdf()
 
-    async def fake_subprocess_exec(*args, **kwargs):
+    def fake_subprocess_run(args, **kwargs):
         # El comando incluye --outdir <path>
         outdir = args[args.index("--outdir") + 1]
         pdf_out = Path(outdir) / "report.pdf"
         pdf_out.write_bytes(synthetic_pdf)
-        proc = AsyncMock()
-        proc.returncode = 0
-        proc.communicate.return_value = (b"Conversion OK", b"")
-        return proc
+        return CompletedProcess(args=args, returncode=0, stdout=b"Conversion OK", stderr=b"")
 
-    with patch("asyncio.create_subprocess_exec", side_effect=fake_subprocess_exec):
+    with patch("app.services.report_pdf_convert.subprocess.run", side_effect=fake_subprocess_run):
         pdf_bytes = await docx_to_pdf(docx_bytes)
         assert pdf_bytes == synthetic_pdf
         assert count_pdf_pages(pdf_bytes) == 2

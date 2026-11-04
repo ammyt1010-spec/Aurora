@@ -16,10 +16,13 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 import json
 import struct
 from datetime import UTC, datetime
 from pathlib import Path
+
+from PIL import Image
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -56,6 +59,7 @@ from app.services.telemetry_service import TelemetryService
 # nunca filtrar por posición en la lista, siempre por `construct_type` real.
 _DIMENSION_TYPE = "DIMENSION"
 _SUBDIMENSION_TYPE = "SUBDIMENSION"
+_CENSOPAS_PROFILE_CODES = frozenset(f"C-{index:03d}" for index in range(1, 12))
 
 _CONFIDENTIALITY_NOTICE = (
     "Documento de uso interno del Comité/Grupo de Trabajo de Seguridad y Salud en el "
@@ -138,7 +142,6 @@ class ReportService:
         await self.session.commit()
 
     async def list_templates(self, discipline: str | None = None) -> list:
-        from app.models.report import ReportTemplate
         await self.ensure_default_templates()
         return await self.repo.list_templates(discipline=discipline)
 
@@ -228,6 +231,7 @@ class ReportService:
             "template_code": template_code,
             "discipline": discipline,
             "is_sample_preview": False,
+            "signatures_attested": bool(payload.signatures_authorized and any(item.signature_png for item in payload.signatories)),
         }
 
         report_run = ReportRun(
@@ -251,6 +255,8 @@ class ReportService:
                 sections=payload.sections,
                 report_run=report_run,
                 company_logo_png=payload.company_logo_png,
+                signatories=payload.signatories,
+                signatures_authorized=payload.signatures_authorized,
             )
 
             storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
@@ -273,7 +279,7 @@ class ReportService:
             else:
                 # El logo sólo forma parte del render visual; nunca se expone
                 # como bytes serializados en la exportación JSON.
-                public_bundle = {key: value for key, value in bundle.items() if key != "brand_logo_png"}
+                public_bundle = {key: value for key, value in bundle.items() if key not in {"brand_logo_png", "signatories"}}
                 file_bytes = json.dumps(public_bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
                 path = storage_dir / f"{report_run.public_id}.json"
                 path.write_bytes(file_bytes)
@@ -343,6 +349,7 @@ class ReportService:
                 "template_name": template_name,
                 "template_code": template_code,
                 "discipline": discipline,
+                "signatures_attested": bool(payload.signatures_authorized and any(item.signature_png for item in payload.signatories)),
             }
 
             report_run = ReportRun(
@@ -366,6 +373,8 @@ class ReportService:
                     sections=payload.sections,
                     report_run=report_run,
                     company_logo_png=payload.company_logo_png,
+                    signatories=payload.signatories,
+                    signatures_authorized=payload.signatures_authorized,
                 )
                 bundle["is_sample_preview"] = True
                 bundle["watermark"] = watermark_text
@@ -422,25 +431,36 @@ class ReportService:
 
 
     @staticmethod
-    def _decode_company_logo(value: str | None) -> bytes | None:
-        """Validate ephemeral PNG payload before embedding in a DOCX document."""
+    def _decode_png(value: str | None, *, max_bytes: int, label: str, max_pixels: int = 16_000_000) -> bytes | None:
+        """Validate an ephemeral PNG before passing it to the document renderer."""
         if value is None:
             return None
         prefix = "data:image/png;base64,"
         if not value.startswith(prefix):
-            raise ValidationDomainError("El logotipo debe ser un archivo PNG válido.")
+            raise ValidationDomainError(f"{label} debe ser un archivo PNG válido.")
         try:
             data = base64.b64decode(value[len(prefix):], validate=True)
         except (binascii.Error, ValueError) as exc:
-            raise ValidationDomainError("Los datos del logotipo PNG no son válidos.") from exc
+            raise ValidationDomainError(f"Los datos de {label.lower()} no son válidos.") from exc
         if not data.startswith(bytes.fromhex("89504e470d0a1a0a")) or len(data) < 33:
-            raise ValidationDomainError("El logotipo no tiene una cabecera PNG válida.")
-        if len(data) > 600 * 1024:
-            raise ValidationDomainError("El logotipo supera el máximo de 600 KB.")
+            raise ValidationDomainError(f"{label} no tiene una cabecera PNG válida.")
+        if len(data) > max_bytes:
+            raise ValidationDomainError(f"{label} supera el tamaño permitido.")
         width, height = struct.unpack(">II", data[16:24])
-        if not (0 < width <= 4096 and 0 < height <= 4096):
-            raise ValidationDomainError("Dimensiones del logotipo fuera del límite permitido.")
+        if not (0 < width <= 4096 and 0 < height <= 4096 and width * height <= max_pixels):
+            raise ValidationDomainError(f"Dimensiones de {label.lower()} fuera del límite permitido.")
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                if image.format != "PNG":
+                    raise ValueError("not PNG")
+                image.verify()
+        except (OSError, ValueError) as exc:
+            raise ValidationDomainError(f"{label} no es una imagen PNG íntegra.") from exc
         return data
+
+    @staticmethod
+    def _decode_company_logo(value: str | None) -> bytes | None:
+        return ReportService._decode_png(value, max_bytes=600 * 1024, label="El logotipo")
 
     async def _build_bundle(
         self,
@@ -451,9 +471,29 @@ class ReportService:
         sections: list[str] | None = None,
         report_run=None,
         company_logo_png: str | None = None,
+        signatories: list | None = None,
+        signatures_authorized: bool = False,
     ) -> dict:
+        role_labels = {
+            "PROFESSIONAL": "Profesional responsable",
+            "COMPANY": "Representante de la organización",
+            "SST": "Seguridad y Salud en el Trabajo",
+            "PSYCHOLOGY": "Psicología ocupacional",
+        }
+        if len({entry.role for entry in signatories or []}) != len(signatories or []):
+            raise ValidationDomainError("Cada responsable debe tener una función distinta.")
         bundle: dict = {
             "brand_logo_png": self._decode_company_logo(company_logo_png),
+            "signatories": [
+                {
+                    "role": role_labels[entry.role],
+                    "name": entry.name.strip(),
+                    "registry": (entry.registry or "").strip(),
+                    "signature_png": self._decode_png(entry.signature_png, max_bytes=300 * 1024, label="La firma", max_pixels=4_000_000),
+                }
+                for entry in signatories or []
+            ],
+            "signatures_attested": signatures_authorized,
             "discipline": "PSICOSOCIAL",
             "is_censopas": False,
             "report_template": {},
@@ -534,7 +574,6 @@ class ReportService:
             bundle["censopas_results"], bundle["data_quality"], bundle["methodological_label"]
         )
 
-        is_psicosocial = True
         discipline = "PSICOSOCIAL"
         if study.instrument_version_id is not None:
             inst_stmt = (
@@ -545,7 +584,6 @@ class ReportService:
             inst_row = (await self.session.execute(inst_stmt)).first()
             if inst_row and inst_row[0]:
                 discipline = str(inst_row[0]).upper()
-                is_psicosocial = discipline == "PSICOSOCIAL"
             bundle["discipline"] = discipline
 
             readiness = await censopas_service.get_readiness(study.instrument_version_id)
@@ -586,7 +624,9 @@ class ReportService:
             r for r in bundle["censopas_results"] if r.get("construct_type") == _SUBDIMENSION_TYPE
         ]
 
-        bundle["sociolaboral_profile"] = await self._build_sociolaboral_profile(study)
+        bundle["sociolaboral_profile"] = await self._build_sociolaboral_profile(
+            study, is_censopas=bundle["is_censopas"]
+        )
         bundle["action_plans"] = await self._build_action_plans(study.id)
         bundle["priority_ranking"] = self._build_priority_ranking(bundle["dimension_results"])
         bundle["interpretation"] = self._build_interpretation(
@@ -629,10 +669,17 @@ class ReportService:
 
     async def _build_cover(self, study, bundle: dict, report_run) -> dict:
         organization_name = None
+        organization_ruc = None
+        organization_activity = None
         project = await self.session.get(Project, study.project_id)
         if project is not None and project.organization_id is not None:
             organization = await self.session.get(Organization, project.organization_id)
-            organization_name = organization.name if organization else None
+            organization_name = (organization.legal_name or organization.name) if organization else None
+            organization_ruc = organization.tax_id if organization else None
+            organization_activity = (
+                organization.organization_type.replace("_", " ").title()
+                if organization and organization.organization_type else None
+            )
 
         evaluator_label = None
         requested_by_user_id = getattr(report_run, "requested_by_user_id", None)
@@ -664,6 +711,8 @@ class ReportService:
 
         return {
             "organization_name": organization_name,
+            "ruc": organization_ruc,
+            "activity": organization_activity,
             "study_code": bundle["study"]["code"],
             "period_start": bundle["study"]["period_start"],
             "period_end": bundle["study"]["period_end"],
@@ -677,8 +726,8 @@ class ReportService:
             "is_sample_preview": is_sample,
         }
 
-    async def _build_sociolaboral_profile(self, study) -> list[dict]:
-        """Fase 3: perfil sociolaboral (11 variables C-001..C-011, EXOGENOUS,
+    async def _build_sociolaboral_profile(self, study, *, is_censopas: bool) -> list[dict]:
+        """Fase 3: perfil sociolaboral (11 variables C-001..C-011 o PERFIL-* demo,
         nunca puntuables — harness §9). Reusa `ResponseDescriptiveService`
         (misma fuente que Resultados) y aplica supresión n<min_publishable_n
         por categoría aquí mismo, porque ese servicio no suprime por diseño
@@ -691,6 +740,11 @@ class ReportService:
         profile = []
         for question in descriptives.questions:
             if question.research_role != "EXOGENOUS" or question.is_scored:
+                continue
+            if is_censopas and not (
+                question.code in _CENSOPAS_PROFILE_CODES
+                or question.code.startswith("PERFIL-")
+            ):
                 continue
             categories = []
             for frequency in question.frequencies:
@@ -990,7 +1044,8 @@ class ReportService:
         publishable = [
             result
             for result in censopas_results
-            if not result.get("suppressed") and result.get("unfavorable_pct") is not None
+            if result.get("construct_type") == _DIMENSION_TYPE
+            and not result.get("suppressed") and result.get("unfavorable_pct") is not None
         ]
         ranked = sorted(publishable, key=lambda result: result["unfavorable_pct"], reverse=True)
         high_risk_count = sum(
@@ -998,9 +1053,9 @@ class ReportService:
         )
         if ranked:
             headline = (
-                f"{high_risk_count} de {len(ranked)} dimensiones en riesgo alto (≥50% desfavorable)."
+                f"{high_risk_count} de {len(ranked)} dimensiones clasificadas como riesgo alto según el baremo aplicado."
                 if high_risk_count
-                else "Ninguna dimensión alcanza el umbral de riesgo alto (≥50% desfavorable)."
+                else "No se clasificaron dimensiones en riesgo alto según el baremo aplicado."
             )
         else:
             headline = "Todavía no hay dimensiones con resultados publicables para este estudio."

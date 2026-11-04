@@ -7,16 +7,17 @@ from __future__ import annotations
 
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Pt
 
 from .charts import build_priority_chart, build_trichotomy_chart
 from .components import add_callout, add_centered_badge, add_executive_metric_cards, add_section_header, add_signature_grid
-from .paginate import keep_with_next, page_break_before
+from .paginate import keep_with_next
 from .tables import add_colmena_table, add_key_value_grid, add_label_value_table
-from .theme import COLMENA, CONTENT_WIDTH_MM, FONT
-from .typography import add_body, add_cover_org, add_cover_subtitle, add_cover_title, add_h1, add_h2, add_h3, add_caption, add_muted
+from .theme import CONTENT_WIDTH_MM
+from .typography import add_body, add_cover_org, add_cover_subtitle, add_cover_title, add_h2, add_h3, add_caption, add_muted
 
 _CLASSIFICATION_LABELS = {
     "RIESGO_ALTO": "Riesgo alto",
@@ -45,6 +46,15 @@ _ACTION_STATUS = {
     "BLOCKED": "red",
 }
 
+_VERSION_LABELS = {"SHORT": "Corta", "MEDIUM": "Media"}
+_STUDY_STATUS_LABELS = {"OPEN": "En curso", "CLOSED": "Cerrado", "DRAFT": "Borrador", "ARCHIVED": "Archivado"}
+
+
+def _human_label(value: object, labels: dict[str, str]) -> str:
+    if value is None or str(value).strip() == "":
+        return "—"
+    return labels.get(str(value).upper(), str(value).replace("_", " ").capitalize())
+
 
 def build_document_content(document, bundle: dict) -> None:
     numbering = _section_numbering()
@@ -67,8 +77,6 @@ def build_document_content(document, bundle: dict) -> None:
         _add_cover(document, cover, study, is_censopas=is_censopas, template=template, logo_png=bundle.get("brand_logo_png"))
     if include("resumen_ejecutivo"):
         _add_executive_summary(document, next(numbering), bundle.get("executive_summary"))
-    if is_censopas and include("trazabilidad", "ficha_tecnica"):
-        _add_methodological_status(document, bundle.get("methodological_status"), bundle.get("methodological_label"))
     if include("ficha_tecnica"):
         _add_ficha_tecnica(
             document, next(numbering), study, bundle.get("data_quality"),
@@ -77,8 +85,8 @@ def build_document_content(document, bundle: dict) -> None:
         )
     if include("calidad_datos"):
         _add_data_quality_section(document, next(numbering), bundle.get("data_quality"))
-    if include("variables_descriptivas"):
-        _add_sociolaboral_section(document, next(numbering), bundle.get("sociolaboral_profile") or [])
+    if include("variables_descriptivas") and bundle.get("sociolaboral_profile"):
+        _add_sociolaboral_section(document, next(numbering), bundle["sociolaboral_profile"])
 
     if is_censopas:
         if include("dimensiones", "resultados_globales"):
@@ -95,19 +103,20 @@ def build_document_content(document, bundle: dict) -> None:
         _add_generic_construct_section(document, bundle.get("barem_results") or {})
 
     if include("hallazgos_premium") and (bundle.get("analysis_results") or bundle.get("premium_analytics")):
-        add_section_header(document, next(numbering), "Analítica")
-    if include("hallazgos_premium") and bundle.get("analysis_results"):
-        _add_analysis_section(document, bundle["analysis_results"])
-    if include("hallazgos_premium"):
-        _add_premium_section(document, bundle.get("premium_analytics") or {})
+        add_section_header(document, next(numbering), "Hallazgos estadísticos complementarios")
+        _add_statistical_findings(
+            document,
+            bundle.get("analysis_results") or [],
+            bundle.get("premium_analytics") or {},
+        )
     if include("plan_accion"):
         _add_action_plan_section(document, next(numbering), bundle.get("action_plans") or [])
     if include("conclusiones", "resumen_ejecutivo"):
         _add_conclusions_section(document, bundle.get("conclusions") or [])
     if include("anexos", "trazabilidad"):
         _add_traceability_appendix(document, next(numbering), traceability)
-    if include("firmas", "anexos"):
-        _add_signatures_section(document, next(numbering))
+    if include("firmas", "anexos") or bundle.get("signatories"):
+        _add_signatures_section(document, next(numbering), bundle.get("signatories") or [], bool(bundle.get("signatures_attested")))
 
 
 def _add_generic_construct_section(document, barem_results: dict) -> None:
@@ -176,11 +185,17 @@ def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, 
         logo_paragraph.add_run().add_picture(io.BytesIO(logo_png), width=Cm(3.8))
         logo_paragraph.paragraph_format.space_after = Pt(12)
 
-    add_cover_title(document, str(template.get("header_title") or study.get("name") or "Reporte")[:180])
+    default_title = (
+        "Informe técnico de evaluación de riesgos psicosociales"
+        if is_censopas else "Informe técnico de evaluación ocupacional"
+    )
+    add_cover_title(document, str(template.get("header_title") or default_title)[:180])
 
     org = cover.get("organization_name")
     if org:
         add_cover_org(document, org)
+    if study.get("name"):
+        add_cover_subtitle(document, str(study["name"])[:180])
 
     label = cover.get("methodological_label") or {}
     if is_censopas:
@@ -195,11 +210,13 @@ def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, 
 
     pairs = [
         ("RUC", cover.get("ruc") or study.get("ruc") or "—"),
-        ("Población", str(cover.get("population") or study.get("population") or "—")),
-        ("Actividad", cover.get("activity") or "—"),
-        ("Versión", cover.get("version_kind") or "UNKNOWN"),
-        ("Estado", study.get("status") or "—"),
+        ("Población", str(cover.get("population") or study.get("population") or "No registrada")),
+        ("Tipo de organización", cover.get("activity") or "No registrado"),
+        ("Versión", _human_label(cover.get("version_kind"), _VERSION_LABELS)),
+        ("Estado", _human_label(study.get("status"), _STUDY_STATUS_LABELS)),
         ("Privacidad", "Sin respuestas individuales · n mínimo protegido"),
+        ("Código de estudio", cover.get("study_code") or study.get("code") or "—"),
+        ("Emisión", _format_datetime(cover.get("generated_at")) or "—"),
     ]
     add_key_value_grid(document, pairs, widths_mm=[28, 61, 28, 61])
     document.add_paragraph().paragraph_format.space_after = Pt(14)
@@ -213,40 +230,12 @@ def _add_cover(document, cover: dict, study: dict, *, is_censopas: bool = True, 
         variant="neutral",
     )
 
-    date_label = _format_datetime(cover.get("generated_at"))
-    if date_label:
-        document.add_paragraph()
-        add_caption(document, f"Generado: {date_label}")
-
     document.add_page_break()
 
 
 # ---------------------------------------------------------------------------
-# Estado metodológico / ficha técnica
+# Ficha técnica
 # ---------------------------------------------------------------------------
-
-def _add_methodological_status(document, readiness: dict | None, methodological_label: dict | None) -> None:
-    if not readiness and not methodological_label:
-        return
-    add_h2(document, "Estado metodológico")
-    readiness = readiness or {}
-    label = methodological_label or {}
-    scoring_label = "Listo" if readiness.get("ready_for_scoring") else "Bloqueado"
-    equivalence_label = (
-        "Equivalente al resultado oficial CENSOPAS-COPSOQ"
-        if label.get("official_equivalence")
-        else "No equivalente al resultado oficial CENSOPAS-COPSOQ"
-    )
-    add_body(
-        document,
-        f"Versión: {readiness.get('version_kind', 'UNKNOWN')}. Scoring: {scoring_label}. "
-        f"Baremo: {label.get('label', 'Baremo de referencia')}. {equivalence_label}.",
-    )
-    if readiness.get("errors"):
-        add_callout(document, "Bloqueos: " + ", ".join(readiness["errors"]), variant="danger")
-    if readiness.get("warnings"):
-        add_callout(document, "Advertencias: " + ", ".join(readiness["warnings"]), variant="warning")
-    document.add_page_break()
 
 
 def _add_ficha_tecnica(document, number, study, data_quality, methodological_label, barem, min_publishable_n, *, is_censopas=True) -> None:
@@ -258,9 +247,9 @@ def _add_ficha_tecnica(document, number, study, data_quality, methodological_lab
         ("Instrumento", study.get("instrument_name") or ("CENSOPAS-COPSOQ" if is_censopas else "Instrumento de evaluación")),
         ("Versión del instrumento", study.get("instrument_version_code") or "—"),
         ("Estudio", study.get("name") or "—"),
-        ("Tipo de estudio", study.get("study_type") or "—"),
-        ("Estado", study.get("status") or "—"),
-        ("Población convocada", "No disponible en el sistema"),
+        ("Tipo de estudio", _human_label(study.get("study_type"), {})),
+        ("Estado", _human_label(study.get("status"), _STUDY_STATUS_LABELS)),
+        ("Población convocada", str(data_quality["invited_count"]) if data_quality.get("invited_count") is not None else "No disponible en el sistema"),
         ("Respondieron (sesiones)", str(data_quality.get("started_count", "—"))),
         ("Válidos", str(data_quality.get("valid_count", "—"))),
         ("Excluidos", str(data_quality.get("excluded_count", "—"))),
@@ -283,11 +272,19 @@ def _add_executive_summary(document, number, summary: dict | None) -> None:
     add_executive_metric_cards(document, [
         ("Respuestas válidas", str(summary["n_valid"]) if summary.get("n_valid") is not None else "No disponible"),
         ("Finalización", _format_percentage(summary.get("completion_rate"))),
-        ("Dimensiones destacadas", str(len(summary.get("priority_dimensions") or []))),
+        ("Prioridades de revisión", str(len(summary.get("priority_dimensions") or []))),
     ])
 
     priority_dimensions = summary.get("priority_dimensions") or []
     if priority_dimensions:
+        lead = priority_dimensions[0]
+        add_callout(
+            document,
+            f"Foco inicial para gerencia: {lead.get('construct_name') or lead.get('construct_code') or '—'} "
+            f"({_format_pct(lead.get('unfavorable_pct'))} de respuestas desfavorables). "
+            "Corresponde a una prioridad relativa de revisión; la clasificación colectiva se muestra por separado.",
+            variant="warning",
+        )
         document.add_paragraph().paragraph_format.space_after = Pt(4)
         add_h3(document, "Dimensiones prioritarias")
         _insert_chart(document, build_priority_chart(priority_dimensions))
@@ -298,6 +295,8 @@ def _add_executive_summary(document, number, summary: dict | None) -> None:
             classification = dimension.get("classification")
             rows.append([label, _format_pct(dimension.get("unfavorable_pct")), _CLASSIFICATION_LABELS.get(classification, classification or "—")])
         add_colmena_table(document, ["Dimensión", "% Desfavorable", "Clasificación"], rows, widths_mm=[88, 45, 45])
+    if summary.get("official_equivalence") is False:
+        add_caption(document, "El baremo de esta muestra es de referencia: estos resultados no tienen equivalencia oficial CENSOPAS-COPSOQ.")
     document.add_paragraph()
 
 
@@ -396,23 +395,25 @@ def _render_status(cell, label: str, status: str) -> None:
 
 
 def _add_interpretation_section(document, entries: list[dict]) -> None:
-    add_h2(document, "Interpretación de resultados")
     if not entries:
-        add_body(document, "Sin resultados publicables todavía para interpretar.")
         return
-    for entry in entries:
-        heading = add_h3(document, entry.get("construct_name") or entry.get("construct_code") or "—")
-        keep_with_next(heading)
-        add_body(document, f"Hallazgo: {entry.get('finding') or '—'}")
-        if entry.get("classification"):
-            add_body(document, f"Clasificación: {_CLASSIFICATION_LABELS.get(entry['classification'], entry['classification'])}")
-        if entry.get("priority_rank"):
-            add_body(document, f"Prioridad: #{entry['priority_rank']}")
-        hypotheses = entry.get("origin_hypothesis") or []
-        add_body(document, "Hipótesis de origen a contrastar: " + ("; ".join(hypotheses) if hypotheses else "sin registrar todavía."))
-        orientations = entry.get("preventive_orientation") or []
-        add_body(document, "Orientación preventiva: " + ("; ".join(orientations) if orientations else "—"))
-        add_muted(document, f"Limitación: {entry.get('limitation') or '—'}")
+    add_h2(document, "Lectura e hipótesis para revisión")
+    add_body(
+        document,
+        "Las distribuciones describen exposición colectiva. La causa de cada resultado requiere contraste "
+        "con las condiciones de trabajo y el Comité o Grupo de Trabajo; no se infiere causalidad ni diagnóstico individual.",
+    )
+    with_hypotheses = [entry for entry in entries if entry.get("origin_hypothesis")]
+    if with_hypotheses:
+        rows = [
+            [entry.get("construct_name") or entry.get("construct_code") or "—",
+             "; ".join(entry["origin_hypothesis"]),
+             "; ".join(entry.get("preventive_orientation") or []) or "Pendiente de definición"]
+            for entry in with_hypotheses
+        ]
+        add_colmena_table(document, ["Dimensión", "Hipótesis a contrastar", "Orientación preventiva"], rows, widths_mm=[48, 65, 65], compact=True)
+    else:
+        add_caption(document, "No se registraron hipótesis de origen contrastadas para este estudio; el informe no atribuye causas.")
     document.add_paragraph()
 
 
@@ -458,45 +459,104 @@ def _add_conclusions_section(document, conclusions: list[str]) -> None:
     document.add_paragraph()
 
 
-_ANALYSIS_CATEGORIES = [
-    ("Confiabilidad", {"CRONBACH_ALPHA", "MCDONALD_OMEGA"}),
-    ("Normalidad", {"NORMALITY"}),
-    ("Comparaciones entre grupos", {"CHI_SQUARE", "MANN_WHITNEY", "KRUSKAL_WALLIS"}),
-    ("Correlaciones", {"SPEARMAN"}),
-]
+def _add_statistical_findings(document, analysis_results: list[dict], premium: dict) -> None:
+    """Lectura auditable de los análisis disponibles, sin duplicar volcados crudos.
 
+    Se muestran únicamente valores presentes en el bundle; la sección no
+    establece causalidad, no crea umbrales oficiales ni publica clusters.
+    """
+    if not analysis_results:
+        add_body(document, "No hay análisis estadísticos complementarios disponibles para este estudio.")
+        return
 
-def _add_analysis_section(document, analysis_results: list[dict]) -> None:
-    add_h2(document, "Resultados de análisis estadístico")
-    headers = ["Código", "Tipo", "N válido", "Valor", "Estadístico", "p", "Efecto"]
-    widths = [26, 30, 20, 22, 26, 22, 32]
+    add_body(
+        document,
+        "Estos análisis complementan la descripción colectiva del instrumento. "
+        "No modifican sus categorías de exposición ni sustituyen la revisión del profesional responsable.",
+    )
 
-    def rows_for(results: list[dict]) -> list[list[str]]:
-        return [
-            [
+    reliability = [r for r in analysis_results if r.get("result_type") in {"CRONBACH_ALPHA", "MCDONALD_OMEGA"}]
+    if reliability:
+        add_h2(document, "Consistencia interna")
+        rows = []
+        for result in sorted(reliability, key=lambda r: (r.get("result_code") or "", r.get("result_type") or "")):
+            value = result.get("numeric_value")
+            reading = "Revisar ítems y codificación" if value is not None and value < 0 else "Interpretar con el contenido de los ítems"
+            rows.append([
                 result.get("result_code") or "—",
-                result.get("result_type") or "—",
-                str(result["n_valid"]) if result.get("n_valid") is not None else "—",
-                _format_number(result.get("numeric_value")),
+                "Alfa de Cronbach" if result.get("result_type") == "CRONBACH_ALPHA" else "Omega de McDonald",
+                str(result.get("n_valid") or "—"),
+                _format_number(value),
+                reading,
+            ])
+        add_colmena_table(document, ["Escala", "Indicador", "n", "Valor", "Lectura técnica"], rows, widths_mm=[20, 42, 14, 20, 82], compact=True)
+        add_caption(document, "La consistencia interna no demuestra por sí sola validez de constructo. Los valores negativos requieren revisión antes de interpretarse.")
+
+    normality = [r for r in analysis_results if r.get("result_type") == "NORMALITY" and r.get("p_value") is not None]
+    if normality:
+        rejected = sum(float(r["p_value"]) < 0.05 for r in normality)
+        add_h2(document, "Distribución y elección de pruebas")
+        add_body(
+            document,
+            f"En {rejected} de {len(normality)} contrastes de normalidad se obtuvo p < 0,05. "
+            "La interpretación de comparaciones debe considerar la escala, el tamaño de grupo y la forma de la distribución; "
+            "no se selecciona una prueba únicamente por este valor p.",
+        )
+        add_colmena_table(
+            document, ["Dimensión", "n", "Estadístico", "p"],
+            [[r.get("result_code") or "—", str(r.get("n_valid") or "—"),
+              _format_number(r.get("statistic_value")), _format_number(r.get("p_value"), 4)] for r in normality],
+            widths_mm=[50, 25, 52, 51], compact=True,
+        )
+
+    comparisons = [r for r in analysis_results if r.get("result_type") in {"CHI_SQUARE", "MANN_WHITNEY", "KRUSKAL_WALLIS"}]
+    if comparisons:
+        add_h2(document, "Comparaciones entre grupos")
+        names = {"CHI_SQUARE": "Chi-cuadrado", "MANN_WHITNEY": "Mann-Whitney", "KRUSKAL_WALLIS": "Kruskal-Wallis"}
+        add_colmena_table(
+            document, ["Contraste", "Prueba", "n", "p", "Efecto"],
+            [[r.get("result_code") or "—", names[r["result_type"]], str(r.get("n_valid") or "—"),
+              _format_number(r.get("p_value"), 4), _format_number(r.get("effect_size"))] for r in comparisons[:12]],
+            widths_mm=[50, 45, 18, 27, 38], compact=True,
+        )
+        add_caption(document, "Las comparaciones son descriptivas/exploratorias; interpretar tamaño del efecto, grupos y multiplicidad de pruebas antes de adoptar medidas.")
+
+    correlations = [r for r in analysis_results if r.get("result_type") == "SPEARMAN" and r.get("statistic_value") is not None]
+    if correlations:
+        add_h2(document, "Asociaciones entre dimensiones")
+        premium_by_code = {
+            r.get("result_code"): r for r in premium.get("results") or []
+            if r.get("result_type") == "SPEARMAN"
+        }
+        strongest = sorted(correlations, key=lambda r: abs(float(r["statistic_value"])), reverse=True)[:6]
+        rows = []
+        adjusted_available = False
+        significant_adjusted = 0
+        for result in strongest:
+            adjustment = premium_by_code.get(result.get("result_code")) or {}
+            adjusted = adjustment.get("adjusted_p_value")
+            adjusted_available = adjusted_available or adjusted is not None
+            significant_adjusted += adjusted is not None and float(adjusted) < 0.05
+            rows.append([
+                (result.get("result_code") or "—").replace("_x_", " × "),
+                str(result.get("n_valid") or "—"),
                 _format_number(result.get("statistic_value")),
-                _format_number(result.get("p_value"), decimals=4),
-                _format_number(result.get("effect_size")),
-            ]
-            for result in results[:50]
-        ]
+                _format_number(result.get("p_value"), 4),
+                _format_number(adjusted, 4),
+            ])
+        add_colmena_table(document, ["Par", "n", "ρ Spearman", "p", "p ajustado"], rows, widths_mm=[46, 22, 38, 34, 38], compact=True)
+        if adjusted_available:
+            add_body(
+                document,
+                f"Entre las {len(strongest)} asociaciones de mayor magnitud mostradas, "
+                f"{significant_adjusted} conservaron p ajustado < 0,05. "
+                "La asociación no demuestra causalidad.",
+            )
+        else:
+            add_caption(document, "No se dispone de p ajustado para estas asociaciones; los valores p sin corrección son exploratorios.")
 
-    remaining = list(analysis_results)
-    for label, result_types in _ANALYSIS_CATEGORIES:
-        group = [r for r in remaining if r.get("result_type") in result_types]
-        if not group:
-            continue
-        remaining = [r for r in remaining if r not in group]
-        add_h3(document, label)
-        add_colmena_table(document, headers, rows_for(group), widths_mm=widths, compact=True)
-
-    if remaining:
-        add_h3(document, "Otros resultados")
-        add_colmena_table(document, headers, rows_for(remaining), widths_mm=widths, compact=True)
+    if any(r.get("result_type") == "KMEANS" for r in analysis_results):
+        add_callout(document, "El agrupamiento calculado es exploratorio. No se publican asignaciones individuales ni se utiliza para decisiones laborales sobre personas.", variant="neutral")
 
 
 def _add_action_plan_section(document, number, plans: list[dict]) -> None:
@@ -508,32 +568,29 @@ def _add_action_plan_section(document, number, plans: list[dict]) -> None:
         heading = add_h3(document, plan.get("name") or "Plan de acción")
         keep_with_next(heading)
         approval = "Aprobado" if plan.get("approved") else "Pendiente de aprobación"
-        add_body(document, f"Estado: {plan.get('status') or '—'}. {approval}.")
+        add_body(document, f"Estado del plan: {_human_label(plan.get('status'), {'ACTIVE': 'Activo'})}. {approval}.")
 
-        headers = ["Prioridad", "Constructo", "Hallazgo", "Medida", "Responsable", "Fecha", "Estado"]
-        widths = [16, 28, 38, 36, 20, 18, 22]
-        rows = []
         items = plan.get("items") or []
+        if not items:
+            add_caption(document, "Este plan todavía no contiene medidas registradas.")
         for item in items:
-            construct = item.get("construct_code") or "—"
-            if item.get("construct_name"):
-                construct += f" · {item['construct_name']}"
-            rows.append([
-                str(item.get("priority") or "—"),
-                construct,
-                item.get("finding") or "—",
-                item.get("action_description") or "—",
-                item.get("responsible_label") or "—",
-                item.get("due_date") or "—",
-                item.get("effective_status") or item.get("status") or "—",
-            ])
-        table = add_colmena_table(document, headers, rows, widths_mm=widths, compact=True)
-        for row_index, item in enumerate(items):
-            status_label = item.get("effective_status") or item.get("status") or "—"
-            status = _ACTION_STATUS.get(status_label)
-            if status:
-                _render_status(table.rows[row_index + 1].cells[6], status_label, status)
-        for item in items:
+            priority = item.get("priority")
+            construct = " · ".join(filter(None, [item.get("construct_code"), item.get("construct_name")]))
+            add_h3(document, f"{f'Prioridad {priority}' if priority is not None else 'Medida registrada'} · {construct or 'Acción preventiva'}")
+            status_code = item.get("effective_status") or item.get("status")
+            status_label = _human_label(status_code, {
+                "IN_PROGRESS": "En progreso", "PENDING": "Pendiente", "COMPLETED": "Completada",
+                "DONE": "Completada", "OVERDUE": "Vencida", "BLOCKED": "Bloqueada",
+            })
+            add_label_value_table(document, [
+                ("Hallazgo registrado", item.get("finding") or "No registrado"),
+                ("Medida propuesta", item.get("action_description") or "No registrada"),
+                ("Responsable", item.get("responsible_label") or "Sin asignar"),
+                ("Fecha objetivo", item.get("due_date") or "No registrada"),
+                ("Seguimiento", status_label),
+            ], widths_mm=[38, 140])
+            if _ACTION_STATUS.get(status_code) == "red":
+                add_callout(document, f"Atención: esta medida figura como {status_label.lower()}.", variant="danger")
             for kpi in item.get("kpis") or []:
                 measured = kpi.get("current_value")
                 if measured is None:
@@ -546,35 +603,6 @@ def _add_action_plan_section(document, number, plans: list[dict]) -> None:
                     f"meta {_format_number(kpi.get('target_value'))}.",
                 )
         document.add_paragraph()
-
-
-def _add_premium_section(document, premium: dict) -> None:
-    add_h2(document, "Analítica premium")
-    if premium.get("status") != "AVAILABLE":
-        add_body(document, "No hay resultados premium publicables para este estudio.")
-        return
-    add_body(
-        document,
-        f"{premium.get('result_count', 0)} resultados publicables; "
-        f"{premium.get('significant_result_count', 0)} con p ajustado o p menor a 0.05. "
-        f"Métodos: {', '.join(premium.get('methods') or []) or '—'}.",
-    )
-    headers = ["Código", "Método", "N", "Estadístico", "p ajustado", "Efecto", "IC"]
-    widths = [24, 26, 14, 24, 24, 34, 32]
-    rows = []
-    for result in (premium.get("results") or [])[:100]:
-        adjusted = result.get("adjusted_p_value")
-        rows.append([
-            result.get("result_code") or "—",
-            result.get("result_type") or "—",
-            str(result.get("n_valid") if result.get("n_valid") is not None else "—"),
-            _format_number(result.get("statistic_value")),
-            _format_number(adjusted if adjusted is not None else result.get("p_value"), 4),
-            " · ".join(filter(None, [_format_number(result.get("effect_size")), result.get("effect_label")])),
-            f"[{_format_number(result.get('ci_lower'))}, {_format_number(result.get('ci_upper'))}]",
-        ])
-    add_colmena_table(document, headers, rows, widths_mm=widths, compact=True)
-    add_caption(document, "Limitaciones: " + " ".join(premium.get("limitations") or []))
 
 
 def _add_traceability_appendix(document, number, traceability: dict) -> None:
@@ -616,7 +644,7 @@ def _add_traceability_appendix(document, number, traceability: dict) -> None:
         add_colmena_table(document, headers, rows, widths_mm=widths, compact=True)
 
 
-def _add_signatures_section(document, number) -> None:
+def _add_signatures_section(document, number, signatories: list[dict], attested: bool) -> None:
     # Firmas siempre en página propia — nunca queremos la grilla 2x2
     # partida entre dos páginas por quedar cerca del corte.
     document.add_page_break()
@@ -627,6 +655,11 @@ def _add_signatures_section(document, number) -> None:
         {"role": "Seguridad y Salud en el Trabajo (SST)"},
         {"role": "Psicología ocupacional"},
     ]
+    by_role = {entry.get("role"): entry for entry in signatories}
+    entries = [{**entry, **by_role.get(entry["role"], {})} for entry in entries]
+    add_muted(document, "Los nombres y las imágenes de firma fueron facilitados por la organización para esta emisión. Su inclusión no constituye una firma digital certificada ni reemplaza la revisión profesional o los requisitos formales aplicables.")
+    if attested:
+        add_muted(document, "La persona que generó este documento declaró contar con autorización para incorporar las imágenes de firma. La emisión queda vinculada al registro y hash del informe en AURORA.")
     add_signature_grid(document, entries)
 
 
@@ -670,6 +703,9 @@ def _format_datetime(value: str | None) -> str | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value).strftime("%d/%m/%Y %H:%M")
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(ZoneInfo("America/Lima"))
+        return parsed.strftime("%d/%m/%Y %H:%M")
     except ValueError:
         return value

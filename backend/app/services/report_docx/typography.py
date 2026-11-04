@@ -26,6 +26,9 @@ _STYLE_SPECS = {
 
 def register_styles(document) -> None:
     styles = document.styles
+    styles["Normal"].font.name = FONT_FAMILY
+    styles["Normal"].font.size = Pt(FONT["body"])
+    styles["Normal"].font.color.rgb = RGBColor.from_string(COLMENA["text"])
     for name, spec in _STYLE_SPECS.items():
         style = styles[name] if name in [s.name for s in styles] else styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
         style.base_style = styles["Normal"]
@@ -36,6 +39,7 @@ def register_styles(document) -> None:
         font.color.rgb = RGBColor.from_string(spec["color"])
         style.paragraph_format.space_before = Pt(spec.get("space_before", 0))
         style.paragraph_format.space_after = Pt(spec.get("space_after", 4))
+        style.paragraph_format.keep_with_next = name in {"Colmena H1", "Colmena H2", "Colmena H3"}
 
 
 def add_cover_title(document, text: str):

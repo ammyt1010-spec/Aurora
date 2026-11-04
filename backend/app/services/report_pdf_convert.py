@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -54,26 +55,29 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
             profile_dir = tmp_path / f"lo_profile_{uuid.uuid4().hex}"
             soffice_bin = get_soffice_binary()
 
-            process = await asyncio.create_subprocess_exec(
-                soffice_bin,
-                "--headless",
-                "--norestore",
-                f"-env:UserInstallation={profile_dir.as_uri()}",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(tmp_path),
-                str(docx_path),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            process = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    soffice_bin,
+                    "--headless",
+                    "--norestore",
+                    f"-env:UserInstallation={profile_dir.as_uri()}",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(tmp_path),
+                    str(docx_path),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
             )
-            stdout, stderr = await process.communicate()
             if process.returncode == 0:
                 pdf_path = tmp_path / "report.pdf"
                 if pdf_path.exists():
                     return pdf_path.read_bytes()
                 raise DocxToPdfError("LibreOffice terminó sin errores pero no produjo el archivo PDF esperado.")
-            err_msg = stderr.decode("utf-8", errors="replace").strip() if stderr else ""
+            err_msg = process.stderr.decode("utf-8", errors="replace").strip() if process.stderr else ""
             raise DocxToPdfError(
                 f"LibreOffice falló con código {process.returncode} al convertir el documento: {err_msg}"
             )
@@ -82,10 +86,12 @@ async def docx_to_pdf(docx_bytes: bytes) -> bytes:
             "LibreOffice no está instalado o no se encuentra en el PATH del sistema. "
             "No es posible generar una conversión PDF fiel del documento original."
         ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise DocxToPdfError("LibreOffice superó el tiempo máximo de conversión del informe.") from exc
     except DocxToPdfError:
         raise
     except Exception as exc:
-        raise DocxToPdfError(f"Error inesperado al convertir el informe DOCX a PDF mediante LibreOffice: {exc}") from exc
+        raise DocxToPdfError(f"Error inesperado al convertir el informe DOCX a PDF mediante LibreOffice ({type(exc).__name__}): {exc}") from exc
 
 
 def count_pdf_pages(pdf_bytes: bytes) -> int:

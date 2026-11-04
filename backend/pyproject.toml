@@ -26,6 +26,7 @@ bcrypt = "^4.2.0"       # hashing de password
 pyjwt = "^2.9.0"        # sesión (JWT)
 email-validator = "^2.2.0"  # pydantic EmailStr
 python-docx = "^1.2.0"  # reporte exportable en Word (ReportService, output_format=DOCX)
+pillow = ">=11,<13"  # validación de logos y firmas PNG aportados para el informe
 matplotlib = "^3.11.1"  # gráficas embebidas en el reporte Word (backend "Agg", sin display)
 pypdf = "^5.1.0"  # conteo de páginas del PDF de preview (conversión real vía LibreOffice)
 # No instalados (SPSS/Parquet no implementados — ver README "Limitaciones documentadas"):

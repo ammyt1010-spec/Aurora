@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, BookOpen, Sparkles } from 'lucide-react';
+import { BarChart3, BookOpen } from 'lucide-react';
 
 import { listProjects } from '../../api/projects.js';
 import { getActiveProjectId, setActiveProjectId } from '../../utils/activeProject.js';
-import EnterpriseProjectPicker from '../../components/colmena/project/EnterpriseProjectPicker.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { Card } from '../../components/ui/Card.jsx';
 import AdaptiveProjectTelemetryPage from './project/AdaptiveProjectTelemetryPage.jsx';
@@ -13,7 +12,7 @@ import AdaptiveProjectTelemetryPage from './project/AdaptiveProjectTelemetryPage
 export default function TelemetryModulePage() {
   const navigate = useNavigate();
   const [selectedProjectId, setSelectedProjectId] = useState(() => getActiveProjectId());
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['telemetry-module-projects'],
     queryFn: () => listProjects({ page: 1, pageSize: 50 }),
   });
@@ -22,6 +21,9 @@ export default function TelemetryModulePage() {
 
   const projects = data?.items ?? [];
   const storedId = selectedProjectId;
+  if (storedId && !projects.some((project) => String(project.id) === String(storedId)) && isFetching) {
+    return <LoadingState label="Abriendo la evaluación seleccionada..." />;
+  }
   const miningProject = projects.find(
     (p) => p.id === 23 || (p.name && (p.name.toLowerCase().includes('san crist') || p.name.toLowerCase().includes('minera')))
   );
@@ -52,12 +54,9 @@ export default function TelemetryModulePage() {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <div className="px-4 pt-4">
-        <EnterpriseProjectPicker projects={projects} selectedId={activeProject.id}
-          onChange={(id) => { setSelectedProjectId(id); setActiveProjectId(id); }}/>
-      </div>
-      <AdaptiveProjectTelemetryPage key={activeProject.id} overrideProjectId={activeProject.id} />
+    <div className="flex min-w-0 flex-col">
+      <AdaptiveProjectTelemetryPage key={activeProject.id} overrideProjectId={activeProject.id}
+        projects={projects} onProjectChange={(id) => { setSelectedProjectId(id); setActiveProjectId(id); }} />
     </div>
   );
 }

@@ -236,6 +236,7 @@ async def test_sociolaboral_profile_n_and_percentage_and_privacy(
         )
     ).json()
     sex_item = await _add_sociolaboral_question(client, version["id"], "C-001")
+    other_item = await _add_sociolaboral_question(client, version["id"], "P-999")
     survey = (
         await client.post(
             f"/api/v1/projects/{seed_project.id}/surveys/from-instrument",
@@ -265,12 +266,16 @@ async def test_sociolaboral_profile_n_and_percentage_and_privacy(
         await client.put(
             f"/api/v1/response-sessions/{rs['id']}/responses/{sex_item['id']}", json={"raw_code": code}
         )
+        await client.put(
+            f"/api/v1/response-sessions/{rs['id']}/responses/{other_item['id']}", json={"raw_code": code}
+        )
         await client.post(f"/api/v1/response-sessions/{rs['id']}/complete")
 
     json_download = await _generate(client, study["id"], "JSON")
     bundle = json.loads(json_download.text)
     profile = bundle["sociolaboral_profile"]
     assert profile, "debe existir el perfil sociolaboral"
+    assert all(question["code"] != "P-999" for question in profile)
     question = next(q for q in profile if q["code"] == "C-001")
     by_label = {c["label"]: c for c in question["categories"]}
     assert by_label["M"]["n"] == 3
@@ -395,9 +400,15 @@ async def test_docx_pdf_json_share_methodological_sections(
     json_bundle = json.loads((await _generate(client, study["id"], "JSON")).text)
 
     assert pdf_download.content[:5] == b"%PDF-"
-    for phrase in ["Perfil sociolaboral", "Priorización preventiva", "Conclusiones"]:
+    for phrase in ["Priorización preventiva", "Conclusiones"]:
         assert phrase in docx_text, f"falta '{phrase}' en DOCX"
         assert phrase in pdf_text, f"falta '{phrase}' en PDF"
+    if json_bundle["sociolaboral_profile"]:
+        assert "Perfil sociolaboral" in docx_text
+        assert "Perfil sociolaboral" in pdf_text
+    else:
+        assert "Perfil sociolaboral" not in docx_text
+        assert "Perfil sociolaboral" not in pdf_text
     for key in ["sociolaboral_profile", "priority_ranking", "conclusions", "interpretation", "cover"]:
         assert key in json_bundle
     for key in ["priority_ranking", "conclusions", "interpretation", "cover"]:

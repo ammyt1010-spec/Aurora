@@ -1,8 +1,13 @@
 """Flujo Fase 9 (BSC + reportes)."""
 
+import base64
+import io
 import json
 
+from docx import Document
 from httpx import AsyncClient
+from PIL import Image, ImageDraw
+from pypdf import PdfReader
 
 
 async def _second_study(client: AsyncClient, seed_user, seed_project, version_id: int):
@@ -170,6 +175,50 @@ async def test_report_generation_defaults_to_docx(
     # que efectivamente se generó un documento Word y no texto/JSON.
     assert download_resp.content[:4] == b"PK\x03\x04"
 
+
+async def test_report_embeds_responsible_and_supplied_signature(
+    client: AsyncClient, seed_user, seed_project, seed_instrument_draft
+) -> None:
+    study, _ = await _basic_study(client, seed_user, seed_project, seed_instrument_draft)
+    buffer = io.BytesIO()
+    image = Image.new("RGBA", (180, 48), (255, 255, 255, 0))
+    ImageDraw.Draw(image).line([(10, 31), (38, 16), (72, 27), (110, 11), (162, 28)], fill=(15, 32, 70, 255), width=4)
+    image.save(buffer, format="PNG")
+    png = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+    response = await client.post(
+        f"/api/v1/studies/{study['id']}/reports",
+        json={
+            "output_format": "DOCX",
+            "sections": ["portada", "firmas"],
+            "company_logo_png": png,
+            "signatures_authorized": True,
+            "signatories": [{
+                "role": "PSYCHOLOGY", "name": "Dra. Aurora Prueba",
+                "registry": "CPsP 12345", "signature_png": png,
+            }],
+        },
+    )
+    assert response.status_code == 201, response.text
+    download = await client.get(f"/api/v1/reports/{response.json()['id']}/download")
+    document = Document(io.BytesIO(download.content))
+    text = " ".join(cell.text for table in document.tables for row in table.rows for cell in row.cells)
+    assert "Dra. Aurora Prueba" in text
+    assert "CPsP 12345" in text
+    assert len(document.inline_shapes) >= 2  # logo y firma
+    assert "declaró contar con autorización" in " ".join(paragraph.text for paragraph in document.paragraphs)
+
+    unapproved = await client.post(
+        f"/api/v1/studies/{study['id']}/reports",
+        json={"signatories": [{"role": "COMPANY", "name": "Prueba", "signature_png": png}]},
+    )
+    assert unapproved.status_code == 422
+
+    invalid = await client.post(
+        f"/api/v1/studies/{study['id']}/reports",
+        json={"signatures_authorized": True, "signatories": [{"role": "COMPANY", "name": "Prueba", "signature_png": "data:image/png;base64,YWJj"}]},
+    )
+    assert invalid.status_code == 422
+
 async def test_report_generation_supports_pdf(
     client: AsyncClient, seed_user, seed_project, seed_instrument_draft
 ) -> None:
@@ -199,9 +248,18 @@ async def test_report_preview_reuses_same_docx_for_download(
     PDF de preview: no hay una segunda generación al exportar."""
     study, _ = await _basic_study(client, seed_user, seed_project, seed_instrument_draft)
 
+    buffer = io.BytesIO()
+    image = Image.new("RGBA", (180, 48), (255, 255, 255, 0))
+    ImageDraw.Draw(image).line([(10, 31), (38, 16), (72, 27), (110, 11), (162, 28)], fill=(15, 32, 70, 255), width=4)
+    image.save(buffer, format="PNG")
+    signature_png = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
     preview_resp = await client.post(
         f"/api/v1/studies/{study['id']}/reports/preview",
-        json={"output_format": "PDF", "report_mode": "PROVISIONAL"},
+        json={
+            "output_format": "PDF", "report_mode": "PROVISIONAL",
+            "signatures_authorized": True,
+            "signatories": [{"role": "COMPANY", "name": "Responsable de prueba", "signature_png": signature_png}],
+        },
     )
     assert preview_resp.status_code == 201, preview_resp.text
     preview = preview_resp.json()
@@ -213,6 +271,8 @@ async def test_report_preview_reuses_same_docx_for_download(
     assert preview_pdf_resp.status_code == 200
     assert preview_pdf_resp.headers["content-type"] == "application/pdf"
     assert preview_pdf_resp.content[:5] == b"%PDF-"
+    pdf = PdfReader(io.BytesIO(preview_pdf_resp.content))
+    assert "Responsable de prueba" in (pdf.pages[-1].extract_text() or "")
 
     download_resp = await client.get(f"/api/v1/reports/{preview['preview_id']}/download")
     assert download_resp.status_code == 200
@@ -321,7 +381,7 @@ async def test_report_includes_action_plan_premium_and_traceability(
     document = Document(BytesIO(docx_download.content))
     text_content = "\n".join(paragraph.text for paragraph in document.paragraphs)
     assert "Plan de acción y seguimiento" in text_content
-    assert "Analítica premium" in text_content
+    assert "Hallazgos estadísticos complementarios" in text_content
     assert "Anexo de trazabilidad" in text_content
 
     pdf_resp = await client.post(

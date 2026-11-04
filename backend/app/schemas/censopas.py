@@ -342,6 +342,19 @@ class CensopasUnitResultsResponse(BaseModel):
     results: list[CensopasUnitResultRead]
 
 
+class CensopasProfileResultRead(ConstructResultRead):
+    group_value: str
+
+
+class CensopasProfileResultsResponse(BaseModel):
+    study_id: int
+    field_code: Literal["SEXO", "AREA"]
+    min_publishable_n: int
+    available: bool
+    secondary_suppression_applied: bool
+    results: list[CensopasProfileResultRead]
+
+
 class CensopasBaremCutoffManifest(BaseModel):
     construct_code: str = Field(min_length=1, max_length=80)
     cut_1: float = Field(ge=0, le=100)

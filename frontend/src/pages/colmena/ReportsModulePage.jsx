@@ -13,7 +13,7 @@ import ProjectReportsPage from './project/ProjectReportsPage.jsx';
 export default function ReportsModulePage() {
   const navigate = useNavigate();
   const [selectedProjectId, setSelectedProjectId] = useState(() => getActiveProjectId());
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['reports-module-projects'],
     queryFn: () => listProjects({ page: 1, pageSize: 50 }),
   });
@@ -22,6 +22,9 @@ export default function ReportsModulePage() {
 
   const projects = data?.items ?? [];
   const storedId = selectedProjectId;
+  if (storedId && !projects.some((project) => String(project.id) === String(storedId)) && isFetching) {
+    return <LoadingState label="Abriendo la evaluación seleccionada..." />;
+  }
   const miningProject = projects.find(
     (p) => p.id === 23 || (p.name && (p.name.toLowerCase().includes('san crist') || p.name.toLowerCase().includes('minera')))
   );

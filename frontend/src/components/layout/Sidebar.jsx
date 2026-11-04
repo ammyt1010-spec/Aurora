@@ -10,13 +10,13 @@ export function Sidebar({ collapsed = false, onToggle }) {
   const navItems = [
     {
       to: '/colmena',
-      label: '1. Inicio',
+      label: '1. Instrumento',
       icon: Home,
       active: (p) => p === '/colmena' || p === '/colmena/' || p.endsWith('/instruments'),
     },
     {
       to: '/colmena/telemetry',
-      label: '2. Telemetría',
+      label: '2. Respuestas',
       icon: BarChart3,
       active: (p) => p.includes('/telemetry') || p.includes('/results') || p.includes('/premium'),
     },
@@ -30,6 +30,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
 
   return (
     <aside
+      id="aurora-sidebar"
       className={cn(
         'hidden shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out lg:block',
         collapsed ? 'lg:w-0' : 'lg:w-[240px]',
@@ -47,6 +48,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
             <ColmenaMenuButton
               onClick={() => onToggle?.()}
               title="Contraer menú"
+              ariaExpanded={true}
               className="mt-0.5 rounded-lg p-1.5 hover:bg-[#F5F6F8]"
             />
           </div>
@@ -75,7 +77,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
                 <item.icon
                   className={cn(
                     'h-[18px] w-[18px] shrink-0 transition-colors',
-                    isActive ? 'text-[#087D9B' : 'text-muted/60 group-hover:text-muted',
+                    isActive ? 'text-[#087D9B]' : 'text-muted/60 group-hover:text-muted',
                   )}
                   strokeWidth={isActive ? 2.2 : 1.8}
                 />

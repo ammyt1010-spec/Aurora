@@ -1,18 +1,16 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, ExternalLink, FileText, Maximize2, RefreshCw, ShieldCheck, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, FileText, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
+import { getActiveStudyId, setActiveStudyId } from '../../../utils/activeStudy.js';
 import { getProject } from '../../../api/projects.js';
+import { listOrganizations } from '../../../api/organizations.js';
 import { getStudy, listStudies } from '../../../api/studies.js';
 import { fetchProtectedBlob, downloadProtectedFile } from '../../../api/protectedFiles.js';
-import { getCensopasReadiness } from '../../../api/instruments.js';
 import {
   createReportPreview,
-  listReportTemplates,
-  listStudyReports,
-  getReportDownloadUrl,
   getReportPreviewPdfUrl,
 } from '../../../api/reports.js';
 
@@ -22,27 +20,14 @@ import { Button } from '../../../components/ui/Button.jsx';
 import { LoadingState } from '../../../components/ui/LoadingState.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ProjectMissingState } from '../../../components/colmena/ProjectMissingState.jsx';
-import StudySelector from '../../../components/colmena/StudySelector.jsx';
-import ReportBillingPanel from '../../../components/colmena/project/ReportBillingPanel.jsx';
-import ExecutiveReportDashboard from '../../../components/colmena/project/ExecutiveReportDashboard.jsx';
-import ConsolidatedReportsPanel from '../../../components/colmena/project/ConsolidatedReportsPanel.jsx';
-import { getBillingPolicy, getOrders } from '../../../api/billing.js';
-import CensopasReadinessPanel from '../../../components/colmena/instruments/CensopasReadinessPanel.jsx';
+import StudySelector, { reportInstrumentLabel } from '../../../components/colmena/StudySelector.jsx';
+import PdfCanvasViewer from '../../../components/colmena/PdfCanvasViewer.jsx';
 
-const SECTIONS = [
-  { key: 'portada', label: 'Portada' },
-  { key: 'resumen_ejecutivo', label: 'Resumen ejecutivo' },
-  { key: 'ficha_tecnica', label: 'Ficha técnica' },
-  { key: 'calidad_datos', label: 'Calidad de datos (participación)' },
-  { key: 'resultados_globales', label: 'Resultados globales' },
-  { key: 'dimensiones', label: 'Dimensiones' },
-  { key: 'subdimensiones', label: 'Subdimensiones' },
-  { key: 'unidades_seguras', label: 'Unidades seguras' },
-  { key: 'variables_descriptivas', label: 'Variables descriptivas' },
-  { key: 'hallazgos_premium', label: 'Hallazgos premium' },
-  { key: 'plan_accion', label: 'Plan de acción' },
-  { key: 'anexos', label: 'Anexos' },
-  { key: 'firmas', label: 'Firmas' },
+const SIGNATORY_ROLES = [
+  { role: 'PROFESSIONAL', label: 'Profesional responsable', short: 'Profesional', detail: 'Psicología o salud ocupacional' },
+  { role: 'COMPANY', label: 'Representante de la empresa', short: 'Empresa', detail: 'Conformidad de la organización' },
+  { role: 'SST', label: 'Responsable SST', short: 'SST', detail: 'Seguridad y salud en el trabajo' },
+  { role: 'PSYCHOLOGY', label: 'Psicología ocupacional', short: 'Psicología', detail: 'Revisión especializada' },
 ];
 
 export default function ProjectReportsPage({ overrideProjectId }) {
@@ -50,20 +35,17 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   const projectId = overrideProjectId || params.projectId;
   useActiveProject(projectId);
 
-  const [studyId, setStudyId] = useState(null);
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [sections, setSections] = useState(SECTIONS.map((s) => s.key));
-  const [reportMode, setReportMode] = useState('PROVISIONAL');
-  const [outputFormat, setOutputFormat] = useState('PDF');
+  const [studyId, setStudyId] = useState(() => getActiveStudyId(projectId));
   const [previewState, setPreviewState] = useState('IDLE');
-  const [showConsolidated, setShowConsolidated] = useState(false);
-  const [showMethodology, setShowMethodology] = useState(false);
   const [preview, setPreview] = useState(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
-  const pdfFrameRef = useRef(null);
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [viewerError, setViewerError] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [generatedConfig, setGeneratedConfig] = useState(null);
+  const [signatories, setSignatories] = useState(() => Object.fromEntries(SIGNATORY_ROLES.map(({ role }) => [role, { name: '', registry: '', signature_png: null }])));
+  const [signaturesAuthorized, setSignaturesAuthorized] = useState(false);
+  const [assetError, setAssetError] = useState(null);
 
   // Logo state
   const fileInputRef = useRef(null);
@@ -76,6 +58,9 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     queryKey: ['project', projectId],
     queryFn: () => getProject(projectId),
   });
+  const { data: memberships = [] } = useQuery({ queryKey: ['organizations'], queryFn: listOrganizations });
+  const companyMembership = memberships.find((item) => item.organization.id === project?.organization_id);
+  const company = companyMembership?.organization;
 
   const { data: studiesData } = useQuery({
     queryKey: ['studies', projectId],
@@ -84,57 +69,50 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   });
 
   const studies = studiesData?.items || [];
-  const { data: reportTemplates = [] } = useQuery({
-    queryKey: ['enterprise-report-templates'],
-    queryFn: () => listReportTemplates(),
-  });
-  const { data: billingPolicy } = useQuery({ queryKey: ['billing-policy'], queryFn: getBillingPolicy });
-  const isPaymentRequired = billingPolicy?.enforced !== false;
-  const { data: previousReports = [] } = useQuery({
-    queryKey: ['reports', studyId],
-    queryFn: () => listStudyReports(studyId),
-    enabled: Boolean(studyId),
-  });
-  const { data: billingOrders = [] } = useQuery({ queryKey: ['report-orders', studyId], queryFn: () => getOrders(studyId), enabled: Boolean(studyId) });
-  const usableOrder = billingOrders.some((order) => order.status === 'PAID' && order.id === Number(selectedOrderId));
-  const canGenerateReport = Boolean(studyId && (!isPaymentRequired || usableOrder));
 
-  // Auto-select first study if not selected
+  // Mantiene el mismo instrumento al pasar de Telemetría a Informe.
   useEffect(() => {
-    if (!studyId && studies.length > 0) {
-      setStudyId(studies[0].id);
-    }
-  }, [studies, studyId]);
+    if (!studies.length) return;
+    const preferred = studies.find((item) => item.id === studyId)
+      || studies.find((item) => item.id === Number(project?.metadata?.censopas_study_id))
+      || studies.find((item) => item.name && item.name.toLowerCase().includes('minero'))
+      || studies[0];
+    if (preferred.id !== studyId) setStudyId(preferred.id);
+    setActiveStudyId(projectId, preferred.id);
+  }, [studies, studyId, projectId, project?.metadata?.censopas_study_id]);
 
   const { data: study } = useQuery({
     queryKey: ['study', studyId],
     queryFn: () => getStudy(studyId),
     enabled: Boolean(studyId),
   });
+  const selectedInstrument = study ? reportInstrumentLabel(study) : null;
 
-  const { data: readiness, isFetching: isLoadingReadiness } = useQuery({
-    queryKey: ['censopas-readiness', study?.instrument_version_id],
-    queryFn: () => getCensopasReadiness(study.instrument_version_id),
-    enabled: Boolean(study?.instrument_version_id),
+  const currentConfig = useMemo(() => JSON.stringify({
+    studyId, companyLogo, signatories, signaturesAuthorized,
+  }), [studyId, companyLogo, signatories, signaturesAuthorized]);
+  const reportSignatories = SIGNATORY_ROLES.flatMap(({ role }) => {
+    const item = signatories[role];
+    return item.name.trim() ? [{ role, name: item.name.trim(), registry: item.registry.trim() || null, signature_png: item.signature_png }] : [];
   });
-
-  const currentConfig = { studyId, sections: [...sections].sort(), reportMode, outputFormat, selectedOrderId, selectedTemplateId };
+  const missingSignerName = SIGNATORY_ROLES.some(({ role }) => signatories[role].signature_png && !signatories[role].name.trim());
+  const hasSignatureImage = SIGNATORY_ROLES.some(({ role }) => Boolean(signatories[role].signature_png));
 
   const previewMutation = useMutation({
-    mutationFn: (sample = false) =>
+    mutationFn: () =>
       createReportPreview(studyId, {
-        report_mode: sample ? 'SAMPLE' : reportMode,
-        is_sample_preview: Boolean(sample),
-        report_template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+        report_mode: 'SAMPLE',
+        is_sample_preview: true,
         company_logo_png: companyLogo?.startsWith('data:image/png;base64,') ? companyLogo : null,
-        output_format: sample ? 'PDF' : outputFormat,
-        sections,
-        billing_order_id: sample ? null : (isPaymentRequired ? selectedOrderId : null),
+        signatories: reportSignatories,
+        signatures_authorized: signaturesAuthorized,
+        output_format: 'PDF',
+        sections: [],
       }),
     onMutate: () => setPreviewState('GENERATING'),
-    onSuccess: (data) => {
+    onSuccess: (data, requestConfig) => {
       setPreview(data);
-      setGeneratedConfig(currentConfig);
+      setGeneratedConfig(requestConfig.config);
       setPreviewState('READY');
     },
     onError: () => setPreviewState('ERROR'),
@@ -143,44 +121,53 @@ export default function ProjectReportsPage({ overrideProjectId }) {
   useEffect(() => {
     let cancelled = false;
     let objectUrl = null;
+    let retryTimer = null;
     if (preview?.preview_id) {
-      fetchProtectedBlob(getReportPreviewPdfUrl(preview.preview_id))
-        .then((blob) => {
-          if (cancelled) return;
-          objectUrl = URL.createObjectURL(blob);
-          setPreviewBlobUrl(objectUrl);
-        })
-        .catch(() => { if (!cancelled) setPreviewBlobUrl(null); });
+      setPreviewBlob(null);
+      setViewerError(null);
+      const loadPdf = (attempt) => {
+        fetchProtectedBlob(getReportPreviewPdfUrl(preview.preview_id))
+          .then((blob) => {
+            if (cancelled) return;
+            objectUrl = URL.createObjectURL(blob);
+            setPreviewBlobUrl(objectUrl);
+            setPreviewBlob(blob);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            if (attempt < 2) {
+              retryTimer = window.setTimeout(() => loadPdf(attempt + 1), 450 * (attempt + 1));
+            } else {
+              setPreviewBlobUrl(null);
+              setViewerError('No se pudo cargar la vista previa. Intenta descargar el PDF o generar el informe de nuevo.');
+            }
+          });
+      };
+      loadPdf(0);
     }
     return () => {
       cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       setPreviewBlobUrl(null);
+      setPreviewBlob(null);
     };
   }, [preview?.preview_id]);
 
-  // Auto generate preview when studyId is first set
-  const autoGeneratedRef = useRef(false);
   useEffect(() => {
-    if (studyId && billingPolicy?.enforced === false && !autoGeneratedRef.current && previewState === 'IDLE') {
-      autoGeneratedRef.current = true;
-      previewMutation.mutate();
-    }
-  }, [studyId, billingPolicy?.enforced]);
-
-  useEffect(() => {
-    if ((previewState === 'READY' || previewState === 'STALE') && generatedConfig && JSON.stringify(generatedConfig) !== JSON.stringify(currentConfig)) {
+    if ((previewState === 'READY' || previewState === 'STALE') && generatedConfig && generatedConfig !== currentConfig) {
       setPreviewState('STALE');
     }
-  }, [studyId, sections, reportMode, outputFormat, selectedOrderId, selectedTemplateId]);
+  }, [currentConfig, generatedConfig, previewState]);
 
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== 'image/png' || file.size > 600 * 1024) {
-      alert('Selecciona un logotipo PNG de hasta 600 KB.');
+      setAssetError('Selecciona un logotipo PNG de hasta 600 KB.');
       return;
     }
+    setAssetError(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result;
@@ -199,8 +186,22 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     localStorage.removeItem(`company_logo_${projectId}`);
   };
 
-  const toggleSection = (key) => {
-    setSections((prev) => (prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]));
+  const updateSignatory = (role, update) => {
+    setSignatories((previous) => ({ ...previous, [role]: { ...previous[role], ...update } }));
+  };
+
+  const handleSignatureUpload = (role, file) => {
+    if (!file) return;
+    if (file.type !== 'image/png' || file.size > 300 * 1024) {
+      setAssetError('La firma debe ser PNG y no superar 300 KB.');
+      return;
+    }
+    setAssetError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (typeof event.target?.result === 'string') updateSignatory(role, { signature_png: event.target.result });
+    };
+    reader.readAsDataURL(file);
   };
 
   const resetPreview = () => {
@@ -217,28 +218,30 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   return (
     <div className="colmena-page aurora-premium-page space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 shadow-sm">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <FileText size={19} className="shrink-0 text-[#245E9C]"/>
-          <div>
-            <h1 className="text-base font-extrabold text-[#0A1F44]">Informe ejecutivo</h1>
-            <p className="text-xs text-[#64748B]">Previsualización y emisión de resultados autorizados.</p>
-          </div>
-        </div>
-        <button type="button" onClick={() => setShowConsolidated(value => !value)}
-          aria-expanded={showConsolidated}
-          className="rounded-lg border border-[#CFDDEB] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788] hover:bg-[#EDF5FC]">
-          {showConsolidated ? 'Cerrar batería' : 'Informe de batería'}
-        </button>
-      </header>
-      <div className="grid gap-6 md:grid-cols-[380px_1fr]">
-        <div className="space-y-4">
-          {/* Logo Upload Card */}
-          <Card className="p-4 space-y-3">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 xl:grid-cols-[minmax(330px,390px)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-3">
+          <Card className="aurora-report-builder min-w-0 space-y-3 p-4">
+            <div>
+              <h1 className="text-base font-extrabold text-dark">Informe técnico</h1>
+              <p className="text-[11px] text-muted">Paso 3 de 3 · Elige la aplicación, añade responsables y revisa el PDF.</p>
+            </div>
+            <div>
+              <label className="colmena-label mb-1 block">1. Estudio</label>
+              <StudySelector projectId={projectId} studyId={studyId} showInstrument onStudyChange={(value) => {
+                setStudyId(value);
+                setActiveStudyId(projectId, value);
+                resetPreview();
+              }} />
+              <p className="mt-1 text-[10px] leading-4 text-muted">Se crea un informe independiente por instrumento, usando solo las respuestas de esta aplicación.</p>
+              {company && <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-muted">
+                <span className="max-w-[235px] truncate" title={company.legal_name || company.name}>{company.legal_name || company.name}</span>
+                <span className="font-semibold text-[#315788]">RUC {company.tax_id || 'no registrado'}</span>
+              </div>}
+            </div>
             <div className="flex items-center justify-between">
               <p className="colmena-label flex items-center gap-1.5">
                 <ImageIcon size={14} className="text-amber" />
-                Logo Institucional de la Empresa
+                2. Logo de la empresa
               </p>
               {companyLogo ? (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
@@ -256,7 +259,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             />
 
             {companyLogo ? (
-              <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-surfaceSoft">
+              <div className="flex items-center justify-between p-2 rounded-xl border border-border bg-surfaceSoft">
                 <img src={companyLogo} alt="Logo empresa" className="max-h-12 max-w-[160px] object-contain" />
                 <button
                   type="button"
@@ -271,174 +274,76 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-border hover:border-amber rounded-xl bg-surfaceSoft/50 hover:bg-surfaceSoft transition text-center space-y-1.5"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surfaceSoft/50 px-3 py-2 text-center transition hover:border-amber hover:bg-surfaceSoft"
               >
-                <Upload size={20} className="text-amber" />
-                <span className="text-xs font-semibold text-dark">Subir Logo de la Empresa</span>
-                <span className="text-[10px] text-muted">PNG (máximo 600 KB). Se incluye en el DOCX/PDF.</span>
+                <Upload size={15} className="text-amber" />
+                <span className="text-xs font-semibold text-dark">Añadir logo PNG</span>
+                <span className="text-[10px] text-muted">máx. 600 KB</span>
               </button>
             )}
-          </Card>
-
-          {isPaymentRequired && <ReportBillingPanel studyId={studyId} study={study} selectedOrderId={selectedOrderId}
-            onSelectOrder={(id) => { setSelectedOrderId(id); resetPreview(); }} />}
-          {previousReports.some((run) => run.status === 'COMPLETED') && (
-            <Card className="p-4 space-y-3">
-              <h3 className="text-sm font-bold text-dark">Informes anteriores</h3>
-              <p className="text-xs text-muted">La descarga de un informe ya emitido no genera un nuevo cobro.</p>
-              {previousReports.filter((run) => run.status === 'COMPLETED').map((run) => (
-                <div key={run.id} className="flex flex-wrap gap-2 justify-between items-center rounded-lg bg-surfaceSoft p-2 text-xs">
-                  <span>Informe #{run.id} · {new Date(run.created_at).toLocaleDateString('es-PE')}</span>
-                  <button type="button" className="text-amber font-bold underline"
-                    onClick={async () => {
-                      try {
-                        setDownloadError(null);
-                        await downloadProtectedFile(getReportDownloadUrl(run.id),
-                          `aurora-informe-${run.id}.${run.output_format === 'DOCX' ? 'docx' : run.output_format === 'PDF' ? 'pdf' : 'json'}`);
-                      } catch (e) { setDownloadError(e.message); }
-                    }}>Volver a descargar</button>
+            <div className="border-t border-border/70 pt-2">
+              <p className="colmena-label">3. Responsables y firmas</p>
+              <p className="mb-1 text-[10px] text-muted">Nombre, registro y firma PNG opcional.</p>
+              <div className="space-y-1">
+                {SIGNATORY_ROLES.map(({ role, label, short, detail }) => {
+                  const person = signatories[role];
+                  return <div key={role} className="grid grid-cols-[78px_minmax(0,1fr)_66px_30px_18px] items-center gap-1 rounded-lg border border-border/80 bg-white/80 px-1.5 py-1">
+                    <span title={`${label} · ${detail}`} className="truncate text-[10px] font-bold text-dark">{short}</span>
+                    <input aria-label={`Nombre de ${label}`} placeholder="Nombre completo" maxLength={120} value={person.name}
+                      onChange={(event) => updateSignatory(role, { name: event.target.value })} className="aurora-report-field" />
+                    <input aria-label={`Registro de ${label}`} placeholder="Registro" maxLength={80} value={person.registry}
+                      onChange={(event) => updateSignatory(role, { registry: event.target.value })} className="aurora-report-field" />
+                    <label title={`Añadir firma PNG de ${label}`} className="flex h-7 cursor-pointer items-center justify-center rounded-md border border-border text-[#315788] hover:bg-[#EDF5FC]">
+                        <input type="file" accept="image/png" className="sr-only" aria-label={`Firma PNG de ${label}`}
+                          onChange={(event) => { handleSignatureUpload(role, event.target.files?.[0]); event.target.value = ''; }} />
+                        {person.signature_png ? <CheckCircle2 size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />}
+                    </label>
+                    {person.signature_png ? <button type="button" aria-label={`Quitar firma de ${label}`} onClick={() => updateSignatory(role, { signature_png: null })}
+                      className="text-muted hover:text-red-600"><Trash2 size={13} /></button> : <span />}
+                  </div>;
+                })}
+              </div>
+            </div>
+            {hasSignatureImage && <div className="flex flex-wrap gap-1.5" aria-label="Firmas cargadas">
+              {SIGNATORY_ROLES.filter(({ role }) => signatories[role].signature_png).map(({ role, short }) => (
+                <div key={role} className="flex items-center gap-1 rounded-lg border border-border bg-white px-1.5 py-1">
+                  <img src={signatories[role].signature_png} alt={`Vista previa de firma de ${short}`} className="h-6 max-w-14 object-contain" />
+                  <span className="text-[9px] text-muted">{short}</span>
                 </div>
               ))}
-            </Card>
-          )}
-          {/* Report Config Card */}
-          <Card className="aurora-report-builder flex flex-col gap-5 p-4">
-            <div className="flex flex-col gap-3">
-              <p className="colmena-label">Estudio de Evaluación</p>
-              <StudySelector
-                projectId={projectId}
-                studyId={studyId}
-                onStudyChange={(value) => {
-                  setStudyId(value);
-                  setSelectedOrderId(null);
-                  resetPreview();
-                }}
-              />
-              {studyId && readiness?.is_censopas_instrument ? (
-                <CensopasReadinessPanel readiness={readiness} isLoading={isLoadingReadiness} />
-              ) : null}
+            </div>}
+            {assetError && <p role="alert" className="text-xs text-danger">{assetError}</p>}
+            {missingSignerName && <p role="alert" className="text-xs text-danger">Cada firma requiere el nombre de su responsable.</p>}
+            {hasSignatureImage && <label className="flex items-start gap-2 rounded-lg bg-[#F3F8FC] p-2 text-[11px] leading-4 text-[#315788]">
+              <input type="checkbox" checked={signaturesAuthorized} onChange={(event) => setSignaturesAuthorized(event.target.checked)} className="mt-0.5 shrink-0" />
+              Confirmo que cuento con autorización para incorporar estas imágenes de firma al informe.
+            </label>}
+            <div className="border-t border-border/70 pt-2">
+              <Button variant="primary" size="md" onClick={() => previewMutation.mutate({ config: currentConfig })}
+                disabled={!studyId || missingSignerName || (hasSignatureImage && !signaturesAuthorized) || previewState === 'GENERATING'}
+                loading={previewState === 'GENERATING'} className="flex w-full items-center justify-center gap-2 font-bold">
+                <FileText size={16} /> Generar informe PDF
+              </Button>
+              <p className="mt-2 text-[10px] leading-4 text-muted">El demo genera un PDF completo con datos sintéticos y marca de agua.</p>
+              <p className="mt-2 text-[10px] leading-4 text-muted">La imagen de una firma es una reproducción aportada por la empresa; no equivale a una firma digital certificada.</p>
             </div>
-
-            <div>
-              <label htmlFor="report-template-selector" className="colmena-label mb-2 block">Plantilla profesional</label>
-              <select id="report-template-selector" className="colmena-input w-full"
-                value={selectedTemplateId}
-                onChange={(event) => {
-                  setSelectedTemplateId(event.target.value);
-                  const template = reportTemplates.find((item) => String(item.id) === event.target.value);
-                  const preferredSections = template?.template_config?.sections;
-                  if (Array.isArray(preferredSections) && preferredSections.length) {
-                    setSections(preferredSections);
-                  } else {
-                    setSections(SECTIONS.map((item) => item.key));
-                  }
-                  resetPreview();
-                }}>
-                <option value="">Plantilla por defecto del instrumento</option>
-                {reportTemplates.filter((template) => template.status === 'ACTIVE').map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name} · {template.discipline}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-[11px] text-muted">Las plantillas son gestionadas por el operador central y quedan asociadas al informe emitido.</p>
-            </div>
-
-            <div>
-              <p className="colmena-label mb-2">Secciones a incluir en el informe</p>
-              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
-                {SECTIONS.map((section) => (
-                  <button
-                    key={section.key}
-                    type="button"
-                    onClick={() => toggleSection(section.key)}
-                    className={`text-xs px-2.5 py-1 rounded-lg font-medium transition ${
-                      sections.includes(section.key)
-                        ? 'bg-amber text-dark font-semibold'
-                        : 'bg-surfaceSoft border border-border text-muted hover:text-dark'
-                    }`}
-                  >
-                    {section.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="colmena-label mb-2">Validez Metodológica</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setReportMode('PROVISIONAL')}
-                  className={'rounded-xl border p-3 text-left transition ' + (reportMode === 'PROVISIONAL' ? 'border-amber bg-amber/5 ring-1 ring-amber/30' : 'border-border bg-surface')}
-                >
-                  <FileText size={16} className="mb-1.5 text-amber" />
-                  <span className="block text-xs font-semibold text-dark">Informe Preliminar</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={Boolean(readiness?.is_censopas_instrument) && !readiness?.ready_for_official_reporting}
-                  onClick={() => setReportMode('OFFICIAL')}
-                  className={'rounded-xl border p-3 text-left transition ' + (reportMode === 'OFFICIAL' ? 'border-turquoise bg-turquoise/5 ring-1 ring-turquoise/30' : 'border-border bg-surface') + ' disabled:cursor-not-allowed disabled:opacity-50'}
-                >
-                  <ShieldCheck size={16} className="mb-1.5 text-turquoise" />
-                  <span className="block text-xs font-semibold text-dark">
-                    {readiness?.is_censopas_instrument ? 'Informe con equivalencia metodológica verificada' : 'Informe profesional de la metodología autorizada'}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="colmena-label mb-2 block" htmlFor="report-output-format">Formato de Salida</label>
-              <select
-                id="report-output-format"
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs font-medium text-dark focus:border-amber outline-none"
-                value={outputFormat}
-                onChange={(event) => setOutputFormat(event.target.value)}
-              >
-                <option value="PDF">Documento PDF (.pdf)</option>
-                <option value="DOCX">Microsoft Word (.docx)</option>
-              </select>
-            </div>
-
-            <Button
-              variant="primary"
-              size="md"
-              onClick={() => previewMutation.mutate()}
-              disabled={!canGenerateReport || previewState === 'GENERATING'}
-              loading={previewState === 'GENERATING'}
-              className="w-full flex items-center justify-center gap-2 font-bold"
-            >
-              <RefreshCw size={16} />
-              Generar vista previa
-            </Button>
-            <button type="button"
-              onClick={() => previewMutation.mutate(true)}
-              disabled={!studyId || previewState === 'GENERATING'}
-              className="w-full rounded-xl border border-border bg-surfaceSoft px-4 py-2.5 text-xs font-bold text-dark hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50">
-              Ver muestra PDF sin consumir licencia
-            </button>
-            <p className="text-[11px] text-muted">
-              La muestra lleva marca de agua, no tiene validez oficial y nunca habilita la descarga de un informe definitivo.
-            </p>
           </Card>
         </div>
 
         {/* Report Preview Panel */}
-        <Card className="aurora-report-viewer flex min-h-[680px] flex-col gap-3 p-4 sm:p-5">
+        <Card className="aurora-report-viewer flex min-h-[680px] min-w-0 flex-col gap-3 p-4 sm:p-5">
           {previewState === 'IDLE' ? (
             <EmptyState
-              title="Previsualización del informe completo"
-              description={isPaymentRequired ? "Solicita tu cotización, confirma el pago y selecciona la orden aprobada para emitir el informe." : "Selecciona el estudio y genera una vista previa técnica del informe."}
+              title="Previsualización del informe por instrumento"
+              description="Elige la aplicación, añade logo y responsables si deseas, y genera su PDF independiente para revisarlo aquí."
             />
           ) : null}
           {previewState === 'GENERATING' ? <LoadingState label="Procesando datos y renderizando el informe PDF..." /> : null}
           {previewState === 'ERROR' ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <AlertTriangle size={28} className="text-danger" />
-              <p className="text-sm font-medium text-danger">Error al generar la vista previa del informe.</p>
-              <Button variant="secondary" size="sm" onClick={() => previewMutation.mutate()}>
+              <p className="text-sm font-medium text-danger">{previewMutation.error?.message || 'Error al generar la vista previa del informe.'}</p>
+              <Button variant="secondary" size="sm" onClick={() => previewMutation.mutate({ config: currentConfig })}>
                 Reintentar
               </Button>
             </div>
@@ -452,7 +357,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               ) : null}
               {preview.is_sample && (
                 <p className="rounded-lg border border-amber/30 bg-amber/10 p-2 text-xs font-bold text-yellowDark">
-                  VISTA PREVIA DE MUESTRA · SIN VALIDEZ OFICIAL · SIN CONSUMO DE LICENCIA
+                  INFORME DE PRUEBA · DATOS SINTÉTICOS · MARCA DE AGUA
                 </p>
               )}
               <div className="flex items-center justify-between text-xs text-muted">
@@ -463,33 +368,19 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                   </span>
                 ) : null}
               </div>
+              {selectedInstrument && <p className="text-xs font-semibold text-[#315788]">Informe individual · {selectedInstrument}</p>}
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surfaceSoft px-3 py-2">
-                <span className="text-xs font-semibold text-dark">Visor PDF · {preview.is_sample ? 'Muestra sin validez oficial' : 'Documento autorizado'}</span>
+                <span className="text-xs font-semibold text-dark">Informe completo · página por página</span>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" disabled={!previewBlobUrl}
                     onClick={() => { if (previewBlobUrl) window.open(previewBlobUrl, '_blank', 'noopener,noreferrer'); }}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
                     <ExternalLink size={13} /> Abrir en otra pestaña
                   </button>
-                  <button type="button" disabled={!previewBlobUrl}
-                    onClick={() => {
-                      const result = pdfFrameRef.current?.requestFullscreen?.();
-                      if (result && typeof result.catch === 'function') {
-                        result.catch(() => setDownloadError('El navegador no permitió ampliar el visor. Usa «Abrir en otra pestaña».'));
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-dark hover:bg-white disabled:opacity-40">
-                    <Maximize2 size={13} /> Pantalla completa
-                  </button>
                 </div>
               </div>
-              <iframe
-                ref={pdfFrameRef}
-                title="Visor PDF del informe de evaluación"
-                src={previewBlobUrl || 'about:blank'}
-                allowFullScreen
-                className="aurora-report-preview min-h-[680px] w-full flex-1"
-              />
+              {viewerError && <p role="alert" className="text-xs text-danger">{viewerError}</p>}
+              {previewBlob ? <PdfCanvasViewer blob={previewBlob} /> : !viewerError ? <LoadingState label="Abriendo las páginas del PDF..." /> : null}
             </>
           ) : null}
 
@@ -501,9 +392,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 if (!preview) return;
                 setDownloadError(null);
                 try {
-                  const isPdf = Boolean(preview.is_sample) || outputFormat === 'PDF';
-                  const url = isPdf ? getReportPreviewPdfUrl(preview.preview_id) : getReportDownloadUrl(preview.preview_id);
-                  await downloadProtectedFile(url, `aurora-${preview.is_sample ? 'muestra-no-oficial' : 'reporte'}-${preview.preview_id}.${isPdf ? 'pdf' : 'docx'}`);
+                  await downloadProtectedFile(getReportPreviewPdfUrl(preview.preview_id), `aurora-informe-demo-${preview.preview_id}.pdf`);
                 } catch (error) {
                   setDownloadError(error.message);
                 }
@@ -513,19 +402,11 @@ export default function ProjectReportsPage({ overrideProjectId }) {
               }`}
             >
               <Download size={16} />
-              Descargar {preview?.is_sample ? 'muestra PDF' : outputFormat === 'PDF' ? 'PDF' : 'Word editable'}
+              Descargar PDF de prueba
             </button>
             {downloadError ? <p role="alert" className="text-xs text-danger">{downloadError}</p> : null}
           </div>
         </Card>
-      </div>
-      <div className="space-y-2">
-        <button type="button" className="flex w-full items-center justify-between rounded-xl border border-[#DCE7F1] bg-white px-4 py-3 text-left text-xs font-bold text-[#315788]"
-          onClick={() => setShowMethodology(value => !value)} aria-expanded={showMethodology}>
-          Resumen metodológico y hallazgos <span aria-hidden="true">{showMethodology ? '−' : '+'}</span>
-        </button>
-        {showMethodology && <ExecutiveReportDashboard studyId={studyId} />}
-        {showConsolidated && <ConsolidatedReportsPanel projectId={projectId} />}
       </div>
     </div>
   );

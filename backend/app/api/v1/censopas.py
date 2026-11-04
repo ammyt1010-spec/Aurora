@@ -32,6 +32,7 @@ from app.schemas.censopas import (
     CensopasPlansResponse,
     CensopasReadiness,
     CensopasResultsResponse,
+    CensopasProfileResultsResponse,
     CensopasUnitResultsResponse,
     ConstructResultRead,
     ScoringRuleCreate,
@@ -311,6 +312,30 @@ async def get_censopas_unit_results(
                 study_id, unit_type_id
             )
         )
+    )
+
+
+@router.get(
+    "/studies/{study_id}/censopas/sex-results",
+    response_model=CensopasProfileResultsResponse,
+)
+async def get_censopas_sex_results(
+    study_id: int, session: AsyncSession = Depends(get_db),
+):
+    return CensopasProfileResultsResponse(
+        **(await CensopasScoringService(session).get_profile_results(study_id, "SEXO"))
+    )
+
+
+@router.get(
+    "/studies/{study_id}/censopas/area-results",
+    response_model=CensopasProfileResultsResponse,
+)
+async def get_censopas_area_results(
+    study_id: int, session: AsyncSession = Depends(get_db),
+):
+    return CensopasProfileResultsResponse(
+        **(await CensopasScoringService(session).get_profile_results(study_id, "AREA"))
     )
 
 

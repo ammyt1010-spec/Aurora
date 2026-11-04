@@ -10,7 +10,10 @@ from app.core.business_access import require_business_access
 from app.core.config import get_settings
 from app.core.exceptions import AuthorizationError
 from app.models.report import ReportTemplate
-from app.models.user import Organization, OrganizationMembership
+from app.models.project import ProjectMember
+from app.models.study import Study
+from app.models.survey import Survey
+from app.models.user import Organization, OrganizationMembership, User
 
 
 def route_request(method: str, path: str, **params) -> Request:
@@ -108,3 +111,23 @@ async def test_anonymous_sample_preview_is_rejected_before_rendering(session, mo
             session=session,
             current_user=None,
         )
+
+
+@pytest.mark.asyncio
+async def test_project_viewer_can_request_sample_but_not_paid_report(session, seed_project, seed_user):
+    viewer = User(email="report-viewer@aurora.test", username="report-viewer", status="ACTIVE")
+    session.add(viewer)
+    await session.flush()
+    session.add(ProjectMember(project_id=seed_project.id, user_id=viewer.id, role_code="VIEWER"))
+    survey = Survey(project_id=seed_project.id, created_by_user_id=seed_user.id, name="Encuesta")
+    session.add(survey)
+    await session.flush()
+    study = Study(project_id=seed_project.id, survey_id=survey.id, name="Estudio", study_type="ACADEMIC")
+    session.add(study)
+    await session.flush()
+
+    sample = route_request("POST", f"/api/v1/studies/{study.id}/reports/preview", study_id=study.id)
+    await require_business_access(sample, db=session, user=viewer)
+    paid = route_request("POST", f"/api/v1/studies/{study.id}/reports", study_id=study.id)
+    with pytest.raises(AuthorizationError):
+        await require_business_access(paid, db=session, user=viewer)

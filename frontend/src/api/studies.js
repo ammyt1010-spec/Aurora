@@ -100,6 +100,14 @@ export function getCensopasUnitResults(studyId, unitTypeId) {
   return apiRequest(`/studies/${studyId}/censopas/unit-results?unit_type_id=${unitTypeId}`);
 }
 
+export function getCensopasSexResults(studyId) {
+  return apiRequest(`/studies/${studyId}/censopas/sex-results`);
+}
+
+export function getCensopasAreaResults(studyId) {
+  return apiRequest(`/studies/${studyId}/censopas/area-results`);
+}
+
 export function getCensopasResults(studyId) {
   return apiRequest(`/studies/${studyId}/censopas/results`);
 }

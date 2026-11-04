@@ -26,13 +26,20 @@ def render_report_docx(bundle: dict) -> bytes:
     document = Document()
     configure_page(document)
     register_styles(document)
+    document.core_properties.title = "Informe técnico de evaluación ocupacional"
+    document.core_properties.subject = str((bundle.get("study") or {}).get("instrument_name") or "Evaluación colectiva")
+    document.core_properties.keywords = "AURORA, evaluación colectiva, privacidad"
     config = bundle.get("report_template") or {}
     discipline = str(bundle.get("discipline") or "GENERAL").upper()
     default_header = "AURORA PROFESSIONAL | CENSOPAS-COPSOQ" if bundle.get("is_censopas") else f"AURORA PROFESSIONAL | {discipline}"
     title = config.get("header_title") or default_header
     if not isinstance(title, str):
         title = default_header
-    footer = f"AURORA PROFESSIONAL · {discipline} · resultados agregados · privacidad protegida"
+    footer = (
+        "AURORA · MUESTRA SINTÉTICA · NO PRESENTAR COMO INFORME OFICIAL"
+        if bundle.get("report_mode") == "SAMPLE" else
+        f"AURORA PROFESSIONAL · {discipline} · resultados agregados · privacidad protegida"
+    )
     color_map = {
         "aurora-amber": ("543909", "DDA629"),
         "aurora-teal": ("0E4B50", "20A7A4"),

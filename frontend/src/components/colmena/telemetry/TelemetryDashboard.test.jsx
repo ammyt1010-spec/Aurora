@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import TelemetryDashboard from './TelemetryDashboard.jsx';
 
 vi.mock('./ExecutiveDecisionBoard.jsx', () => ({
-  default: () => <div>Executive Decision Board</div>,
+  default: ({ technicalControl }) => <div>Executive Decision Board{technicalControl}</div>,
 }));
 vi.mock('./PremiumBIWorkspace.jsx', () => ({
   default: () => <div>Legacy Advanced Explorer Loaded</div>,
@@ -22,15 +22,15 @@ describe('Compact telemetry default', () => {
     expect(screen.getByText('Executive Decision Board')).toBeInTheDocument();
     expect(screen.queryByText('Legacy Advanced Explorer Loaded')).not.toBeInTheDocument();
     expect(screen.queryByText('Full Capture Telemetry Loaded')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:/Explorador avanzado/}));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Herramientas técnicas' }), { target: { value: 'advanced' } });
     expect(screen.getByText('Legacy Advanced Explorer Loaded')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:/Explorador avanzado/}));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Herramientas técnicas' }), { target: { value: 'none' } });
     expect(screen.queryByText('Legacy Advanced Explorer Loaded')).not.toBeInTheDocument();
   });
   it('exposes detailed survey evidence only on demand', () => {
     render(<TelemetryDashboard projectId={1} studyId={3} telemetry={{valid_count:20}}
       descriptives={{}} isLoadingTelemetry={false} />);
-    fireEvent.click(screen.getByRole('button',{name:/Evidencia por pregunta/}));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Herramientas técnicas' }), { target: { value: 'questions' } });
     expect(screen.getByText('Questions Detail Loaded')).toBeInTheDocument();
   });
   it('shows saved diagnostic when capture telemetry is unavailable', () => {

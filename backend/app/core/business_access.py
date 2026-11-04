@@ -208,7 +208,7 @@ async def validate_payload_references(
                     OrganizationMembership.organization_id == int(value),
                     OrganizationMembership.user_id == user.id,
                 ))).scalar_one_or_none()
-                if membership is None or (write and membership.role_code not in {"OWNER", "ADMIN"}):
+                if membership is None or membership.role_code not in {"OWNER", "ADMIN"}:
                     raise AuthorizationError("No tienes permisos suficientes en esta organización.")
             elif field in _REFERENCE_MODEL:
                 await check_ref(field, int(value))
@@ -232,6 +232,10 @@ async def require_business_access(
     """Fail closed for unknown resource IDs; never trust ids in the request body."""
     p = request.path_params
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
+    if request.method.upper() == "POST" and request.url.path.endswith("/reports/preview"):
+        # La ruta decide si es muestra (lector autorizado) o emisión pagada
+        # (administrador). No bloquear la muestra antes de esa comprobación.
+        write = False
     if "study_id" in p and "version_id" in p:
         study = await _get(db, Study, int(p["study_id"]))
         await _study(db, study.id, user, write)

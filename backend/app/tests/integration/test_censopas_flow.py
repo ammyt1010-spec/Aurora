@@ -3,8 +3,13 @@ privacidad (harness §27-31)."""
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token
+from app.models.question import Question
+from app.models.response import Response, ResponseSession
+from app.models.study import Study
 
 
 @pytest.fixture(autouse=True)
@@ -170,6 +175,67 @@ async def _setup_censopas_study(
             await client.post(f"/api/v1/response-sessions/{rs['id']}/complete")
 
     return study, dimension
+
+
+async def test_sex_breakdown_filters_and_suppresses_small_groups(
+    client: AsyncClient, session: AsyncSession, seed_user, seed_project,
+) -> None:
+    study, _dimension = await _setup_censopas_study(
+        client, seed_user, seed_project, min_publishable_n=1,
+    )
+    scoring = await client.post(f"/api/v1/studies/{study['id']}/scoring")
+    assert scoring.status_code == 200, scoring.text
+
+    db_study = await session.get(Study, study["id"])
+    sex_question = Question(
+        instrument_version_id=db_study.instrument_version_id,
+        code="PERFIL-SEXO", source_code="PERFIL-SEXO",
+        question_text="Sexo", question_type="SINGLE_CHOICE", is_scored=False,
+    )
+    area_question = Question(
+        instrument_version_id=db_study.instrument_version_id,
+        code="PERFIL-AREA", source_code="PERFIL-AREA",
+        question_text="Área de trabajo", question_type="TEXT", is_scored=False,
+    )
+    session.add_all([sex_question, area_question])
+    await session.flush()
+    respondents = list((await session.execute(
+        select(ResponseSession).where(ResponseSession.study_id == db_study.id).order_by(ResponseSession.id)
+    )).scalars().all())
+    assert len(respondents) == 3
+    for respondent, sex, area in zip(respondents, ("Mujer", "Mujer", "Hombre"), ("Operaciones", "Operaciones", "Administración")):
+        session.add(Response(
+            study_id=db_study.id, response_session_id=respondent.id,
+            question_id=sex_question.id, raw_code=sex,
+        ))
+        session.add(Response(
+            study_id=db_study.id, response_session_id=respondent.id,
+            question_id=area_question.id, text_value=area,
+        ))
+    await session.commit()
+
+    endpoint = f"/api/v1/studies/{study['id']}/censopas/sex-results"
+    response = await client.get(endpoint)
+    assert response.status_code == 200, response.text
+    rows = {row["group_value"]: row for row in response.json()["results"]}
+    assert {sex: row["n_valid"] for sex, row in rows.items()} == {"Mujer": 2, "Hombre": 1}
+    assert all(row["favorable_n"] + row["intermediate_n"] + row["unfavorable_n"] == row["n_valid"] for row in rows.values())
+    assert all("response_session_id" not in row for row in rows.values())
+    total = next(row for row in (await client.get(f"/api/v1/studies/{study['id']}/censopas/results")).json()["results"] if row["construct_code"] == "D1")
+    assert sum(row["n_valid"] for row in rows.values()) == total["n_valid"]
+    assert sum(row["unfavorable_n"] for row in rows.values()) == total["unfavorable_n"]
+    area_response = await client.get(f"/api/v1/studies/{study['id']}/censopas/area-results")
+    assert area_response.status_code == 200, area_response.text
+    assert {row["group_value"] for row in area_response.json()["results"]} == {"Operaciones", "Administración"}
+
+    db_study.min_publishable_n = 2
+    await session.commit()
+    suppressed = await client.get(endpoint)
+    assert suppressed.status_code == 200, suppressed.text
+    assert suppressed.json()["results"] == []
+    assert suppressed.json()["secondary_suppression_applied"] is True
+    suppressed_area = await client.get(f"/api/v1/studies/{study['id']}/censopas/area-results")
+    assert suppressed_area.json()["results"] == []
 
 
 async def test_censopas_media_dimension_gets_bands_from_subdimension_items(
@@ -619,7 +685,7 @@ async def test_activate_barem_succeeds_when_complete(
             json={"code": "VAR", "name": "Variable", "role": "OUTCOME"},
         )
     ).json()
-    dimension = (
+    _dimension = (
         await client.post(
             f"/api/v1/instrument-versions/{version['id']}/constructs",
             json={

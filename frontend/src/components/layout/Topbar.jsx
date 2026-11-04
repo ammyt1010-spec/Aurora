@@ -1,37 +1,19 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { LogOut, RefreshCcw, Settings2, Wifi, WifiOff, BarChart3, FileBarChart2, Home, Sparkles } from 'lucide-react';
+import { LogOut, Settings2, BarChart3, FileBarChart2, Home } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-import { API_ROOT_URL } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { setActiveProjectId } from '../../utils/activeProject.js';
 import ThemeToggle from '../ui/ThemeToggle.jsx';
-import { BrandMark } from '../../brand/BrandMark.jsx';
 import { cn } from '../../utils/cn.js';
+import { ColmenaMenuButton } from './ColmenaMenuButton.jsx';
 
-async function fetchHealth() {
-  const response = await fetch(`${API_ROOT_URL}/health`);
-  if (!response.ok) throw new Error('health check failed');
-  return response.json();
-}
-
-/** Barra superior: identidad, conexión real al backend, configuración y sesión. */
-export function Topbar() {
+/** Barra superior compacta: identidad, navegación móvil, configuración y sesión. */
+export function Topbar({ collapsed = false, onToggleMenu }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
-  const { data, refetch, isFetching } = useQuery({
-    queryKey: ['health'],
-    queryFn: fetchHealth,
-    retry: 1,
-    refetchInterval: 30000,
-  });
-
-  const connected = data?.status?.toLowerCase() === 'ok';
-
   const isInicio = location.pathname === '/colmena' || location.pathname === '/colmena/' || location.pathname.endsWith('/instruments');
   const isTelemetry = location.pathname.includes('/telemetry') || location.pathname.includes('/results') || location.pathname.includes('/premium') || location.pathname.includes('/dashboard');
   const isReports = location.pathname.includes('/reports');
@@ -54,20 +36,21 @@ export function Topbar() {
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="sticky top-0 z-10 h-14 border-b border-[#eef0f3] bg-white/90 px-4 backdrop-blur-xl sm:px-5">
+    <div className="sticky top-0 z-10 h-11 border-b border-[#eef0f3] bg-white/90 px-3 backdrop-blur-xl sm:px-4">
       {logoutError && (
         <div role="alert" className="absolute right-4 top-full z-30 mt-2 max-w-sm rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700 shadow-lg">
           {logoutError}
         </div>
       )}
       <div className="flex h-full w-full items-center justify-between gap-4">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-3">
+          {collapsed && <ColmenaMenuButton onClick={onToggleMenu} title="Mostrar menú" ariaExpanded={false}
+            className="hidden rounded-lg border border-[#E6E8EB] bg-white p-2 lg:inline-flex" />}
           <p className="truncate text-sm font-bold text-dark">AURORA Professional</p>
-          <p className="text-[11px] text-muted hidden sm:block">Diagnóstico y evaluaciones corporativas</p>
         </div>
 
-        {/* Navegación permanente en cabecera a las 3 pantallas */}
-        <nav aria-label="Navegación principal" className="flex items-center gap-1">
+        {/* En escritorio la navegación vive en el menú lateral; aquí solo aparece en móvil. */}
+        <nav aria-label="Navegación principal" className="flex items-center gap-1 lg:hidden">
           <Link
             to="/colmena"
             className={cn(
@@ -99,39 +82,9 @@ export function Topbar() {
             <FileBarChart2 size={14} />
             <span className="hidden sm:inline">3. Informe</span>
           </Link>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveProjectId(23);
-              navigate('/colmena/project/23/telemetry');
-            }}
-            className="ml-1 hidden md:inline-flex items-center gap-1.5 rounded-lg border border-[#9EE2EC] bg-[#EDF9FB] px-2.5 py-1 text-xs font-bold text-[#0E7176] hover:bg-[#DCF3F6] transition shadow-xs"
-            title="Ver tablero de telemetría de la Unidad Minera San Cristóbal"
-          >
-            <Sparkles size={13} className="text-[#108B91]" />
-            <span>⚡ Demo Minera</span>
-          </button>
         </nav>
 
         <div className="flex items-center gap-2">
-          <div
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-              connected ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
-            }`}
-          >
-            {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-            {connected ? 'API' : 'Sin API'}
-          </div>
-
-          <button
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#eef0f3] bg-white text-muted transition hover:bg-[#f5f6f8] hover:text-dark"
-            onClick={() => refetch()}
-            title="Refrescar conexión"
-            type="button"
-          >
-            <RefreshCcw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          </button>
-
           <button
             aria-label="Administración"
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#eef0f3] bg-white text-muted transition hover:bg-[#f5f6f8] hover:text-dark"

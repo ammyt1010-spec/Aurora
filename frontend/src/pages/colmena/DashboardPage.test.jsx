@@ -1,119 +1,67 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+
 import { renderWithQueryClient } from '../../test-utils/renderWithQueryClient.jsx';
-import DashboardPage from './DashboardPage.jsx';
-import { getCensopasPlans, listDisciplines, listInstruments } from '../../api/instruments.js';
-import { listProjects } from '../../api/projects.js';
-import { listStudies } from '../../api/studies.js';
-import { createEvaluationBundle } from '../../api/evaluationBundles.js';
+import { getCensopasPlans } from '../../api/instruments.js';
+import DashboardPage, { availableInstrumentCards } from './DashboardPage.jsx';
 
-vi.mock('../../api/instruments.js', () => ({
-  getCensopasPlans: vi.fn(),
-  listDisciplines: vi.fn(),
-  listInstruments: vi.fn(),
-  validateInstrumentVersion: vi.fn(),
-  linkStudyInstrument: vi.fn(),
-}));
-vi.mock('../../api/projects.js', () => ({ listProjects: vi.fn() }));
-vi.mock('../../api/studies.js', () => ({ listStudies: vi.fn() }));
-vi.mock('../../api/evaluationBundles.js', () => ({ createEvaluationBundle: vi.fn() }));
-import { availableInstrumentCards } from './DashboardPage.jsx';
+vi.mock('../../api/instruments.js', () => ({ getCensopasPlans: vi.fn() }));
 
-describe('AURORA instrument catalog', () => {
-  beforeEach(() => {
-    listDisciplines.mockResolvedValue([]);
-    listInstruments.mockResolvedValue({ items: [] });
-    listProjects.mockResolvedValue({ items: [] });
-    listStudies.mockResolvedValue({ items: [] });
-    createEvaluationBundle.mockResolvedValue({ id: 3, public_id: 'bundle-123' });
-  });
-  it('renders real published instruments instead of phantom catalog items', async () => {
-    getCensopasPlans.mockResolvedValue({
-      plans: [
-        { version_kind: 'MEDIUM', instrument_version_id: 100,
-          version_code: 'MEDIUM-OFICIAL', question_count: 112,
-          scored_item_count: 69, dimension_count: 6, subdimension_count: 20,
-          ready_for_scoring: true },
-      ],
-    });
-    renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByText('CENSOPAS-COPSOQ, versión media')).toBeInTheDocument();
-    expect(screen.getByText(/112 preguntas, 69 ítems puntuables/)).toBeInTheDocument();
-    expect(screen.queryByText('Clima de Seguridad Industrial')).not.toBeInTheDocument();
-    expect(screen.queryByText('Salud Ocupacional & Ergonomía')).not.toBeInTheDocument();
+const OFFICIAL_PLANS = {
+  plans: [
+    {
+      version_kind: 'SHORT', version_code: 'SHORT-OFICIAL', instrument_version_id: 3,
+      question_count: 42, scored_item_count: 31, dimension_count: 6, subdimension_count: 0,
+      ready_for_scoring: true,
+    },
+    {
+      version_kind: 'MEDIUM', version_code: 'MEDIUM-OFICIAL', instrument_version_id: 4,
+      question_count: 112, scored_item_count: 69, dimension_count: 6, subdimension_count: 20,
+      ready_for_scoring: true,
+    },
+  ],
+};
+
+describe('AURORA simple instrument cart', () => {
+  beforeEach(() => getCensopasPlans.mockResolvedValue(OFFICIAL_PLANS));
+
+  const renderDashboard = () => renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
+
+  it('shows only the two accepted official versions, short first', async () => {
+    renderDashboard();
+    const short = await screen.findByText('CENSOPAS-COPSOQ, versión corta');
+    const medium = screen.getByText('CENSOPAS-COPSOQ, versión media');
+    expect(short.compareDocumentPosition(medium) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/42 preguntas · 31 ítems puntuables/)).toBeInTheDocument();
+    expect(screen.getByText(/112 preguntas · 69 ítems puntuables/)).toBeInTheDocument();
   });
 
-  it('renders an actionable server error rather than throwing a React tree error', async () => {
-    getCensopasPlans.mockRejectedValue(new Error('API temporalmente indisponible'));
-    renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByText('No se pudo cargar el catálogo', {}, { timeout: 5000 })).toBeInTheDocument();
-  });
-
-  it('does not invent instruments not published in the backend', () => {
+  it('excludes non-official and invented variants', () => {
     const cards = availableInstrumentCards({ plans: [
-      { version_kind: 'SHORT', instrument_version_id: 11, ready_for_scoring: true },
-      { version_kind: 'MEDIUM', instrument_version_id: 12, ready_for_scoring: true },
-      { version_kind: 'FAKE', instrument_version_id: 13, ready_for_scoring: true },
+      ...OFFICIAL_PLANS.plans,
+      { version_kind: 'SHORT', version_code: 'SHORT-DEMO', instrument_version_id: 9 },
+      { version_kind: 'PREMIUM', version_code: 'PREMIUM', instrument_version_id: 10 },
     ] });
-    expect(cards).toHaveLength(2);
-    expect(cards.map((card) => card.instrument_version_id)).toEqual([12, 11]);
+    expect(cards.map((item) => item.instrument_version_id)).toEqual([3, 4]);
   });
 
-  it('does not confuse absence of published data with fake fallback cards', () => {
-    expect(availableInstrumentCards({ plans: [] })).toEqual([]);
-    expect(availableInstrumentCards(null)).toEqual([]);
-  });
-
-  it('prefers the scoring-ready version of a published instrument', () => {
-    const cards = availableInstrumentCards({ plans: [
-      { version_kind: 'SHORT', instrument_version_id: 1, ready_for_scoring: false },
-      { version_kind: 'SHORT', instrument_version_id: 2, ready_for_scoring: true },
-    ] });
-    expect(cards[0].instrument_version_id).toBe(2);
-  });
-  it('shows one catalog at a time and only reveals previous campaigns on request', async () => {
-    getCensopasPlans.mockResolvedValue({
-      plans: [{ version_kind: 'SHORT', instrument_version_id: 21,
-        version_code: 'SHORT', ready_for_scoring: true, question_count: 40,
-        scored_item_count: 40, dimension_count: 6, subdimension_count: 0 }],
-    });
-    listProjects.mockResolvedValue({ items: [{id:9, name:'Empresa de prueba'}] });
-    renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByRole('button', { name: 'Explorar catálogo' }, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.queryByText('CENSOPAS-COPSOQ, versión corta')).not.toBeInTheDocument();
-    expect(screen.queryByText('Empresa de prueba', {selector:'strong'})).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'Explorar catálogo'}));
-    expect(await screen.findByText('CENSOPAS-COPSOQ, versión corta')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', {name:/Mis evaluaciones/}));
-    expect(screen.getByText('Empresa de prueba', {selector:'strong'})).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', {name:/Multidisciplinario/}));
-    expect(screen.queryByText('CENSOPAS-COPSOQ, versión corta')).not.toBeInTheDocument();
-    expect(await screen.findByText('No se encontraron instrumentos con estos filtros')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', {name:/Psicosocial/}));
-    expect(screen.getByText('CENSOPAS-COPSOQ, versión corta')).toBeInTheDocument();
-  });
-
-  it('creates a real single bundle link after two authorized checks', async () => {
-    getCensopasPlans.mockResolvedValue({plans:[]});
-    listProjects.mockResolvedValue({items:[{id:9,name:'Empresa de prueba'}]});
-    listStudies.mockResolvedValue({items:[
-      {id:101,name:'Psicosocial',instrument_name:'CENSOPAS',instrument_version_id:21,
-        public_id:'aaa',status:'OPEN',requires_invitation:false},
-      {id:102,name:'Salud ocupacional',instrument_name:'Instrumento laboral',instrument_version_id:31,
-        public_id:'bbb',status:'OPEN',requires_invitation:false},
-      {id:103,name:'Restringido',instrument_version_id:41,
-        public_id:'ccc',status:'OPEN',requires_invitation:true},
-    ]});
-    renderWithQueryClient(<MemoryRouter><DashboardPage/></MemoryRouter>);
+  it('adds instruments to the cart and opens the link and QR generator', async () => {
+    renderDashboard();
     const boxes = await screen.findAllByRole('checkbox');
-    expect(boxes).toHaveLength(2);
-    fireEvent.click(boxes[0]); fireEvent.click(boxes[1]);
-    fireEvent.click(screen.getByRole('button',{name:/Generar enlace y QR/}));
-    await vi.waitFor(()=>expect(createEvaluationBundle).toHaveBeenCalledWith('9',{
-      label:'Batería empresarial · Empresa de prueba',study_ids:[101,102],
-    }));
-    expect(await screen.findByText(/bateria\/bundle-123/)).toBeInTheDocument();
+    const generate = screen.getByRole('button', { name: 'Continuar · generar enlace y QR' });
+    expect(generate).toBeDisabled();
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    expect(generate).toBeEnabled();
+    fireEvent.click(generate);
+    expect(await screen.findByText('Datos de la empresa')).toBeInTheDocument();
+    expect(screen.getByText('Completa estos datos una vez. Aurora generará un enlace independiente por instrumento.')).toBeInTheDocument();
   });
 
+  it('shows a clear empty state when no official instrument is published', async () => {
+    getCensopasPlans.mockResolvedValue({ plans: [] });
+    renderDashboard();
+    expect(await screen.findByText('No hay instrumentos oficiales disponibles')).toBeInTheDocument();
+  });
 });

@@ -5,14 +5,13 @@ import { renderWithQueryClient } from '../../../test-utils/renderWithQueryClient
 import ExecutiveDecisionBoard from './ExecutiveDecisionBoard.jsx';
 import { getCensopasReadiness } from '../../../api/instruments.js';
 import { getExecutiveDashboard } from '../../../api/reports.js';
-import { getCensopasResults, getCensopasUnitResults, getResultsOverview, getStudy, listStudyUnitTypes } from '../../../api/studies.js';
+import { getCensopasAreaResults, getCensopasResults, getCensopasSexResults, getResultsOverview, getStudy } from '../../../api/studies.js';
 
-vi.mock('./LongitudinalBIWidget.jsx', () => ({ default: () => <div>Longitudinal view loaded</div> }));
 vi.mock('../../../api/instruments.js', () => ({ getCensopasReadiness: vi.fn() }));
 vi.mock('../../../api/reports.js', () => ({ getExecutiveDashboard: vi.fn() }));
 vi.mock('../../../api/studies.js', () => ({
-  getCensopasResults: vi.fn(), getCensopasUnitResults: vi.fn(), getResultsOverview: vi.fn(),
-  getStudy: vi.fn(), listStudyUnitTypes: vi.fn(),
+  getCensopasAreaResults: vi.fn(), getCensopasResults: vi.fn(), getCensopasSexResults: vi.fn(), getResultsOverview: vi.fn(),
+  getStudy: vi.fn(),
 }));
 
 const dimension = {
@@ -25,7 +24,8 @@ const hidden = {...dimension, construct_code:'D2',construct_name:'Privado',suppr
 
 function renderBoard() {
   return renderWithQueryClient(<MemoryRouter><ExecutiveDecisionBoard
-    projectId={8} studyId={19} telemetry={{valid_count:80}}/></MemoryRouter>);
+    projectId={8} studyId={19} telemetry={{valid_count:80, completed_count:82,
+      instrument_name:'CENSOPAS-COPSOQ', instrument_version_code:'SHORT-OFICIAL'}}/></MemoryRouter>);
 }
 beforeEach(()=>{
   vi.clearAllMocks();
@@ -37,36 +37,41 @@ beforeEach(()=>{
     construct_rankings:[{construct_code:'D1',recommendation:'Evaluar distribución de cargas'}],
     risk_distribution:{high_risk_count:1}, participation:{valid_count:80},
   });
-  listStudyUnitTypes.mockResolvedValue([{id:3,name:'Áreas'}]);
-  getCensopasUnitResults.mockResolvedValue({results:[
-    {...dimension,unit_id:20,unit_name:'Operaciones',unfavorable_pct:60,intermediate_pct:20,favorable_pct:20},
-    {...hidden,unit_id:22,unit_name:'Equipo confidencial'},
+  getCensopasAreaResults.mockResolvedValue({available:true,results:[
+    {...dimension,group_value:'Operaciones',unfavorable_pct:60,intermediate_pct:20,favorable_pct:20},
+    {...hidden,group_value:'Equipo confidencial'},
+  ]});
+  getCensopasSexResults.mockResolvedValue({available:true,results:[
+    {...dimension,group_value:'Mujer',n_valid:40,unfavorable_pct:70,intermediate_pct:20,favorable_pct:10},
+    {...dimension,group_value:'Hombre',n_valid:40,unfavorable_pct:30,intermediate_pct:40,favorable_pct:30},
   ]});
 });
 
-describe('AURORA single-screen executive canvas',()=>{
-  it('unifies management diagnosis and excludes private rows',async()=>{
+describe('AURORA liquid telemetry',()=>{
+  it('shows the actual instrument, dimensions and publishable evidence',async()=>{
     renderBoard();
-    expect(await screen.findByRole('heading',{name:'Dimensiones y comparaciones'})).toBeInTheDocument();
-    expect(screen.getByRole('heading',{name:'Qué significa'})).toBeInTheDocument();
-    expect(screen.getByText('Evaluar distribución de cargas')).toBeInTheDocument();
+    expect(await screen.findByRole('heading',{name:'Dimensiones del instrumento'})).toBeInTheDocument();
+    expect(screen.getByRole('heading',{name:'CENSOPAS-COPSOQ'})).toBeInTheDocument();
+    expect(screen.getByText(/20.0% favorable · 30.0% intermedio/)).toBeInTheDocument();
     expect(screen.queryByText('Privado')).not.toBeInTheDocument();
-    expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.getByText('80')).toBeInTheDocument();
     expect(screen.getByText('Riesgo alto')).toBeInTheDocument();
+    expect(screen.getByText('Enlace abierto · sin denominador de invitación')).toBeInTheDocument();
+    expect(screen.queryByText('89%')).not.toBeInTheDocument();
   });
   it('filters authorized segments without exposing suppressed units',async()=>{
     renderBoard();
-    expect(await screen.findByRole('heading',{name:'Diagnóstico ejecutivo'})).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Tipo de segmento'),{target:{value:'3'}});
-    expect(await screen.findByRole('columnheader',{name:'Operaciones'})).toBeInTheDocument();
+    expect(await screen.findByRole('heading',{name:'Dimensiones del instrumento'})).toBeInTheDocument();
+    expect(await screen.findByRole('option',{name:'Operaciones'})).toBeInTheDocument();
     expect(screen.queryByText('Equipo confidencial')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Unidad del segmento'),{target:{value:'20'}});
-    expect(screen.getByText('Comparación descriptiva por segmento')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Filtrar por área'),{target:{value:'Operaciones'}});
     expect(screen.queryByText('Evaluar distribución de cargas')).not.toBeInTheDocument();
     expect(screen.getAllByText('60.0%').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button',{name:'Restablecer'}));
-    expect(screen.getByLabelText('Tipo de segmento').value).toBe('');
+    fireEvent.change(screen.getByLabelText('Filtrar por sexo'),{target:{value:'Mujer'}});
+    expect(screen.getByLabelText('Filtrar por área').value).toBe('ALL');
+    expect(screen.getAllByText('70.0%').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button',{name:/Toda la empresa/}));
+    expect(screen.getByLabelText('Filtrar por sexo').value).toBe('ALL');
   });
   it('keeps generic scores distinct from CENSOPAS categories',async()=>{
     getCensopasReadiness.mockResolvedValue({is_censopas_instrument:false});
@@ -75,21 +80,14 @@ describe('AURORA single-screen executive canvas',()=>{
         suppressed:false,mean_score:72},
     ]});
     renderBoard();
-    expect(await screen.findByText('Puntuación descriptiva normalizada, no nivel de riesgo')).toBeInTheDocument();
+    expect(await screen.findByText('Puntajes descriptivos normalizados; no equivalen a nivel de riesgo.')).toBeInTheDocument();
     expect(screen.queryByText('Riesgo alto')).not.toBeInTheDocument();
   });
-  it('switches analyses in place without adding vertically stacked dashboards',async()=>{
-    renderBoard();
-    await screen.findByRole('heading',{name:'Dimensiones y comparaciones'});
-    expect(screen.queryByText('Longitudinal view loaded')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'Mapa de calor'}));
-    expect(screen.getByRole('group',{name:'Mapa de calor de dimensiones publicables'})).toBeInTheDocument();
-    expect(screen.queryByText('Privado')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'Diagnóstico'}));
-    fireEvent.click(screen.getByRole('button',{name:'Evolución'}));
-    expect(screen.getByText('Longitudinal view loaded')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'Diagnóstico'}));
-    expect(screen.queryByText('Longitudinal view loaded')).not.toBeInTheDocument();
+  it('keeps the invitation denominator attached to the valid response count',async()=>{
+    renderWithQueryClient(<MemoryRouter><ExecutiveDecisionBoard projectId={8} studyId={19}
+      telemetry={{valid_count:80, invited_count:100, completed_count:82}}/></MemoryRouter>);
+    expect(await screen.findByText('de 100 convocados')).toBeInTheDocument();
+    expect(screen.queryByText('80.0%')).not.toBeInTheDocument();
   });
 
   it('shows a real error instead of endless loading when study fails',async()=>{

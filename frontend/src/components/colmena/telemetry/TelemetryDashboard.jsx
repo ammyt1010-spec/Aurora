@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, ClipboardList, Activity, ChevronDown } from 'lucide-react';
 import { Card } from '../../ui/Card.jsx';
 import { EmptyState } from '../../ui/EmptyState.jsx';
 import { LoadingState } from '../../ui/LoadingState.jsx';
@@ -16,6 +15,7 @@ import TelemetryOverview from './TelemetryOverview.jsx';
 export default function TelemetryDashboard({
   projectId, organizationId, studyId, telemetry, descriptives, isLoadingTelemetry,
   onDetailsVisibilityChange, studies, setStudyId, projectName, onRefresh, isRefreshing,
+  projects, onProjectChange,
 }) {
   const [technical, setTechnical] = useState('none');
   useEffect(() => setTechnical('none'), [studyId]);
@@ -27,11 +27,6 @@ export default function TelemetryDashboard({
     return <Card><EmptyState title="Selecciona una evaluación" description="El diagnóstico se organiza por campaña e instrumento." /></Card>;
   }
   if (isLoadingTelemetry) return <LoadingState label="Cargando diagnóstico…" />;
-  const views = [
-    { id: 'monitor', label: 'Seguimiento de captura', icon: Activity },
-    { id: 'questions', label: 'Evidencia por pregunta', icon: ClipboardList },
-    { id: 'advanced', label: 'Explorador avanzado', icon: BarChart3 },
-  ];
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <ExecutiveDecisionBoard
@@ -41,30 +36,24 @@ export default function TelemetryDashboard({
         studies={studies}
         setStudyId={setStudyId}
         projectName={projectName}
+        projects={projects}
+        onProjectChange={onProjectChange}
         onRefresh={onRefresh}
         isRefreshing={isRefreshing}
+        technicalControl={<select aria-label="Herramientas técnicas" value={technical}
+          onChange={(event) => setTechnical(event.target.value)}>
+          <option value="none">Explorar datos</option>
+          <option value="monitor">Seguimiento de captura</option>
+          <option value="questions">Evidencia por pregunta</option>
+          <option value="advanced">Explorador avanzado</option>
+        </select>}
       />
-      <div className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-[11px] font-bold text-[#536985]">Herramientas técnicas</span>
-          {views.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button"
-              aria-expanded={technical === id}
-              onClick={() => setTechnical(technical === id ? 'none' : id)}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${technical === id ?
-                'border-[#BDDDEC] bg-[#EDF9FC] text-[#134F82]' :
-                'border-[#E4EAF2] text-[#546D88] hover:bg-[#F5F9FD]'}`}>
-              <Icon size={13}/>{label}<ChevronDown size={12} className={technical === id ? 'rotate-180' : ''}/>
-            </button>
-          ))}
-        </div>
-        {technical !== 'none' && <div className="mt-3 border-t border-[#E2E8F0] pt-3">
+      {technical !== 'none' && <div className="rounded-xl border border-[#E2E8F0] bg-white p-3 shadow-sm">
           {technical === 'monitor' && <TelemetryOverview telemetry={telemetry} descriptives={descriptives} isLoading={isLoadingTelemetry}/>}
           {technical === 'questions' && <TelemetryDimensionsSection descriptives={descriptives} isLoading={isLoadingTelemetry}/>}
           {technical === 'advanced' && <PremiumBIWorkspace projectId={projectId} organizationId={organizationId}
             studyId={studyId} telemetry={telemetry}/>}
-        </div>}
-      </div>
+      </div>}
     </div>
   );
 }
