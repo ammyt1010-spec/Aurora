@@ -70,7 +70,7 @@ describe('EnterpriseBillingPanel', () => {
   it('renders summary counters and license order history for managed company', async () => {
     renderWithQueryClient(<EnterpriseBillingPanel />);
 
-    expect(await screen.findByText('Integridad y Licencias Comerciales')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos de evaluaciones')).toBeInTheDocument();
     expect(await screen.findByText('Disponibles')).toBeInTheDocument();
     expect(screen.getByText('Emitidos')).toBeInTheDocument();
     expect(screen.getByText('#101')).toBeInTheDocument();

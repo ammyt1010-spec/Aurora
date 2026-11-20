@@ -255,12 +255,16 @@ class StudyService:
 
         return False
 
-    async def open(self, study_id: int) -> Study:
+    async def open(self, study_id: int, *, commit: bool = True) -> Study:
         """harness §15: al abrir un estudio se valida survey/instrument_version,
         se congela una snapshot de configuración y se impiden cambios
         destructivos posteriores (delegado a InstrumentEditPolicy)."""
         study = await self.get(study_id)
         self._transition(study, "OPEN")
+        from app.services.evaluation_access_service import EvaluationAccessService
+        entitlement = await EvaluationAccessService(self.session).for_study(study_id)
+        if entitlement is not None and entitlement.status != "ACTIVE":
+            raise ConflictError("Esta evaluación requiere confirmación de pago antes de generar el enlace.")
 
         survey_stmt = (
             select(Survey)
@@ -355,6 +359,13 @@ class StudyService:
 
         project = await self.session.get(Project, study.project_id)
         is_enterprise = await self._is_enterprise_evaluation(study, project)
+        from app.core.config import get_settings
+        if (
+            is_enterprise
+            and entitlement is None
+            and get_settings().environment.lower() in {"production", "staging"}
+        ):
+            raise ConflictError("Registra la evaluación desde Inicio para asignar un uso gratuito o una orden de pago.")
 
         if study.instrument_version_id is not None:
             version = await self.instrument_repo.get_version_with_instrument(
@@ -563,7 +574,10 @@ class StudyService:
         await self.audit.log(
             action="STUDY_OPENED", entity_type="study", entity_id=study.id, project_id=study.project_id
         )
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
         return await self.get(study.id)
 
     async def close(self, study_id: int) -> Study:

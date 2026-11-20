@@ -16,7 +16,6 @@ from .charts import build_priority_chart, build_trichotomy_chart
 from .components import add_callout, add_centered_badge, add_executive_metric_cards, add_section_header, add_signature_grid
 from .paginate import keep_with_next
 from .tables import add_colmena_table, add_key_value_grid, add_label_value_table
-from .theme import CONTENT_WIDTH_MM
 from .typography import add_body, add_cover_org, add_cover_subtitle, add_cover_title, add_h2, add_h3, add_caption, add_muted
 
 _CLASSIFICATION_LABELS = {
@@ -108,13 +107,12 @@ def build_document_content(document, bundle: dict) -> None:
             document,
             bundle.get("analysis_results") or [],
             bundle.get("premium_analytics") or {},
+            bundle.get("dimension_results") or [],
         )
     if include("plan_accion"):
         _add_action_plan_section(document, next(numbering), bundle.get("action_plans") or [])
     if include("conclusiones", "resumen_ejecutivo"):
         _add_conclusions_section(document, bundle.get("conclusions") or [])
-    if include("anexos", "trazabilidad"):
-        _add_traceability_appendix(document, next(numbering), traceability)
     if include("firmas", "anexos") or bundle.get("signatories"):
         _add_signatures_section(document, next(numbering), bundle.get("signatories") or [], bool(bundle.get("signatures_attested")))
 
@@ -459,7 +457,9 @@ def _add_conclusions_section(document, conclusions: list[str]) -> None:
     document.add_paragraph()
 
 
-def _add_statistical_findings(document, analysis_results: list[dict], premium: dict) -> None:
+def _add_statistical_findings(
+    document, analysis_results: list[dict], premium: dict, dimension_results: list[dict]
+) -> None:
     """Lectura auditable de los análisis disponibles, sin duplicar volcados crudos.
 
     Se muestran únicamente valores presentes en el bundle; la sección no
@@ -524,6 +524,11 @@ def _add_statistical_findings(document, analysis_results: list[dict], premium: d
     correlations = [r for r in analysis_results if r.get("result_type") == "SPEARMAN" and r.get("statistic_value") is not None]
     if correlations:
         add_h2(document, "Asociaciones entre dimensiones")
+        dimension_names = {
+            str(result["construct_code"]): str(result["construct_name"])
+            for result in dimension_results
+            if result.get("construct_code") and result.get("construct_name")
+        }
         premium_by_code = {
             r.get("result_code"): r for r in premium.get("results") or []
             if r.get("result_type") == "SPEARMAN"
@@ -537,14 +542,16 @@ def _add_statistical_findings(document, analysis_results: list[dict], premium: d
             adjusted = adjustment.get("adjusted_p_value")
             adjusted_available = adjusted_available or adjusted is not None
             significant_adjusted += adjusted is not None and float(adjusted) < 0.05
+            pair_codes = str(result.get("result_code") or "").split("_x_", 1)
+            pair_label = " × ".join(dimension_names.get(code, code) for code in pair_codes) or "—"
             rows.append([
-                (result.get("result_code") or "—").replace("_x_", " × "),
+                pair_label,
                 str(result.get("n_valid") or "—"),
                 _format_number(result.get("statistic_value")),
                 _format_number(result.get("p_value"), 4),
                 _format_number(adjusted, 4),
             ])
-        add_colmena_table(document, ["Par", "n", "ρ Spearman", "p", "p ajustado"], rows, widths_mm=[46, 22, 38, 34, 38], compact=True)
+        add_colmena_table(document, ["Dimensiones asociadas", "n", "ρ Spearman", "p", "p ajustado"], rows, widths_mm=[78, 18, 30, 26, 26], compact=True)
         if adjusted_available:
             add_body(
                 document,
@@ -603,45 +610,6 @@ def _add_action_plan_section(document, number, plans: list[dict]) -> None:
                     f"meta {_format_number(kpi.get('target_value'))}.",
                 )
         document.add_paragraph()
-
-
-def _add_traceability_appendix(document, number, traceability: dict) -> None:
-    add_section_header(document, number, "Anexo de trazabilidad")
-    if not traceability:
-        add_body(document, "No hay metadatos de trazabilidad disponibles.")
-        return
-    pairs = [
-        ("Versión del instrumento", traceability.get("version_kind") or "—"),
-        ("Hash del manifiesto", traceability.get("manifest_hash") or "—"),
-        ("Linaje", " → ".join(traceability.get("lineage") or [])),
-        ("N mínimo publicable", str((traceability.get("privacy") or {}).get("min_publishable_n", "—"))),
-        ("Registros individuales incluidos", "No"),
-    ]
-    barem = traceability.get("barem") or {}
-    if barem:
-        pairs.extend([
-            ("Baremo", f"{barem.get('name') or '—'} · {barem.get('version') or '—'}"),
-            ("Hash del baremo", barem.get("content_hash") or "—"),
-            ("Fuente del baremo", barem.get("source_reference") or "—"),
-        ])
-    add_label_value_table(document, pairs, widths_mm=[45, CONTENT_WIDTH_MM - 45])
-    document.add_paragraph()
-
-    runs = traceability.get("analysis_runs") or []
-    if runs:
-        add_h3(document, "Ejecuciones analíticas")
-        headers = ["Tipo", "Estado", "Motor", "Algoritmo", "Hash de entrada"]
-        widths = [30, 24, 40, 34, 50]
-        rows = []
-        for run in runs:
-            rows.append([
-                run.get("analysis_type") or "—",
-                run.get("status") or "—",
-                " ".join(filter(None, [run.get("engine"), run.get("engine_version")])) or "—",
-                run.get("algorithm_version") or "—",
-                run.get("input_hash") or "—",
-            ])
-        add_colmena_table(document, headers, rows, widths_mm=widths, compact=True)
 
 
 def _add_signatures_section(document, number, signatories: list[dict], attested: bool) -> None:

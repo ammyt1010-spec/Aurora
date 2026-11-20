@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,6 +11,7 @@ import { ApiError } from '../api/client.js';
 import { BrandLogo } from '../brand/BrandLogo.jsx';
 import FormField from '../components/ui/FormField.jsx';
 import { Button } from '../components/ui/Button.jsx';
+import { getRegistrationPolicy } from '../api/auth.js';
 
 const schema = z.object({
   email: z.string().email('Ingresa un email válido'),
@@ -21,6 +23,9 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [formError, setFormError] = useState(null);
+  const { data: registrationPolicy } = useQuery({
+    queryKey: ['registration-policy'], queryFn: getRegistrationPolicy, retry: false,
+  });
 
   const {
     register,
@@ -30,12 +35,7 @@ export default function LoginPage() {
 
   const handleDemoClick = async (destinationPath = '/colmena/project/23/telemetry') => {
     try {
-      try {
-        await demoLogin();
-      } catch {
-        // Fallback para túneles y demostraciones remotas de evaluación
-        await login({ email: 'revisor.corporativo@aurora.com', password: 'Aurora2026!' });
-      }
+      await demoLogin();
       navigate(destinationPath, { replace: true });
     } catch {
       setFormError('No se pudo iniciar el modo demostración sin credenciales.');
@@ -57,10 +57,7 @@ export default function LoginPage() {
     }
   };
 
-  const isDemoAllowed = 
-    ['localhost', '127.0.0.1'].includes(window.location.hostname) || 
-    window.location.hostname.endsWith('trycloudflare.com') ||
-    window.location.hostname.includes('tunnel');
+  const isDemoAllowed = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-aurora-50 px-4 py-6 sm:px-6 dark:from-slate-950 dark:via-slate-900 dark:to-aurora-950">
@@ -120,6 +117,7 @@ export default function LoginPage() {
         </div>
 
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+          {location.state?.justRegistered && <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">Cuenta creada. Ingresa con el correo y la contraseña que elegiste.</p>}
           <FormField 
             label="Email" 
             type="email" 
@@ -150,6 +148,12 @@ export default function LoginPage() {
             Ingresar con credenciales
           </Button>
         </form>
+
+        {registrationPolicy?.self_registration_enabled && (
+          <p className="mt-5 text-center text-sm text-slate-600 dark:text-slate-300">
+            ¿Tu empresa aún no tiene cuenta? <Link to="/signup" className="font-bold text-[#087D9B] underline">Crear cuenta</Link>
+          </p>
+        )}
 
         <div className="mt-8 flex items-center justify-center gap-2 text-xs font-medium text-slate-400 dark:text-slate-500">
           <Shield className="h-3.5 w-3.5" />

@@ -10,6 +10,7 @@ import { getProject } from '../../../api/projects.js';
 import { listStudies } from '../../../api/studies.js';
 import { canDistributeSurvey, selectCampaign } from '../../../utils/campaignAccess.js';
 import { createEvaluationBundle, listEvaluationBundles, revokeEvaluationBundle } from '../../../api/evaluationBundles.js';
+import { publicUrl } from '../../../utils/publicUrl.js';
 
 import ProjectWorkspaceHeader from '../../../components/colmena/project/ProjectWorkspaceHeader.jsx';
 import { Card } from '../../../components/ui/Card.jsx';
@@ -45,7 +46,7 @@ export default function ProjectLinkPage() {
   const canDistribute = canDistributeSurvey(activeStudy);
   const publicId = activeStudy?.public_id;
   const surveyUrl = canDistribute && publicId
-    ? `${window.location.origin}/encuesta/${publicId}`
+    ? publicUrl(`/encuesta/${publicId}`)
     : null;
 
   const { data: bundles = [], isError: bundleListError } = useQuery({
@@ -205,7 +206,7 @@ export default function ProjectLinkPage() {
         {bundles.filter((bundle) => bundle.status === 'PUBLISHED').length > 0 && (
           <div className="mt-4 grid gap-2 lg:grid-cols-2">
             {bundles.filter((bundle) => bundle.status === 'PUBLISHED').map((bundle) => {
-              const url = `${window.location.origin}/bateria/${bundle.public_id}`;
+              const url = publicUrl(`/bateria/${bundle.public_id}`);
               return (
                 <div key={bundle.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-[#e1e8f4] bg-white p-3">
                   <QRCodeSVG value={url} size={61} aria-label={'QR de ' + bundle.label} />

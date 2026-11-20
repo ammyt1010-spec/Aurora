@@ -9,7 +9,7 @@ describe('AURORA: tres pantallas', () => {
     const nav = screen.getByRole('navigation', { name: 'Pantallas principales' });
     const links = nav.querySelectorAll('a');
     expect(links).toHaveLength(3);
-    expect([...links].map(link => link.textContent)).toEqual(['Instrumento', 'Respuestas', 'Informe']);
+    expect([...links].map(link => link.textContent)).toEqual(['Inicio', 'Respuestas', 'Informe']);
     expect(links[1]).toHaveAttribute('aria-current', 'page');
     expect(links[0]).toHaveAttribute('href', '/colmena');
     expect(links[2]).toHaveAttribute('href', '/colmena/reports');

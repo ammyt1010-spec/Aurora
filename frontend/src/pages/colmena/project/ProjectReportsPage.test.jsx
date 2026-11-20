@@ -46,7 +46,7 @@ describe('informe empresarial simple', () => {
       <Routes><Route path="/colmena/project/:projectId/reports" element={<ProjectReportsPage />} /></Routes>
     </MemoryRouter>);
 
-    const generate = await screen.findByRole('button', { name: 'Generar informe PDF' });
+    const generate = await screen.findByRole('button', { name: 'Previsualizar PDF de muestra' });
     expect(screen.queryByText(/Emisión definitiva/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Informes anteriores/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Opciones técnicas/)).not.toBeInTheDocument();

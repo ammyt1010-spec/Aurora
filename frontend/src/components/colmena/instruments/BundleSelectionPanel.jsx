@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Check, Copy, Layers3, QrCode } from 'lucide-react';
 import { listStudies } from '../../../api/studies.js';
 import { createEvaluationBundle } from '../../../api/evaluationBundles.js';
+import { publicUrl } from '../../../utils/publicUrl.js';
 
 const OFFICIAL_CENSOPAS_VERSION_LABELS = {
   'SHORT-OFICIAL': 'Versión corta oficial',
@@ -64,7 +65,7 @@ export default function BundleSelectionPanel({ projects }) {
     onSuccess: (result) => {setGenerated(result);setCopyStatus('');},
   });
   const url = generated?.public_id
-    ? window.location.origin + '/bateria/' + generated.public_id : '';
+    ? publicUrl(`/bateria/${generated.public_id}`) : '';
 
   if (!projects.length) {
     return (

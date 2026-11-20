@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Download, ExternalLink, FileText, Upload, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
@@ -8,10 +8,14 @@ import { getActiveStudyId, setActiveStudyId } from '../../../utils/activeStudy.j
 import { getProject } from '../../../api/projects.js';
 import { listOrganizations } from '../../../api/organizations.js';
 import { getStudy, listStudies } from '../../../api/studies.js';
+import { getEvaluationAccess, getPaymentInstructions } from '../../../api/billing.js';
 import { fetchProtectedBlob, downloadProtectedFile } from '../../../api/protectedFiles.js';
 import {
   createReportPreview,
+  createReport,
+  getReportDownloadUrl,
   getReportPreviewPdfUrl,
+  listStudyReports,
 } from '../../../api/reports.js';
 
 import '../../../design/PremiumSurfaces.css';
@@ -31,6 +35,7 @@ const SIGNATORY_ROLES = [
 ];
 
 export default function ProjectReportsPage({ overrideProjectId }) {
+  const queryClient = useQueryClient();
   const params = useParams();
   const projectId = overrideProjectId || params.projectId;
   useActiveProject(projectId);
@@ -87,6 +92,24 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     enabled: Boolean(studyId),
   });
   const selectedInstrument = study ? reportInstrumentLabel(study) : null;
+  const { data: evaluationAccess } = useQuery({
+    queryKey: ['evaluation-access', studyId],
+    queryFn: () => getEvaluationAccess(studyId),
+    enabled: Boolean(studyId), retry: false,
+  });
+  const { data: paymentInstructions } = useQuery({
+    queryKey: ['aurora-payment-instructions'], queryFn: getPaymentInstructions,
+    enabled: evaluationAccess?.status === 'PENDING_PAYMENT', retry: false,
+  });
+  const { data: issuedReports = [] } = useQuery({
+    queryKey: ['study-issued-reports', studyId],
+    queryFn: () => listStudyReports(studyId),
+    enabled: Boolean(studyId), retry: false,
+  });
+  const issuedReport = issuedReports.find((report) => report.status === 'COMPLETED' && (
+    (evaluationAccess?.free_report_id != null && report.id === evaluationAccess.free_report_id)
+    || (evaluationAccess?.access_kind === 'PAID' && evaluationAccess.order_id != null && report.billing_order_id === evaluationAccess.order_id)
+  ));
 
   const currentConfig = useMemo(() => JSON.stringify({
     studyId, companyLogo, signatories, signaturesAuthorized,
@@ -116,6 +139,21 @@ export default function ProjectReportsPage({ overrideProjectId }) {
       setPreviewState('READY');
     },
     onError: () => setPreviewState('ERROR'),
+  });
+  const finalMutation = useMutation({
+    mutationFn: () => createReport(studyId, {
+      report_mode: 'PROVISIONAL',
+      output_format: 'PDF',
+      company_logo_png: companyLogo?.startsWith('data:image/png;base64,') ? companyLogo : null,
+      signatories: reportSignatories,
+      signatures_authorized: signaturesAuthorized,
+      sections: [],
+      billing_order_id: evaluationAccess?.access_kind === 'PAID' ? evaluationAccess.order_id : null,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['evaluation-access', studyId] });
+      queryClient.invalidateQueries({ queryKey: ['study-issued-reports', studyId] });
+    },
   });
 
   useEffect(() => {
@@ -231,6 +269,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
                 setStudyId(value);
                 setActiveStudyId(projectId, value);
                 resetPreview();
+                finalMutation.reset();
               }} />
               <p className="mt-1 text-[10px] leading-4 text-muted">Se crea un informe independiente por instrumento, usando solo las respuestas de esta aplicación.</p>
               {company && <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-muted">
@@ -320,13 +359,37 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             </label>}
             <div className="border-t border-border/70 pt-2">
               <Button variant="primary" size="md" onClick={() => previewMutation.mutate({ config: currentConfig })}
-                disabled={!studyId || missingSignerName || (hasSignatureImage && !signaturesAuthorized) || previewState === 'GENERATING'}
+                disabled={!studyId || evaluationAccess?.status === 'PENDING_PAYMENT' || missingSignerName || (hasSignatureImage && !signaturesAuthorized) || previewState === 'GENERATING'}
                 loading={previewState === 'GENERATING'} className="flex w-full items-center justify-center gap-2 font-bold">
-                <FileText size={16} /> Generar informe PDF
+                <FileText size={16} /> Previsualizar PDF de muestra
               </Button>
-              <p className="mt-2 text-[10px] leading-4 text-muted">El demo genera un PDF completo con datos sintéticos y marca de agua.</p>
+              <p className="mt-2 text-[10px] leading-4 text-muted">Esta vista previa no consume el uso gratuito. Incluye marca de agua y no sustituye el informe final.</p>
               <p className="mt-2 text-[10px] leading-4 text-muted">La imagen de una firma es una reproducción aportada por la empresa; no equivale a una firma digital certificada.</p>
             </div>
+            {evaluationAccess && <div className="border-t border-border/70 pt-3">
+              <p className="colmena-label">4. Informe final de esta evaluación</p>
+              {evaluationAccess.status !== 'ACTIVE' ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-bold">Pendiente de pago · orden #{evaluationAccess.order_id}</p>
+                <p>{evaluationAccess.amount == null ? 'Cotización pendiente: no transfieras hasta recibir el importe' : `Importe: S/ ${Number(evaluationAccess.amount).toFixed(2)}`}. El enlace y el informe final se habilitarán al confirmar la transferencia.</p>
+                {paymentInstructions && <div className="mt-2 space-y-0.5 border-t border-amber-200 pt-2">
+                  <p>Banco: {paymentInstructions.bank_name} · Titular: {paymentInstructions.account_holder}</p>
+                  <p>Cuenta: {paymentInstructions.account_number} · CCI: {paymentInstructions.cci}</p>
+                  <p className={paymentInstructions.provisional ? 'font-bold text-red-700' : 'font-semibold'}>{paymentInstructions.notice}</p>
+                </div>}
+              </div> :
+                issuedReport ? <button type="button" onClick={() => downloadProtectedFile(getReportDownloadUrl(issuedReport.id), `aurora-informe-${issuedReport.id}.pdf`)}
+                  className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#C9D9E9] px-3 py-2 text-xs font-bold text-[#234B78]"><Download size={14}/> Volver a descargar el informe</button> :
+                  <><p className="mt-1 text-[11px] text-muted">{evaluationAccess.access_kind === 'FREE' ? 'Una emisión completa incluida en este uso gratuito.' : 'Una emisión completa incluida en la orden pagada.'} Revisa la muestra antes de emitir.</p>
+                    <Button type="button" variant="secondary" size="sm" className="mt-2 w-full" loading={finalMutation.isPending}
+                      disabled={finalMutation.isPending || missingSignerName || (hasSignatureImage && !signaturesAuthorized) || (evaluationAccess.access_kind === 'PAID' && evaluationAccess.order_status !== 'PAID')}
+                      onClick={() => { if (window.confirm('Esta acción emitirá el informe final de esta evaluación. ¿Continuar?')) finalMutation.mutate(); }}>
+                      Emitir informe final
+                    </Button></>}
+              {finalMutation.isError && <p role="alert" className="mt-2 text-xs text-danger">{finalMutation.error?.message}</p>}
+              {finalMutation.isSuccess && <button type="button" onClick={() => downloadProtectedFile(getReportDownloadUrl(finalMutation.data.id), `aurora-informe-${finalMutation.data.id}.pdf`)}
+                className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-[#0B6F80]"><Download size={14}/> Descargar informe emitido</button>}
+              <p className="mt-2 text-[10px] text-muted">La emisión es provisional y requiere revisión profesional; el baremo de referencia no se presenta como equivalencia oficial CENSOPAS.</p>
+            </div>}
           </Card>
         </div>
 

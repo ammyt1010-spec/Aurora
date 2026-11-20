@@ -4,9 +4,16 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { renderWithQueryClient } from '../../test-utils/renderWithQueryClient.jsx';
 import { getCensopasPlans } from '../../api/instruments.js';
+import { getTariffs, getTrialStatus } from '../../api/billing.js';
+import { listOrganizations } from '../../api/organizations.js';
 import DashboardPage, { availableInstrumentCards } from './DashboardPage.jsx';
 
 vi.mock('../../api/instruments.js', () => ({ getCensopasPlans: vi.fn() }));
+vi.mock('../../api/billing.js', () => ({
+  getTariffs: vi.fn(), getTrialStatus: vi.fn(),
+  getPaymentInstructions: vi.fn(), getEvaluationAccess: vi.fn(),
+}));
+vi.mock('../../api/organizations.js', () => ({ listOrganizations: vi.fn() }));
 
 const OFFICIAL_PLANS = {
   plans: [
@@ -24,7 +31,12 @@ const OFFICIAL_PLANS = {
 };
 
 describe('AURORA simple instrument cart', () => {
-  beforeEach(() => getCensopasPlans.mockResolvedValue(OFFICIAL_PLANS));
+  beforeEach(() => {
+    getCensopasPlans.mockResolvedValue(OFFICIAL_PLANS);
+    getTrialStatus.mockResolvedValue({ limit: 4, used: 1, remaining: 3 });
+    getTariffs.mockResolvedValue([{ id: 1, method_code: 'CENSOPAS_CORTA', min_workers: 1, max_workers: 100, price: '400.00', active: true }]);
+    listOrganizations.mockResolvedValue([]);
+  });
 
   const renderDashboard = () => renderWithQueryClient(<MemoryRouter><DashboardPage /></MemoryRouter>);
 
@@ -35,6 +47,8 @@ describe('AURORA simple instrument cart', () => {
     expect(short.compareDocumentPosition(medium) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText(/42 preguntas · 31 ítems puntuables/)).toBeInTheDocument();
     expect(screen.getByText(/112 preguntas · 69 ítems puntuables/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 de 4 evaluaciones completas gratuitas/)).toBeInTheDocument();
+    expect(screen.getByText(/desde S\/ 400.00/)).toBeInTheDocument();
   });
 
   it('excludes non-official and invented variants', () => {

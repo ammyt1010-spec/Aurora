@@ -4,19 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
   ArrowRight,
-  Building2,
   CheckCircle2,
   Copy,
   ExternalLink,
   QrCode,
   ShieldCheck,
-  Sparkles,
-  Users,
 } from 'lucide-react';
 
 import { apiRequest } from '../../../api/client.js';
 import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
+import { publicUrl } from '../../../utils/publicUrl.js';
 
 export default function InstrumentConfirmModal({ instrument, isOpen, onClose, onCreated }) {
   const navigate = useNavigate();
@@ -71,8 +69,8 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
     });
   };
 
-  const surveyUrl = result?.public_id
-    ? `${window.location.origin}/encuesta/${result.public_id}` : '';
+  const surveyUrl = result?.survey_url
+    ? publicUrl(result.survey_url) : '';
 
   const handleCopyLink = () => {
     if (!surveyUrl) return;
@@ -172,12 +170,12 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
           <div>
             <h3 className="text-base font-bold text-dark">¡Instrumento Configurado!</h3>
             <p className="text-xs text-muted mt-0.5">
-              Empresa: <strong className="text-dark">{formData.company_name}</strong> · Enlace público listo para ser compartido.
+              Empresa: <strong className="text-dark">{formData.company_name}</strong> · {result?.payment_required ? `Orden #${result.order_id} pendiente de pago; enlace aún no disponible.` : 'Enlace público listo para ser compartido.'}
             </p>
           </div>
 
           {/* Enlace & QR Selection Box */}
-          <div className="rounded-xl border border-border bg-surfaceSoft p-4 text-left space-y-3">
+          {surveyUrl && <div className="rounded-xl border border-border bg-surfaceSoft p-4 text-left space-y-3">
             <div>
               <label className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">
                 1. Enlace Público Directo
@@ -213,10 +211,10 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
                 </div>
               ) : null}
             </div>
-          </div>
+          </div>}
 
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <a
+            {surveyUrl && <a
               href={surveyUrl}
               target="_blank"
               rel="noreferrer"
@@ -224,7 +222,7 @@ export default function InstrumentConfirmModal({ instrument, isOpen, onClose, on
             >
               <ExternalLink size={14} />
               Probar Demo
-            </a>
+            </a>}
             <Button onClick={handleGoToTelemetry} size="sm" className="flex items-center justify-center gap-1.5 font-bold">
               Ir a Telemetría en Vivo
               <ArrowRight size={14} />

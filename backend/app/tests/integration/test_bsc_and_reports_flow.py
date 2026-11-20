@@ -382,7 +382,8 @@ async def test_report_includes_action_plan_premium_and_traceability(
     text_content = "\n".join(paragraph.text for paragraph in document.paragraphs)
     assert "Plan de acción y seguimiento" in text_content
     assert "Hallazgos estadísticos complementarios" in text_content
-    assert "Anexo de trazabilidad" in text_content
+    assert "Anexo de trazabilidad" not in text_content
+    assert "Ejecuciones analíticas" not in text_content
 
     pdf_resp = await client.post(
         "/api/v1/studies/{}/reports".format(study["id"]),

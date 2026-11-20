@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
 export function MobileJourneyNav() {
   const location = useLocation();
   const routes = [
-    { to: '/colmena', label: 'Instrumento', Icon: Home, match: (p) => p === '/colmena' || p.endsWith('/instruments') },
+    { to: '/colmena', label: 'Inicio', Icon: Home, match: (p) => p === '/colmena' || p.endsWith('/instruments') },
     { to: '/colmena/telemetry', label: 'Respuestas', Icon: BarChart3, match: (p) => p.includes('/telemetry') || p.includes('/results') || p.includes('/premium') },
     { to: '/colmena/reports', label: 'Informe', Icon: FileText, match: (p) => p.includes('/reports') },
   ];

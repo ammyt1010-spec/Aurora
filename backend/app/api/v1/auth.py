@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import delete, update
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.rate_limit import enforce_login_rate_limit, enforce_registration_rate_limit
 from app.core.auth_cookie import add_session_cookies, clear_session_cookies
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.core.database import get_db
 from app.core.network_security import is_direct_local_request
 from app.core.security import (
@@ -20,14 +20,21 @@ from app.core.security import (
     decode_access_token_claims,
     get_all_request_access_tokens,
     get_current_user,
-    get_request_access_token,
 )
 from app.models.audit import AuditLog
 from app.models.user import User
 from app.models.revoked_token import RevokedAccessToken
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserRead
+from app.schemas.auth import (
+    CompanyAccountCreate, CompanyAccountList, CompanyAccountPasswordReset,
+    CompanyAccountRead, CompanyAccountStatusUpdate, CompanyAccountSummary,
+    CompanySignupRequest, LoginRequest, RegisterRequest, TokenResponse, UserRead,
+    VerifyCompanyEmailRequest, ResendVerificationRequest,
+)
 from app.services.auth_service import AuthService
+from app.services.company_account_service import CompanyAccountService
+from app.services.billing_service import require_operator
 from app.services.session_service import SessionService
+from app.services.company_email_service import resend_confirmation, verify_company_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,9 +42,89 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", response_model=UserRead, status_code=201,
     dependencies=[Depends(enforce_registration_rate_limit)])
 async def register(payload: RegisterRequest, session: AsyncSession = Depends(get_db)):
+    if get_settings().environment.lower() != "test":
+        raise AuthorizationError("Las cuentas empresariales se entregan mediante el administrador de AURORA.")
     service = AuthService(session)
     user = await service.register(payload)
     return UserRead.model_validate(user)
+
+
+@router.get("/registration-policy")
+async def registration_policy():
+    settings = get_settings()
+    return {"self_registration_enabled": settings.self_registration_enabled or settings.environment.lower() == "test"}
+
+
+@router.post("/company-signup", response_model=CompanyAccountRead, status_code=201,
+    dependencies=[Depends(enforce_registration_rate_limit)])
+async def company_signup(payload: CompanySignupRequest, session: AsyncSession = Depends(get_db)):
+    if not get_settings().self_registration_enabled:
+        raise AuthorizationError("El registro empresarial está cerrado temporalmente.")
+    return await CompanyAccountService(session).create(
+        email=str(payload.email), username=payload.username, password=payload.password,
+        company_name=payload.company_name, company_ruc=payload.company_ruc,
+        company_workers=payload.company_workers,
+        verify_email=get_settings().email_verification_required,
+    )
+
+
+@router.post("/verify-company-email", status_code=204,
+    dependencies=[Depends(enforce_registration_rate_limit)])
+async def verify_email(payload: VerifyCompanyEmailRequest, session: AsyncSession = Depends(get_db)):
+    await verify_company_email(session, payload.token)
+
+
+@router.post("/resend-company-verification", status_code=204,
+    dependencies=[Depends(enforce_registration_rate_limit)])
+async def resend_email(payload: ResendVerificationRequest, session: AsyncSession = Depends(get_db)):
+    if get_settings().self_registration_enabled:
+        await resend_confirmation(session, str(payload.email))
+
+
+@router.post("/company-accounts", response_model=CompanyAccountRead, status_code=201)
+async def create_company_account(
+    payload: CompanyAccountCreate,
+    session: AsyncSession = Depends(get_db),
+    operator: User = Depends(get_current_user),
+):
+    require_operator(operator)
+    return await CompanyAccountService(session).create(
+        email=str(payload.email), username=payload.username, password=payload.initial_password,
+        company_name=payload.company_name, company_ruc=payload.company_ruc,
+        company_workers=payload.company_workers, operator_id=operator.id,
+    )
+
+
+@router.get("/company-accounts", response_model=CompanyAccountList)
+async def list_company_accounts(
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_db),
+    operator: User = Depends(get_current_user),
+):
+    require_operator(operator)
+    return await CompanyAccountService(session).list_accounts(q=q, limit=limit, offset=offset)
+
+
+@router.patch("/company-accounts/{user_id}/status", response_model=CompanyAccountSummary)
+async def update_company_account_status(
+    user_id: int, payload: CompanyAccountStatusUpdate,
+    session: AsyncSession = Depends(get_db), operator: User = Depends(get_current_user),
+):
+    require_operator(operator)
+    return await CompanyAccountService(session).set_status(user_id, payload.status, operator_id=operator.id)
+
+
+@router.post("/company-accounts/{user_id}/reset-password", status_code=204)
+async def reset_company_account_password(
+    user_id: int, payload: CompanyAccountPasswordReset,
+    session: AsyncSession = Depends(get_db), operator: User = Depends(get_current_user),
+):
+    require_operator(operator)
+    await CompanyAccountService(session).reset_password(
+        user_id, payload.new_password, operator_id=operator.id,
+    )
 
 
 @router.post("/login", response_model=TokenResponse,

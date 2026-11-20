@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Check, ClipboardList, QrCode } from 'lucide-react';
 
 import { getCensopasPlans } from '../../api/instruments.js';
+import { getTariffs, getTrialStatus } from '../../api/billing.js';
+import { listOrganizations } from '../../api/organizations.js';
 import InstrumentCartModal from '../../components/colmena/projects/InstrumentCartModal.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { ErrorState } from '../../components/ui/ErrorState.jsx';
@@ -17,6 +19,7 @@ const OFFICIAL_VERSION_CODES = {
   MEDIUM: 'MEDIUM-OFICIAL',
 };
 const VERSION_ORDER = ['SHORT', 'MEDIUM'];
+const PRICE_METHODS = { SHORT: 'CENSOPAS_CORTA', MEDIUM: 'CENSOPAS_MEDIA' };
 
 export function availableInstrumentCards(response) {
   const plans = Array.isArray(response?.plans) ? response.plans : [];
@@ -42,6 +45,11 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
   const instruments = availableInstrumentCards(data);
+  const { data: trial } = useQuery({ queryKey: ['aurora-trial-status'], queryFn: getTrialStatus, retry: false });
+  const { data: tariffs = [] } = useQuery({ queryKey: ['aurora-tariffs'], queryFn: getTariffs, retry: false });
+  const { data: organizations = [] } = useQuery({ queryKey: ['aurora-my-organizations'], queryFn: listOrganizations, retry: false });
+  const ownedCompany = organizations.find((entry) => entry.role_code === 'OWNER');
+  const companyProfile = ownedCompany ? { ...ownedCompany.organization, declared_workers: ownedCompany.declared_workers } : null;
   const selected = useMemo(
     () => instruments.filter((instrument) => selectedIds.includes(instrument.instrument_version_id)),
     [instruments, selectedIds],
@@ -60,8 +68,11 @@ export default function DashboardPage() {
           <ClipboardList size={20} className="mt-0.5 shrink-0 text-[#087D9B]" />
           <div>
             <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#2B69A5]">Paso 1 de 3</span>
-            <h1 className="text-lg font-extrabold text-[#0A1F44]">Elige el instrumento</h1>
+            <h1 className="text-lg font-extrabold text-[#0A1F44]">Inicio · elige el instrumento</h1>
             <p className="text-xs text-[#64748B]">Puedes seleccionar uno o ambos. Cada instrumento tendrá su propio enlace e informe.</p>
+            {trial && <p className="mt-1 text-xs font-semibold text-[#087D9B]" aria-live="polite">
+              {trial.remaining} de {trial.limit} evaluaciones completas gratuitas disponibles en esta cuenta.
+            </p>}
           </div>
         </div>
 
@@ -74,6 +85,7 @@ export default function DashboardPage() {
             {instruments.map((instrument) => {
               const checked = selectedIds.includes(instrument.instrument_version_id);
               const title = VERSION_LABELS[instrument.version_kind];
+              const startingTariff = tariffs.find((tariff) => tariff.method_code === PRICE_METHODS[instrument.version_kind] && tariff.min_workers === 1 && tariff.active);
               return (
                 <label key={instrument.instrument_version_id} className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition ${checked ? 'bg-[#EDF9FB]' : 'bg-white hover:bg-[#F7FAFD]'}`}>
                   <input type="checkbox" checked={checked} onChange={() => toggleInstrument(instrument.instrument_version_id)} className="h-4 w-4 shrink-0" />
@@ -82,6 +94,7 @@ export default function DashboardPage() {
                     <small className="block text-xs text-[#64748B]">
                       {instrument.question_count} preguntas · {instrument.scored_item_count} ítems puntuables · {instrument.dimension_count} dimensiones{instrument.subdimension_count ? ` · ${instrument.subdimension_count} subdimensiones` : ''}
                     </small>
+                    {startingTariff && <small className="block text-[11px] text-[#315788]">Luego de los 4 usos gratuitos: desde S/ {Number(startingTariff.price).toFixed(2)} por evaluación · tarifario web −20 %</small>}
                   </span>
                   {checked ? <Check size={17} className="shrink-0 text-[#108B91]"/> : null}
                 </label>
@@ -106,6 +119,9 @@ export default function DashboardPage() {
 
       <InstrumentCartModal
         instruments={selected.map((instrument) => ({ ...instrument, title: VERSION_LABELS[instrument.version_kind] }))}
+        trialRemaining={trial?.remaining}
+        tariffs={tariffs}
+        companyProfile={companyProfile}
         isOpen={showGenerator}
         onClose={() => setShowGenerator(false)}
       />

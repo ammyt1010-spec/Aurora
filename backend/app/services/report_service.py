@@ -35,6 +35,7 @@ from app.services.billing_service import BillingService
 from app.models.analysis import AnalysisResult, AnalysisRun
 from app.models.audit import AuditLog
 from app.models.billing import ReportOrder
+from app.models.evaluation_entitlement import EvaluationEntitlement
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi
 from app.models.censopas import Barem
 from app.models.construct import Construct
@@ -198,10 +199,25 @@ class ReportService:
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
 
-        # In production a report, including its preview, consumes exactly
-        # one paid company order. No tariff is pre-filled before approval.
+        # Una evaluación de prueba incluye una sola emisión completa. Las
+        # evaluaciones posteriores usan la orden vinculada al estudio.
         billing = BillingService(self.session)
-        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id, request=request)
+        from app.services.evaluation_access_service import EvaluationAccessService
+        entitlement = await EvaluationAccessService(self.session).for_study(study_id, lock=True)
+        free_evaluation = False
+        effective_order_id = payload.billing_order_id
+        if entitlement is not None:
+            if entitlement.status != "ACTIVE":
+                raise ConflictError("Confirma el pago de la evaluación antes de emitir el informe.")
+            if entitlement.access_kind == "FREE" and effective_order_id is None:
+                if entitlement.free_report_id is not None:
+                    raise ConflictError("La evaluación gratuita ya tiene un informe emitido. Puedes volver a descargarlo sin costo.")
+                free_evaluation = True
+            elif entitlement.access_kind == "PAID":
+                if effective_order_id is not None and effective_order_id != entitlement.order_id:
+                    raise ConflictError("La orden no corresponde a esta evaluación.")
+                effective_order_id = entitlement.order_id
+        paid_order = None if free_evaluation else await billing.reserve_report_order(effective_order_id, study_id, request=request)
 
         if payload.analysis_run_id is not None:
             analysis = await self.session.get(AnalysisRun, payload.analysis_run_id)
@@ -231,6 +247,7 @@ class ReportService:
             "template_code": template_code,
             "discipline": discipline,
             "is_sample_preview": False,
+            "free_evaluation": free_evaluation,
             "signatures_attested": bool(payload.signatures_authorized and any(item.signature_png for item in payload.signatories)),
         }
 
@@ -290,6 +307,8 @@ class ReportService:
             report_run.status = "COMPLETED"
             report_run.generated_at = datetime.now(UTC)
             await billing.consume_order(paid_order, report_run.id)
+            if free_evaluation:
+                entitlement.free_report_id = report_run.id
         except Exception as exc:
             # A failed render must not consume the paid authorization. Keep
             # the audit record of failure but release the single-use link.
@@ -423,6 +442,12 @@ class ReportService:
                     if order is not None:
                         await billing.release_reservation(order)
                     report_run.billing_order_id = None
+                elif (report_run.metadata_ or {}).get("free_evaluation"):
+                    entitlement = (await self.session.execute(
+                        select(EvaluationEntitlement).where(EvaluationEntitlement.study_id == report_run.study_id)
+                    )).scalar_one_or_none()
+                    if entitlement is not None and entitlement.free_report_id == report_run.id:
+                        entitlement.free_report_id = None
                 report_run.status = "FAILED"
                 report_run.error_message = f"Falló la conversión de vista previa: {exc}"
                 await self.session.commit()

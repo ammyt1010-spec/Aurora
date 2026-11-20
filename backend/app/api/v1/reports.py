@@ -240,7 +240,7 @@ async def download_report_preview(
     report = await service.get_run(report_id)
     await _assert_study_access(session, report.study_id, current_user, request)
     is_watermarked_sample = bool((report.metadata_ or {}).get("is_sample_preview"))
-    if get_settings().environment.lower() == "production" and report.billing_order_id is None and not is_watermarked_sample:
+    if get_settings().environment.lower() == "production" and report.billing_order_id is None and not is_watermarked_sample and not (report.metadata_ or {}).get("free_evaluation"):
         raise ConflictError("Informe anterior sin autorización de entrega. Contacta al administrador.")
     if report.status != "COMPLETED" or not report.storage_path or not report.storage_path.endswith(".docx"):
         raise NotFoundError(f"Reporte {report_id} no tiene una vista previa disponible todavía")

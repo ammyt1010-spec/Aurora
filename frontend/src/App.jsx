@@ -8,6 +8,7 @@ import { LoadingState } from './components/ui/LoadingState.jsx';
 const DashboardPage = lazy(() => import('./pages/colmena/DashboardPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
 const SignupPage = lazy(() => import('./pages/SignupPage.jsx'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage.jsx'));
 const PublicSurveyPage = lazy(() => import('./pages/PublicSurveyPage.jsx'));
 const PublicBundlePage = lazy(() => import('./pages/PublicBundlePage.jsx'));
 const TelemetryModulePage = lazy(() => import('./pages/colmena/TelemetryModulePage.jsx'));
@@ -34,6 +35,7 @@ export default function App() {
       <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/encuesta/:publicId" element={<PublicSurveyPage />} />
       <Route path="/bateria/:publicId" element={<PublicBundlePage />} />
 

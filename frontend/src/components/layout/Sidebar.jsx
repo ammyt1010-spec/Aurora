@@ -10,7 +10,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
   const navItems = [
     {
       to: '/colmena',
-      label: '1. Instrumento',
+      label: '1. Inicio',
       icon: Home,
       active: (p) => p === '/colmena' || p === '/colmena/' || p.endsWith('/instruments'),
     },

@@ -29,6 +29,7 @@ class OrganizationMembershipRead(BaseModel):
     organization: OrganizationRead
     role_code: str
     permissions: dict
+    declared_workers: int | None = None
 
 
 class CollaboratorCodeCreate(BaseModel):

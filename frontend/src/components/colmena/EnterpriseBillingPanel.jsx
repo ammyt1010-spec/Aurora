@@ -70,10 +70,10 @@ export function EnterpriseBillingPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <h2 className="flex items-center gap-2 text-base font-bold text-dark">
-            <CreditCard size={18} className="text-primary" /> Integridad y Licencias Comerciales
+            <CreditCard size={18} className="text-primary" /> Pagos de evaluaciones
           </h2>
           <p className="text-xs text-muted">
-            Control de cotizaciones, tarifas congeladas y licencias de emisión de informes por empresa.
+            Consulta tus órdenes, importes y pagos por evaluación.
           </p>
         </div>
 

@@ -1,6 +1,9 @@
 import { apiRequest } from './client.js';
 
 export const getBillingPolicy = () => apiRequest('/billing/policy');
+export const getPaymentInstructions = () => apiRequest('/billing/payment-instructions');
+export const getTrialStatus = () => apiRequest('/quick-eval/trial-status');
+export const getEvaluationAccess = (studyId) => apiRequest(`/quick-eval/studies/${studyId}/access`);
 export const isOperator = () => apiRequest('/billing/operator-status');
 export const getTariffs = () => apiRequest('/billing/tariffs');
 export const createTariff = (data) => apiRequest('/billing/tariffs', { method: 'POST', body: data });

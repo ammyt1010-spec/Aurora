@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { CheckCircle2, Copy, ExternalLink, Sparkles, Users, Building2, FileText, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, Sparkles, ArrowRight } from 'lucide-react';
 
 import { apiRequest } from '../../../api/client.js';
 import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
 import FormField from '../../ui/FormField.jsx';
+import { publicUrl } from '../../../utils/publicUrl.js';
 
 export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
     });
   };
 
-  const fullSurveyUrl = result ? `${window.location.origin}/encuesta/${result.public_id}` : '';
+  const fullSurveyUrl = result?.survey_url ? publicUrl(result.survey_url) : '';
 
   const handleCopyLink = () => {
     if (!fullSurveyUrl) return;
@@ -229,11 +230,11 @@ export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
           <div>
             <h3 className="text-lg font-bold text-dark">¡Evaluación Creada Exitosamente!</h3>
             <p className="text-xs text-muted mt-1">
-              Se ha configurado la empresa <strong className="text-dark">{formData.company_name}</strong> y generado el enlace público oficial.
+              Se ha configurado la empresa <strong className="text-dark">{formData.company_name}</strong>. {result?.payment_required ? `La orden #${result.order_id} está pendiente de pago antes de habilitar el enlace.` : 'El enlace público ya está disponible.'}
             </p>
           </div>
 
-          <div className="rounded-xl border border-border bg-surfaceSoft p-3.5 text-left space-y-2">
+          {fullSurveyUrl && <div className="rounded-xl border border-border bg-surfaceSoft p-3.5 text-left space-y-2">
             <label className="text-xs font-semibold text-muted uppercase tracking-wider block">
               Enlace Público para Trabajadores
             </label>
@@ -253,10 +254,10 @@ export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
                 {copied ? '¡Copiado!' : 'Copiar'}
               </button>
             </div>
-          </div>
+          </div>}
 
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <a
+            {fullSurveyUrl && <a
               href={fullSurveyUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -264,7 +265,7 @@ export default function QuickEvalModal({ isOpen = true, onClose, onCreated }) {
             >
               <ExternalLink size={14} />
               Probar Encuesta Demo
-            </a>
+            </a>}
             <Button onClick={handleGoToDashboard} className="flex items-center justify-center gap-2">
               Ir al Dashboard
               <ArrowRight size={14} />

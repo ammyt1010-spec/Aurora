@@ -55,6 +55,37 @@ def test_every_table_has_a_single_tblw_and_tbllayout():
     check_tables(section.footer.tables)
 
 
+def test_report_uses_dimension_names_without_internal_appendix():
+    import copy
+
+    bundle = copy.deepcopy(_BUNDLE)
+    bundle["sections"] = ["hallazgos_premium", "anexos", "trazabilidad"]
+    bundle["dimension_results"].append({
+        "construct_code": "D3",
+        "construct_name": "Apoyo social y calidad de liderazgo",
+    })
+    bundle["analysis_results"] = [{
+        "result_type": "SPEARMAN",
+        "result_code": "D1_x_D3",
+        "n_valid": 20,
+        "statistic_value": 0.48,
+        "p_value": 0.03,
+    }]
+    bundle["traceability"]["analysis_runs"] = [{
+        "analysis_type": "SPEARMAN_MATRIX", "status": "COMPLETED",
+    }]
+    document = Document(io.BytesIO(render_report_docx(bundle)))
+    body = "\n".join(
+        [paragraph.text for paragraph in document.paragraphs]
+        + [cell.text for table in document.tables for row in table.rows for cell in row.cells]
+    )
+
+    assert "Exigencias psicológicas × Apoyo social y calidad de liderazgo" in body
+    assert "D1 × D3" not in body
+    assert "Anexo de trazabilidad" not in body
+    assert "Ejecuciones analíticas" not in body
+
+
 if __name__ == "__main__":
     test_render_report_docx_produces_valid_document()
     test_every_table_has_a_single_tblw_and_tbllayout()
