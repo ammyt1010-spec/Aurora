@@ -1,4 +1,4 @@
-# Starts the persistent AURORA Funnel targets after Windows sign-in.
+# Starts the permanent AURORA public targets after Windows sign-in.
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path -Parent $PSScriptRoot
 $backend = Join-Path $workspace 'backend'
