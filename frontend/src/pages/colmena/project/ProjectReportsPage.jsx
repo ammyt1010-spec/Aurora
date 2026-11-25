@@ -33,6 +33,7 @@ const SIGNATORY_ROLES = [
   { role: 'SST', label: 'Responsable SST', short: 'SST', detail: 'Seguridad y salud en el trabajo' },
   { role: 'PSYCHOLOGY', label: 'Psicología ocupacional', short: 'Psicología', detail: 'Revisión especializada' },
 ];
+const EMPTY_STUDIES = [];
 
 export default function ProjectReportsPage({ overrideProjectId }) {
   const queryClient = useQueryClient();
@@ -73,7 +74,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
     enabled: Boolean(projectId),
   });
 
-  const studies = studiesData?.items || [];
+  const studies = studiesData?.items || EMPTY_STUDIES;
 
   // Mantiene el mismo instrumento al pasar de Telemetría a Informe.
   useEffect(() => {
@@ -230,8 +231,8 @@ export default function ProjectReportsPage({ overrideProjectId }) {
 
   const handleSignatureUpload = (role, file) => {
     if (!file) return;
-    if (file.type !== 'image/png' || file.size > 300 * 1024) {
-      setAssetError('La firma debe ser PNG y no superar 300 KB.');
+    if (file.type !== 'image/png' || file.size > 500 * 1024) {
+      setAssetError('La firma debe ser PNG y no superar 500 KB.');
       return;
     }
     setAssetError(null);
@@ -298,7 +299,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             />
 
             {companyLogo ? (
-              <div className="flex items-center justify-between p-2 rounded-xl border border-border bg-surfaceSoft">
+              <div className="aurora-logo-preview flex items-center justify-between p-2 rounded-xl border border-border bg-surfaceSoft">
                 <img src={companyLogo} alt="Logo empresa" className="max-h-12 max-w-[160px] object-contain" />
                 <button
                   type="button"
@@ -322,7 +323,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             )}
             <div className="border-t border-border/70 pt-2">
               <p className="colmena-label">3. Responsables y firmas</p>
-              <p className="mb-1 text-[10px] text-muted">Nombre, registro y firma PNG opcional.</p>
+              <p className="mb-1 text-[10px] text-muted">Nombre, registro y firma PNG opcional (máx. 500 KB).</p>
               <div className="space-y-1">
                 {SIGNATORY_ROLES.map(({ role, label, short, detail }) => {
                   const person = signatories[role];
@@ -345,7 +346,7 @@ export default function ProjectReportsPage({ overrideProjectId }) {
             </div>
             {hasSignatureImage && <div className="flex flex-wrap gap-1.5" aria-label="Firmas cargadas">
               {SIGNATORY_ROLES.filter(({ role }) => signatories[role].signature_png).map(({ role, short }) => (
-                <div key={role} className="flex items-center gap-1 rounded-lg border border-border bg-white px-1.5 py-1">
+                <div key={role} className="aurora-signature-preview flex items-center gap-1 rounded-lg border border-border bg-white px-1.5 py-1">
                   <img src={signatories[role].signature_png} alt={`Vista previa de firma de ${short}`} className="h-6 max-w-14 object-contain" />
                   <span className="text-[9px] text-muted">{short}</span>
                 </div>

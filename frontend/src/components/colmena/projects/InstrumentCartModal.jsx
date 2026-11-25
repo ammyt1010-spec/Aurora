@@ -126,7 +126,7 @@ export default function InstrumentCartModal({ instruments, isOpen, onClose, tria
           <p className="text-xs text-muted">
             Completa estos datos una vez. Aurora generará {selected.length === 1 ? 'el enlace del instrumento' : 'un enlace independiente por instrumento'}.
           </p>
-          <p className="rounded-lg bg-[#EDF9FB] px-3 py-2 text-xs font-semibold text-[#075A70]">
+          <p className="aurora-cart-trial-banner rounded-lg bg-[#EDF9FB] px-3 py-2 text-xs font-semibold text-[#075A70]">
             {trialRemaining == null ? 'La disponibilidad gratuita se verificará al registrar la evaluación.' :
               `${trialRemaining} de 4 evaluaciones gratuitas restantes en esta cuenta. Cada una incluye un informe completo.`}
           </p>
@@ -189,7 +189,7 @@ export default function InstrumentCartModal({ instruments, isOpen, onClose, tria
                 <article key={evaluation.study_id} className="rounded-xl border border-border bg-white p-3">
                   <strong className="block text-xs text-dark">{instrument.title}</strong>
                   {url ? <>
-                    <div className="mx-auto my-3 w-fit rounded-lg border border-border bg-white p-2"><QRCodeSVG value={url} size={126} marginSize={1} /></div>
+                    <div className="aurora-qr-surface mx-auto my-3 w-fit rounded-lg border border-border bg-white p-2"><QRCodeSVG value={url} size={126} marginSize={1} /></div>
                     <a className="block break-all text-[11px] text-blue-700 underline" href={url} target="_blank" rel="noreferrer">{url}</a>
                     <div className="mt-2 flex gap-3">
                       <button type="button" className="inline-flex items-center gap-1 text-xs font-bold text-[#285994]" onClick={async () => {

@@ -46,7 +46,7 @@ from app.models.user import Organization, User
 from app.repositories.analytics import AnalyticsRepository
 from app.repositories.reports import ReportRepository
 from app.repositories.studies import StudyRepository
-from app.schemas.reports import ReportRunCreate, ReportTemplateCreate, ReportTemplateUpdate
+from app.schemas.reports import MAX_SIGNATURE_PNG_BYTES, ReportRunCreate, ReportTemplateCreate, ReportTemplateUpdate
 from app.services.censopas_methodology import (
     resolve_censopas_methodological_status,
     resolve_official_equivalence_enabled,
@@ -555,7 +555,7 @@ class ReportService:
                     "role": role_labels[entry.role],
                     "name": entry.name.strip(),
                     "registry": (entry.registry or "").strip(),
-                    "signature_png": self._decode_png(entry.signature_png, max_bytes=300 * 1024, label="La firma", max_pixels=4_000_000),
+                    "signature_png": self._decode_png(entry.signature_png, max_bytes=MAX_SIGNATURE_PNG_BYTES, label="La firma", max_pixels=4_000_000),
                 }
                 for entry in signatories or []
             ],

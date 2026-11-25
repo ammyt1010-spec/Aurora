@@ -59,7 +59,7 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={subtitle ? subtitleId : undefined}
         className={cn(
-          'colmena-card colmena-modal animate-colmena-modal-in flex max-h-[88vh] w-full flex-col overflow-hidden !bg-white shadow-glass',
+          'colmena-card colmena-modal animate-colmena-modal-in flex max-h-[88vh] w-full flex-col overflow-hidden bg-white shadow-glass',
           SIZES[size],
         )}
       >

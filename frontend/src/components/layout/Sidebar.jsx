@@ -38,7 +38,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
     >
       <div
         className={cn(
-          'sticky top-0 flex h-screen w-[240px] flex-col bg-white border-r border-[#E2E8F0] transition-opacity duration-150',
+          'aurora-sidebar-panel sticky top-0 flex h-screen w-[240px] flex-col bg-white border-r border-[#E2E8F0] transition-opacity duration-150',
           collapsed && 'pointer-events-none opacity-0',
         )}
       >
@@ -67,8 +67,9 @@ export function Sidebar({ collapsed = false, onToggle }) {
               <Link
                 key={item.label}
                 to={item.to}
+                aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'group flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-150',
+                  'aurora-nav-link group flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-150',
                   isActive
                     ? 'bg-[#EAF9FD] text-[#0A1F44] font-bold shadow-sm ring-1 ring-[#BAE9F0]'
                     : 'text-muted hover:bg-[#F5F6F8] hover:text-dark',

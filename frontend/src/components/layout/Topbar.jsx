@@ -36,7 +36,7 @@ export function Topbar({ collapsed = false, onToggleMenu }) {
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="sticky top-0 z-10 h-11 border-b border-[#eef0f3] bg-white/90 px-3 backdrop-blur-xl sm:px-4">
+    <div className="aurora-topbar sticky top-0 z-10 h-11 border-b border-[#eef0f3] bg-white/90 px-3 backdrop-blur-xl sm:px-4">
       {logoutError && (
         <div role="alert" className="absolute right-4 top-full z-30 mt-2 max-w-sm rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700 shadow-lg">
           {logoutError}

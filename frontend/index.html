@@ -10,6 +10,13 @@
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
     <title>AURORA Professional | Inteligencia para decisiones claras</title>
+    <script>
+      try {
+        const chosenTheme = localStorage.getItem('aurora-theme');
+        const useDark = chosenTheme === 'dark' || (chosenTheme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', useDark);
+      } catch (_) { /* Private browsing may deny local storage. */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

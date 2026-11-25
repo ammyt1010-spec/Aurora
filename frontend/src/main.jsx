@@ -6,6 +6,7 @@ import { ToastProvider } from './components/ui/Toast.jsx';
 import './index.css';
 import './brand/brand-tokens.css';
 import './design/aurora-brand.css';
+import './design/DarkSurfaces.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -10,13 +10,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # por defecto — ver report_docx.py. JSON se conserva como salida "cruda"
 # del mismo bundle, útil para integraciones (Power BI, etc.).
 OutputFormat = Literal["JSON", "DOCX", "PDF"]
+MAX_SIGNATURE_PNG_BYTES = 500 * 1024
+MAX_SIGNATURE_BASE64_CHARS = ((MAX_SIGNATURE_PNG_BYTES + 2) // 3) * 4 + len("data:image/png;base64,")
 
 
 class ReportSignatory(BaseModel):
     role: Literal["PROFESSIONAL", "COMPANY", "SST", "PSYCHOLOGY"]
     name: str = Field(min_length=1, max_length=120)
     registry: str | None = Field(default=None, max_length=80)
-    signature_png: str | None = Field(default=None, max_length=450000)
+    signature_png: str | None = Field(default=None, max_length=MAX_SIGNATURE_BASE64_CHARS)
 
 
 class ReportTemplateCreate(BaseModel):

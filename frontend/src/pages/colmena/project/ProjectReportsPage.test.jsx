@@ -60,4 +60,15 @@ describe('informe empresarial simple', () => {
     expect(await screen.findByText('Visor de páginas activo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Descargar PDF de prueba' })).toBeEnabled();
   });
+
+  it('indica el límite de 500 KB y rechaza una firma mayor', async () => {
+    renderWithQueryClient(<MemoryRouter initialEntries={['/colmena/project/23/reports']}>
+      <Routes><Route path="/colmena/project/:projectId/reports" element={<ProjectReportsPage />} /></Routes>
+    </MemoryRouter>);
+
+    expect(await screen.findByText(/firma PNG opcional \(máx\. 500 KB\)/)).toBeInTheDocument();
+    const file = new File([new Uint8Array(500 * 1024 + 1)], 'firma.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Firma PNG de Profesional responsable'), { target: { files: [file] } });
+    expect(screen.getByRole('alert')).toHaveTextContent('La firma debe ser PNG y no superar 500 KB.');
+  });
 });

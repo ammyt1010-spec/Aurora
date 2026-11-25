@@ -62,8 +62,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="colmena-page !gap-4 !py-4">
-      <section aria-label="Instrumentos oficiales disponibles" className="rounded-2xl border border-[#D9E6F1] bg-white p-4 shadow-xs">
+    <div className="colmena-page aurora-home !gap-4 !py-4">
+      <section aria-label="Instrumentos oficiales disponibles" className="aurora-home-intro rounded-2xl border border-[#D9E6F1] bg-white p-4 shadow-xs">
         <div className="flex items-start gap-2">
           <ClipboardList size={20} className="mt-0.5 shrink-0 text-[#087D9B]" />
           <div>
@@ -87,7 +87,7 @@ export default function DashboardPage() {
               const title = VERSION_LABELS[instrument.version_kind];
               const startingTariff = tariffs.find((tariff) => tariff.method_code === PRICE_METHODS[instrument.version_kind] && tariff.min_workers === 1 && tariff.active);
               return (
-                <label key={instrument.instrument_version_id} className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition ${checked ? 'bg-[#EDF9FB]' : 'bg-white hover:bg-[#F7FAFD]'}`}>
+                <label key={instrument.instrument_version_id} data-selected={checked} className={`aurora-home-option flex cursor-pointer items-center gap-3 px-4 py-3 transition ${checked ? 'bg-[#EDF9FB]' : 'bg-white hover:bg-[#F7FAFD]'}`}>
                   <input type="checkbox" checked={checked} onChange={() => toggleInstrument(instrument.instrument_version_id)} className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1">
                     <strong className="block text-sm text-[#163A63]">{title}</strong>
