@@ -50,6 +50,7 @@ class ResponseQuestionDescriptives(BaseModel):
     group_type: str
     valid_n: int
     missing_n: int
+    suppressed: bool = False
     frequencies: list[ResponseFrequency] = Field(default_factory=list)
     numeric: NumericDescriptives | None = None
 

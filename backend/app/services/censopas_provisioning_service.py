@@ -37,7 +37,7 @@ class CensopasProvisioningService:
         self.session = session
 
     async def provision_project(self, project: Project) -> None:
-        """Vincula el plan corto listo y materializa los datos del proyecto.
+        """Vincula la versión oficial solicitada y materializa el proyecto.
 
         Se invoca dentro de la misma transacción que crea el proyecto: si el
         catálogo oficial no está desplegado, no queda un CENSO a medio crear.
@@ -49,15 +49,28 @@ class CensopasProvisioningService:
                 convention="CENSOPAS_PROJECT_PROVISIONING",
             )
         version = await self._default_version(requested_kind)
-        questions = await self._exogenous_questions(version.id)
-        if not questions:
+        questions = await self._version_questions(version.id)
+        exogenous_questions = [
+            question for question in questions
+            if question.research_role == "EXOGENOUS" and not question.is_scored
+        ]
+        if not exogenous_questions or not any(question.is_scored for question in questions):
             raise ValidationDomainError(
-                "La versión oficial CensoPÁS no contiene los datos exógenos fijos. "
+                "La versión oficial CensoPÁS no contiene el cuestionario completo. "
                 "Ejecute scripts/seed_censopas_official.py antes de crear el proyecto.",
                 convention="CENSOPAS_PROJECT_PROVISIONING",
             )
+        expected = (version.config or {}).get("censopas_expected") or {}
+        if (expected.get("questions") and len(questions) != expected["questions"]) or (
+            expected.get("scored")
+            and sum(question.is_scored for question in questions) != expected["scored"]
+        ):
+            raise ValidationDomainError(
+                "El banco CensoPÁS no coincide con la ficha oficial de esta versión.",
+                convention="CENSOPAS_PROJECT_PROVISIONING",
+            )
 
-        await self._ensure_exogenous_variables(project, version, questions)
+        await self._ensure_exogenous_variables(project, version, exogenous_questions)
         survey = await self._ensure_survey(project, version, questions)
         barem = await self._ensure_reference_barem(project, version)
 
@@ -71,7 +84,7 @@ class CensopasProvisioningService:
             "barem_id": barem.id,
             "survey_id": survey.id,
             "censopas_auto_provisioned": True,
-            "censopas_provisioning_version": "v1",
+            "censopas_provisioning_version": "v2-full-survey",
         }
         await self.session.flush()
 
@@ -104,14 +117,10 @@ class CensopasProvisioningService:
             )
         return version
 
-    async def _exogenous_questions(self, version_id: int) -> list[Question]:
+    async def _version_questions(self, version_id: int) -> list[Question]:
         stmt = (
             select(Question)
-            .where(
-                Question.instrument_version_id == version_id,
-                Question.research_role == "EXOGENOUS",
-                Question.is_scored.is_(False),
-            )
+            .where(Question.instrument_version_id == version_id)
             .order_by(Question.sort_order, Question.id)
         )
         return list((await self.session.execute(stmt)).scalars().all())

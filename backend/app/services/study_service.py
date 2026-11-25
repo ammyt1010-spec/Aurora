@@ -281,6 +281,33 @@ class StudyService:
         if survey is None:
             raise NotFoundError(f"Survey {study.survey_id} no encontrado")
 
+        # Una evaluación oficial nunca debe publicarse con solo las preguntas
+        # de perfil: se perderían todas las respuestas puntuables sin que el
+        # participante o la empresa pudieran detectarlo.
+        if survey.instrument_version_id is not None:
+            from app.models.instrument import Instrument, InstrumentVersion
+
+            version = (
+                await self.session.execute(
+                    select(InstrumentVersion)
+                    .join(Instrument, Instrument.id == InstrumentVersion.instrument_id)
+                    .where(
+                        InstrumentVersion.id == survey.instrument_version_id,
+                        Instrument.code == "CENSOPAS_COPSOQ",
+                        Instrument.is_system.is_(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if version is not None and (version.config or {}).get("censopas_version_kind") in {"SHORT", "MEDIUM"}:
+                bank_ids = set((await self.session.execute(
+                    select(Question.id).where(Question.instrument_version_id == version.id)
+                )).scalars().all())
+                linked_ids = {link.question_id for link in survey.survey_questions}
+                if linked_ids != bank_ids or not any(link.question.is_scored for link in survey.survey_questions):
+                    raise ValidationDomainError(
+                        "El formulario CensoPÁS está incompleto; no se puede publicar hasta vincular todos los ítems oficiales."
+                    )
+
         for link in survey.survey_questions:
             question = link.question
             if not question.is_scored:

@@ -54,9 +54,9 @@ describe('AURORA liquid telemetry',()=>{
     expect(screen.getByRole('heading',{name:'CENSOPAS-COPSOQ'})).toBeInTheDocument();
     expect(screen.getByText(/20.0% favorable · 30.0% intermedio/)).toBeInTheDocument();
     expect(screen.queryByText('Privado')).not.toBeInTheDocument();
-    expect(screen.getByText('80')).toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
     expect(screen.getByText('Riesgo alto')).toBeInTheDocument();
-    expect(screen.getByText('Enlace abierto · sin denominador de invitación')).toBeInTheDocument();
+    expect(screen.getByText('80 válidas · 0 no puntuables')).toBeInTheDocument();
     expect(screen.queryByText('89%')).not.toBeInTheDocument();
   });
   it('filters authorized segments without exposing suppressed units',async()=>{
@@ -86,7 +86,7 @@ describe('AURORA liquid telemetry',()=>{
   it('keeps the invitation denominator attached to the valid response count',async()=>{
     renderWithQueryClient(<MemoryRouter><ExecutiveDecisionBoard projectId={8} studyId={19}
       telemetry={{valid_count:80, invited_count:100, completed_count:82}}/></MemoryRouter>);
-    expect(await screen.findByText('de 100 convocados')).toBeInTheDocument();
+    expect(await screen.findByText('80 válidas · 0 no puntuables · de 100 convocados')).toBeInTheDocument();
     expect(screen.queryByText('80.0%')).not.toBeInTheDocument();
   });
 
@@ -94,6 +94,18 @@ describe('AURORA liquid telemetry',()=>{
     getStudy.mockRejectedValue(new Error('Falló conexión'));
     renderBoard();
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo consultar el diagnóstico metodológico');
+  });
+
+  it('keeps received responses visible while scoring is unavailable', async()=>{
+    getStudy.mockResolvedValue({id:19, instrument_version_id:7, min_publishable_n:5});
+    getCensopasResults.mockRejectedValue(new Error('409: scoring pendiente'));
+    renderWithQueryClient(<MemoryRouter><ExecutiveDecisionBoard projectId={8} studyId={19}
+      telemetry={{completed_count:1, valid_count:0, review_count:0, excluded_count:1,
+        instrument_name:'CENSOPAS-COPSOQ'}} /></MemoryRouter>);
+    expect(await screen.findByText('Respuestas recibidas')).toBeInTheDocument();
+    expect(screen.getByText('0 válidas · 1 no puntuables')).toBeInTheDocument();
+    expect(screen.getByText(/1 cuestionario recibido/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
 });

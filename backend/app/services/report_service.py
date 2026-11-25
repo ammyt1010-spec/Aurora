@@ -6,9 +6,8 @@ lo renderiza al formato pedido:
   - DOCX (default): Word con ficha técnica, tabla de baremación por
     dimensión y gráficas embebidas (`report_docx.py`).
   - JSON: el mismo bundle sin renderizar, para integraciones.
-No se recalcula estadística durante la generación, sólo se ensamblan
-resultados ya persistidos (`responses -> analysis_run -> analysis_results ->
-report_run`, harness).
+Para CENSOPAS oficial, la emisión completa sincroniza la puntuación colectiva
+si hay respuestas nuevas antes de ensamblar resultados persistidos.
 """
 
 from __future__ import annotations
@@ -41,6 +40,7 @@ from app.models.censopas import Barem
 from app.models.construct import Construct
 from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
+from app.models.response import ResponseSession
 from app.models.study import Study
 from app.models.user import Organization, User
 from app.repositories.analytics import AnalyticsRepository
@@ -198,6 +198,47 @@ class ReportService:
         study = await self.study_repo.get(study_id)
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
+
+        # La emisión completa consume un uso comercial. No cobrar ni emitir
+        # un expediente de CENSOPAS oficial sin muestra publicable y scoring;
+        # la vista previa SAMPLE sigue disponible con las limitaciones claras.
+        if study.instrument_version_id is not None:
+            version = await self.session.get(InstrumentVersion, study.instrument_version_id)
+            instrument = await self.session.get(Instrument, version.instrument_id) if version else None
+            if (instrument is not None and instrument.is_system
+                    and instrument.code == "CENSOPAS_COPSOQ"
+                    and (version.config or {}).get("censopas_version_kind") in {"SHORT", "MEDIUM"}):
+                telemetry = await TelemetryService(self.session).get_study_telemetry(study_id)
+                if telemetry.valid_count < study.min_publishable_n:
+                    raise ConflictError(
+                        f"Se recibieron {telemetry.completed_count} cuestionarios, pero solo "
+                        f"{telemetry.valid_count} son puntuables. Para emitir un informe colectivo "
+                        f"se requieren al menos {study.min_publishable_n} respuestas válidas."
+                    )
+                from app.services.auto_scoring_service import refresh_scores_for_study
+                await refresh_scores_for_study(study_id)
+                latest_scoring = (await self.session.execute(
+                    select(AnalysisRun)
+                    .where(AnalysisRun.study_id == study_id,
+                           AnalysisRun.analysis_type == "LIKERT_SCORING",
+                           AnalysisRun.status == "COMPLETED")
+                    .order_by(AnalysisRun.completed_at.desc(), AnalysisRun.id.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
+                newest_response_at = await self.session.scalar(
+                    select(func.max(ResponseSession.completed_at)).where(
+                        ResponseSession.study_id == study_id,
+                        ResponseSession.status == "COMPLETED",
+                        ResponseSession.validation_status == "VALID",
+                    )
+                )
+                if (latest_scoring is None or latest_scoring.completed_at is None
+                        or newest_response_at is None
+                        or latest_scoring.completed_at < newest_response_at):
+                    raise ConflictError(
+                        "Las respuestas están registradas, pero el cálculo estadístico aún no está disponible. "
+                        "Intenta de nuevo antes de emitir el informe."
+                    )
 
         # Una evaluación de prueba incluye una sola emisión completa. Las
         # evaluaciones posteriores usan la orden vinculada al estudio.
@@ -755,8 +796,8 @@ class ReportService:
         """Fase 3: perfil sociolaboral (11 variables C-001..C-011 o PERFIL-* demo,
         nunca puntuables — harness §9). Reusa `ResponseDescriptiveService`
         (misma fuente que Resultados) y aplica supresión n<min_publishable_n
-        por categoría aquí mismo, porque ese servicio no suprime por diseño
-        (sirve también a vistas internas con otro umbral de exposición)."""
+        por categoría aquí mismo, además de la supresión por pregunta que ya
+        aplica el servicio descriptivo."""
         try:
             descriptives = await ResponseDescriptiveService(self.session).get(study.id)
         except NotFoundError:
@@ -1083,7 +1124,21 @@ class ReportService:
                 else "No se clasificaron dimensiones en riesgo alto según el baremo aplicado."
             )
         else:
-            headline = "Todavía no hay dimensiones con resultados publicables para este estudio."
+            completed = (data_quality or {}).get("completed_count") or 0
+            valid = (data_quality or {}).get("valid_count") or 0
+            if completed and not valid:
+                received = (
+                    "Se recibió 1 cuestionario, pero no es puntuable. "
+                    if completed == 1
+                    else f"Se recibieron {completed} cuestionarios, pero ninguno es puntuable. "
+                )
+                headline = received + "No se pueden estimar niveles de riesgo con estas respuestas."
+            elif completed:
+                received = "Se recibió 1 cuestionario" if completed == 1 else f"Se recibieron {completed} cuestionarios"
+                valid_label = "1 es válido" if valid == 1 else f"{valid} son válidos"
+                headline = f"{received} y {valid_label}. Todavía no hay dimensiones con resultados publicables."
+            else:
+                headline = "Todavía no se han recibido cuestionarios completos para este estudio."
 
         return {
             "n_valid": (data_quality or {}).get("valid_count"),

@@ -88,7 +88,9 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry, 
     : readinessQuery.data?.version_kind === 'MEDIUM' ? 'Versión media' : instrumentVersion;
   const loading = studyQuery.isLoading || (studyQuery.data?.instrument_version_id && readinessQuery.isLoading) ||
     (isCensopas ? resultsQuery.isLoading : genericQuery.isLoading);
-  const error = studyQuery.isError || readinessQuery.isError || (isCensopas ? resultsQuery.isError : genericQuery.isError);
+  // La ausencia de una corrida de scoring (HTTP 409) no debe ocultar la
+  // telemetría de captura: los conteos llegan por un endpoint independiente.
+  const error = studyQuery.isError || readinessQuery.isError;
   const comparisonQuery = segmentMode === 'sex' ? sexQuery : areaQuery;
 
   if (error) return <div className="aurora-compact-state" role="alert">No se pudo consultar el diagnóstico metodológico. Verifica el estudio y vuelve a intentar.</div>;
@@ -117,9 +119,9 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry, 
     </header>
 
     <section className="aurora-liquid-metrics" aria-label="Indicadores clave de telemetría">
-      <Metric icon={Users} label={selectedSegment ? `Muestra · ${focused?.construct_code || 'dimensión'}` : 'Respuestas válidas'}
-        value={selectedSegment ? (focusValue?.n_valid ?? '—') : (valid ?? '—')}
-        detail={selectedSegment ? selectedSegment.label : (invited != null ? `de ${invited} convocados` : 'Enlace abierto · sin denominador de invitación')} />
+      <Metric icon={Users} label={selectedSegment ? `Muestra · ${focused?.construct_code || 'dimensión'}` : 'Respuestas recibidas'}
+        value={selectedSegment ? (focusValue?.n_valid ?? '—') : (completed ?? '—')}
+        detail={selectedSegment ? selectedSegment.label : `${valid ?? 0} válidas · ${telemetry?.excluded_count ?? 0} no puntuables${invited != null ? ` · de ${invited} convocados` : ''}`} />
       {isCensopas ? <>
         <Metric icon={BarChart3} label="Mayor proporción desfavorable" value={maxUnfavorable >= 0 ? percentText(maxUnfavorable) : '—'}
           detail={selectedSegment ? `En ${selectedSegment.label}` : 'Entre las dimensiones publicables'} tone="cyan" />
@@ -164,7 +166,13 @@ export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry, 
               : <><span className="aurora-liquid-track is-generic"><i style={{ width: `${row.mean_score}%` }} /></span>
                 <span className="aurora-liquid-value">{row.mean_score.toFixed(1)}<small>de 100</small></span></>}
           </button>)}
-        </div> : <p className="aurora-liquid-empty">Aún no hay dimensiones publicables. La muestra puede ser insuficiente o la puntuación estar pendiente.</p>}
+        </div> : <p className="aurora-liquid-empty">{completed > 0
+          ? `${completed} cuestionario${completed === 1 ? '' : 's'} recibido${completed === 1 ? '' : 's'}. ${!valid && (telemetry?.excluded_count ?? 0) > 0
+            ? 'Las respuestas no puntuables se conservan, pero no permiten estimar riesgo. Comparte de nuevo el enlace para aplicar el instrumento completo.'
+            : valid < (studyQuery.data?.min_publishable_n ?? 5)
+            ? `Las dimensiones se publican al alcanzar ${studyQuery.data?.min_publishable_n ?? 5} respuestas válidas, para proteger el anonimato.`
+            : 'El cálculo de dimensiones está pendiente; las respuestas ya están registradas.'}`
+          : 'Aún no se han recibido cuestionarios completos.'}</p>}
         {isCensopas && rows.length > 0 && <div className="aurora-liquid-legend">{BANDS.map((band) => <span key={band.key}><i style={{ backgroundColor: band.color }} />{band.label}</span>)}</div>}
       </section>
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.schemas.studies import ResponseSessionUnitsRead, ResponseSessionUnitsReplace
 from app.schemas.responses import (
     ResponseRead,
@@ -13,6 +14,7 @@ from app.schemas.responses import (
     ResponseUpsert,
 )
 from app.services.response_service import ResponseService
+from app.services.auto_scoring_service import refresh_scores_for_study
 
 router = APIRouter(tags=["responses"])
 
@@ -57,11 +59,14 @@ async def upsert_response(
 )
 async def complete_response_session(
     session_id: int,
+    background_tasks: BackgroundTasks,
     payload: ResponseSessionCompleteRequest = ResponseSessionCompleteRequest(),
     session: AsyncSession = Depends(get_db),
 ):
     service = ResponseService(session)
     response_session = await service.complete_session(session_id, payload)
+    if response_session.validation_status == "VALID" and get_settings().environment.lower() != "test":
+        background_tasks.add_task(refresh_scores_for_study, response_session.study_id)
     return ResponseSessionRead.model_validate(response_session)
 
 
