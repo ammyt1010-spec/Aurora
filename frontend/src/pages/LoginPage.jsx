@@ -4,11 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Shield, BarChart3 } from 'lucide-react';
+import { Shield, BarChart3, ArrowLeft } from 'lucide-react';
 
 import { useAuth } from '../auth/AuthContext.jsx';
 import { ApiError } from '../api/client.js';
 import { BrandLogo } from '../brand/BrandLogo.jsx';
+import { BrandMark } from '../brand/BrandMark.jsx';
+import AuroraProductPreview from './AuroraProductPreview.jsx';
+import './LandingPage.css';
 import FormField from '../components/ui/FormField.jsx';
 import { Button } from '../components/ui/Button.jsx';
 import { getRegistrationPolicy } from '../api/auth.js';
@@ -60,20 +63,25 @@ export default function LoginPage() {
   const isDemoAllowed = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-white to-aurora-50 px-4 py-6 sm:px-6 dark:from-slate-950 dark:via-slate-900 dark:to-aurora-950">
-      {/* Decorative Blur Circles */}
-      <div className="absolute top-10 left-10 h-64 w-64 rounded-full bg-aurora-400/20 mix-blend-multiply blur-3xl filter dark:bg-aurora-600/20 dark:mix-blend-screen" />
-      <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-cyan-400/20 mix-blend-multiply blur-3xl filter dark:bg-cyan-600/20 dark:mix-blend-screen" />
+    <section className="aurora-auth">
+      <div className="aurora-auth__frame">
+        <aside className="aurora-auth__showcase">
+          <Link to="/" className="aurora-auth__brand" aria-label="AURORA, volver al inicio"><BrandMark decorative className="h-10 w-11" /><span><strong>AURORA</strong><small>PROFESSIONAL</small></span></Link>
+          <div className="aurora-auth__showcase-copy"><span>INTELIGENCIA EN SALUD OCUPACIONAL</span><h1>Una mejor forma de <em>entender los riesgos.</em></h1><p>Conecta la aplicación, el análisis por dimensiones y el informe técnico en una sola experiencia.</p></div>
+          <div className="aurora-auth__preview"><AuroraProductPreview compact /></div>
+          <p className="aurora-auth__showcase-foot">Una vista clara para decisiones importantes.</p>
+        </aside>
 
-      <div className="colmena-card animate-slide-up relative z-10 w-full max-w-md px-6 py-8 sm:px-8 shadow-glass border border-white/40 dark:border-slate-800/60 dark:bg-slate-900/60 backdrop-blur-xl">
+        <div className="aurora-auth__form-area">
+          <Link to="/" className="aurora-auth__back"><ArrowLeft size={16} /> Volver al inicio</Link>
+          <div className="colmena-card animate-slide-up relative z-10 w-full max-w-md px-6 py-8 sm:px-8 shadow-glass border border-white/40 backdrop-blur-xl">
         <div className="mx-auto mb-8 flex flex-col items-center gap-4">
           <div className="relative">
             <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-aurora-400 to-cyan-400 opacity-70 blur filter animate-glow-pulse dark:opacity-40" />
             <BrandLogo className="relative h-12 w-auto scale-110" />
           </div>
-          <p className="text-center text-sm font-medium text-slate-500 dark:text-slate-400">
-            Plataforma Profesional de Evaluación
-          </p>
+          <h2 className="text-center text-xl font-bold text-[#123652]">Bienvenido a AURORA</h2>
+          <p className="text-center text-sm font-medium text-slate-500">Ingresa a tu espacio empresarial</p>
         </div>
 
         {isDemoAllowed && (
@@ -102,19 +110,19 @@ export default function LoginPage() {
                 3. Informe Ejecutivo
               </button>
             </div>
-            <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+            <p className="text-center text-[11px] text-slate-500 leading-snug">
               Carga el estudio de la <strong>Unidad Minera San Cristóbal</strong> con 35 colaboradores sintéticos, cuestionario CENSOPAS oficial y tablero Power BI en vivo.
             </p>
           </div>
         )}
 
-        <div className="my-6 flex items-center">
-          <div className="flex-1 border-t border-slate-200 dark:border-slate-700"></div>
-          <span className="mx-4 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+        {isDemoAllowed && <div className="my-6 flex items-center">
+          <div className="flex-1 border-t border-slate-200"></div>
+          <span className="mx-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
             o ingresa con tu cuenta
           </span>
-          <div className="flex-1 border-t border-slate-200 dark:border-slate-700"></div>
-        </div>
+          <div className="flex-1 border-t border-slate-200"></div>
+        </div>}
 
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           {location.state?.justRegistered && <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">Cuenta creada. Ingresa con el correo y la contraseña que elegiste.</p>}
@@ -134,30 +142,32 @@ export default function LoginPage() {
           />
 
           {formError ? (
-            <p className="rounded-xl bg-red-50/50 px-4 py-3 text-sm font-medium text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            <p className="rounded-xl bg-red-50/50 px-4 py-3 text-sm font-medium text-red-600">
               {formError}
             </p>
           ) : null}
 
           <Button 
             type="submit" 
-            variant="secondary" 
+            variant="primary"
             loading={isSubmitting} 
-            className="mt-2 w-full dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/50"
+            className="aurora-auth__submit mt-2 w-full"
           >
             Ingresar con credenciales
           </Button>
         </form>
 
         {registrationPolicy?.self_registration_enabled && (
-          <p className="mt-5 text-center text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-5 text-center text-sm text-slate-600">
             ¿Tu empresa aún no tiene cuenta? <Link to="/signup" className="font-bold text-[#087D9B] underline">Crear cuenta</Link>
           </p>
         )}
 
-        <div className="mt-8 flex items-center justify-center gap-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+        <div className="mt-8 flex items-center justify-center gap-2 text-xs font-medium text-slate-400">
           <Shield className="h-3.5 w-3.5" />
           <span>Plataforma segura &middot; Datos protegidos</span>
+        </div>
+          </div>
         </div>
       </div>
     </section>

@@ -6,6 +6,7 @@ import { AppShell } from './components/layout/AppShell.jsx';
 import { LoadingState } from './components/ui/LoadingState.jsx';
 
 const DashboardPage = lazy(() => import('./pages/colmena/DashboardPage.jsx'));
+const LandingPage = lazy(() => import('./pages/LandingPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
 const SignupPage = lazy(() => import('./pages/SignupPage.jsx'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage.jsx'));
@@ -71,8 +72,8 @@ export default function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Route>
 
-      <Route path="/" element={<Navigate to="/colmena" replace />} />
-      <Route path="*" element={<Navigate to="/colmena" replace />} />
+      <Route path="/" element={<LandingPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

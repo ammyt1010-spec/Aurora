@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -9,6 +10,7 @@ import FormField from '../components/ui/FormField.jsx';
 import { Button } from '../components/ui/Button.jsx';
 import { useQuery } from '@tanstack/react-query';
 import { getRegistrationPolicy, signupCompanyAccount, resendCompanyVerification } from '../api/auth.js';
+import './LandingPage.css';
 
 const schema = z
   .object({
@@ -74,8 +76,9 @@ export default function SignupPage() {
   };
 
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-hero-glow px-4 py-6 sm:px-6">
+    <section className="aurora-signup relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-6 sm:px-6">
       <div className="colmena-card relative z-10 w-full max-w-lg px-6 py-7 sm:px-8 sm:py-8">
+        <Link to="/" className="aurora-signup__back"><ArrowLeft size={15} /> Volver al inicio</Link>
         <div className="mx-auto mb-5 flex flex-col items-center gap-2">
           <BrandMark className="h-10 w-10" />
           <h1 className="text-xl font-bold text-dark">Crea tu cuenta en AURORA PRO</h1>
