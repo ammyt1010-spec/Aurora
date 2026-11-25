@@ -24,7 +24,7 @@ class ProjectService:
         self.session = session
         self.repo = ProjectRepository(session)
 
-    async def create(self, payload: ProjectCreate) -> Project:
+    async def create(self, payload: ProjectCreate, *, commit: bool = True) -> Project:
         try:
             organization_id = payload.organization_id
             if payload.project_type == "CENSO":
@@ -100,7 +100,10 @@ class ProjectService:
                 organization_id=project.organization_id,
                 user_id=payload.owner_user_id,
             )
-            await self.session.commit()
+            if commit:
+                await self.session.commit()
+            else:
+                await self.session.flush()
             await self.session.refresh(project)
             return project
         except Exception:

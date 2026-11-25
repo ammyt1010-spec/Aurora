@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { Sidebar } from './Sidebar.jsx';
 import { MobileJourneyNav } from './MobileJourneyNav.jsx';
 import { Topbar } from './Topbar.jsx';
-import { ColmenaMenuButton } from './ColmenaMenuButton.jsx';
 
 /**
  * Shell raíz portado de fullProyect/COLMENA/frontend (AppShell.tsx) — mismo
@@ -13,7 +12,10 @@ import { ColmenaMenuButton } from './ColmenaMenuButton.jsx';
  */
 export function AppShell() {
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => location.pathname.includes('/telemetry'));
+  useEffect(() => {
+    if (location.pathname.includes('/telemetry')) setCollapsed(true);
+  }, [location.pathname]);
 
   const isProjectWorkspace = location.pathname.startsWith('/colmena/project/');
   const isWorkspace =
@@ -28,7 +30,7 @@ export function AppShell() {
       <div className="flex min-h-screen">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <Topbar />
+          <Topbar collapsed={collapsed} onToggleMenu={() => setCollapsed((value) => !value)} />
           <main className={isWorkspace ? 'flex min-w-0 flex-1 flex-col overflow-x-hidden' : 'flex-1'}>
             {isWorkspace ? (
               <Outlet />
@@ -43,13 +45,6 @@ export function AppShell() {
 
       <MobileJourneyNav />
 
-      {collapsed && (
-        <ColmenaMenuButton
-          onClick={() => setCollapsed(false)}
-          title="Mostrar menú"
-          className="fixed left-3 top-3 z-30 hidden rounded-xl border border-[#E6E8EB] bg-white/95 p-2.5 shadow-sm backdrop-blur transition hover:border-amber/40 hover:shadow-md lg:flex"
-        />
-      )}
     </div>
   );
 }

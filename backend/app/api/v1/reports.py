@@ -15,7 +15,7 @@ from app.core.security import get_current_user, get_optional_current_user
 from app.models.audit import AuditLog
 from app.models.billing import ReportOrder
 from app.models.project import Project
-from app.models.report import ReportRun, ReportTemplate
+from app.models.report import ReportRun
 from app.models.study import Study
 from app.models.user import Organization, OrganizationMembership, User
 from app.schemas.reports import (
@@ -189,11 +189,16 @@ async def generate_report_preview(
     session: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    # Sample previews are not paid reports, but they still contain enterprise
-    # data and always require the same authorization as official previews.
+    # La muestra contiene datos colectivos: sólo miembros de la empresa pueden
+    # verla. La emisión definitiva sigue reservada al administrador.
     if current_user is None:
         if not is_authorized_synthetic_test(request):
             raise AuthorizationError("Debes iniciar sesión como administrador de la empresa.")
+    elif payload.is_sample_preview or payload.report_mode == "SAMPLE":
+        # La muestra con marca de agua sólo requiere acceso de lectura al
+        # estudio. Un revisor de la empresa puede examinar el expediente sin
+        # facultad para consumir una orden pagada o emitir uno definitivo.
+        await _assert_study_access(session, study_id, current_user, request)
     else:
         await BillingService(session)._organization_admin(study_id, current_user)
 
@@ -235,7 +240,7 @@ async def download_report_preview(
     report = await service.get_run(report_id)
     await _assert_study_access(session, report.study_id, current_user, request)
     is_watermarked_sample = bool((report.metadata_ or {}).get("is_sample_preview"))
-    if get_settings().environment.lower() == "production" and report.billing_order_id is None and not is_watermarked_sample:
+    if get_settings().environment.lower() == "production" and report.billing_order_id is None and not is_watermarked_sample and not (report.metadata_ or {}).get("free_evaluation"):
         raise ConflictError("Informe anterior sin autorización de entrega. Contacta al administrador.")
     if report.status != "COMPLETED" or not report.storage_path or not report.storage_path.endswith(".docx"):
         raise NotFoundError(f"Reporte {report_id} no tiene una vista previa disponible todavía")

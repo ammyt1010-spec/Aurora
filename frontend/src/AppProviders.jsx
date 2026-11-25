@@ -34,7 +34,7 @@ export function AppProviders() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppErrorBoundary>
           <AuthProvider>
             <App />

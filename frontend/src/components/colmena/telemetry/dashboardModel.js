@@ -14,15 +14,31 @@ export function percent(value) {
   return Math.min(100, Math.max(0, value));
 }
 
+export function normalizeConstructRow(row) {
+  if (!row) return row;
+  const unfav = row.unfavorable_pct ?? row.bands?.find((b) => b.code === 'UNFAVORABLE')?.pct ?? null;
+  const inter = row.intermediate_pct ?? row.bands?.find((b) => b.code === 'INTERMEDIATE')?.pct ?? null;
+  const fav = row.favorable_pct ?? row.bands?.find((b) => b.code === 'FAVORABLE')?.pct ?? null;
+  return {
+    ...row,
+    unfavorable_pct: unfav,
+    intermediate_pct: inter,
+    favorable_pct: fav,
+  };
+}
+
 export function isPublishable(row, isCensopas = true) {
   if (!row || row.suppressed || row.construct_type !== 'DIMENSION') return false;
   if (!isCensopas) return typeof row.mean_score === 'number' && Number.isFinite(row.mean_score);
-  return [row.favorable_pct, row.intermediate_pct, row.unfavorable_pct]
+  const normalized = normalizeConstructRow(row);
+  return [normalized.favorable_pct, normalized.intermediate_pct, normalized.unfavorable_pct]
     .every((value) => percent(value) !== null);
 }
 
 export function getDimensions(rows, { dimension = 'ALL', order = 'risk', isCensopas = true } = {}) {
-  const valid = (Array.isArray(rows) ? rows : []).filter((row) => isPublishable(row, isCensopas));
+  const valid = (Array.isArray(rows) ? rows : [])
+    .filter((row) => isPublishable(row, isCensopas))
+    .map(normalizeConstructRow);
   const filtered = valid.filter((row) => dimension === 'ALL' || String(row.construct_code) === String(dimension));
   return [...filtered].sort((a, b) => {
     if (order === 'name') return a.construct_name.localeCompare(b.construct_name, 'es');
@@ -49,6 +65,7 @@ export function safeUnitChoices(results) {
 export function safeSegmentRows(results, unitId = 'ALL', dimension = 'ALL') {
   return (Array.isArray(results) ? results : [])
     .filter((row) => isPublishable(row, true))
+    .map(normalizeConstructRow)
     .filter((row) => unitId === 'ALL' || String(row.unit_id) === String(unitId))
     .filter((row) => dimension === 'ALL' || row.construct_code === dimension);
 }

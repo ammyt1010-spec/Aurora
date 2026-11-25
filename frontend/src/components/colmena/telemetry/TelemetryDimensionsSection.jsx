@@ -2,7 +2,7 @@ import { Card } from '../../ui/Card.jsx';
 import { EmptyState } from '../../ui/EmptyState.jsx';
 import { LoadingState } from '../../ui/LoadingState.jsx';
 
-function QuestionFrequencies({ question }) {
+function QuestionFrequencies({ question, minPublishableN }) {
   const isOrdinal = question.measurement_level === 'ORDINAL';
   const frequencies = isOrdinal
     ? [...question.frequencies].sort((a, b) => a.order - b.order)
@@ -14,11 +14,13 @@ function QuestionFrequencies({ question }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="min-w-0 text-sm font-semibold leading-5 text-dark">{question.question_text}</p>
           <span className="shrink-0 rounded-lg bg-amber/10 px-2 py-1 text-[10px] font-bold text-yellowDark">
-            n = {question.valid_n}
+            {question.suppressed ? 'Protegido' : `n = ${question.valid_n}`}
           </span>
         </div>
       </div>
-      {frequencies.length ? (
+      {question.suppressed ? (
+        <div className="p-4 text-sm text-muted">Las respuestas de esta pregunta se mostrarán cuando alcancen el mínimo de {minPublishableN} participantes, para proteger el anonimato.</div>
+      ) : frequencies.length ? (
         <div className="space-y-2.5 p-4">
           {frequencies.map((item) => (
             <div key={item.code}>
@@ -69,7 +71,7 @@ export default function TelemetryDimensionsSection({ descriptives, isLoading }) 
               {group.label} <span className="ml-2 text-xs font-normal text-muted">({groupQuestions.length} preguntas)</span>
             </summary>
             <div className="grid grid-cols-1 gap-3 border-t border-border p-3 xl:grid-cols-2">
-              {groupQuestions.map((question) => <QuestionFrequencies key={question.question_id} question={question} />)}
+              {groupQuestions.map((question) => <QuestionFrequencies key={question.question_id} question={question} minPublishableN={descriptives.min_publishable_n} />)}
             </div>
           </details>
         );

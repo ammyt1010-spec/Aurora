@@ -1,0 +1,312 @@
+/* AURORA night palette. The theme is selected by ThemeToggle, not by the OS
+   after the user has made a choice. Keep PDF pages white: they are documents. */
+.dark {
+  color-scheme: dark;
+  --aurora-bg: #0b1425;
+  --aurora-surface: #162439;
+  --aurora-border: #35465f;
+  --aurora-ink: #edf5ff;
+  --aurora-slate: #afc0d6;
+  --aurora-shadow-card: 0 12px 32px rgba(1, 7, 19, .3);
+}
+
+.dark body,
+.dark #root {
+  color: #edf5ff;
+  background: radial-gradient(ellipse at 92% 0%, rgba(26, 165, 189, .12), transparent 38%), #0b1425;
+}
+
+.dark .aurora-app {
+  --night-surface: #162439;
+  --night-raised: #1b2e47;
+  --night-border: #354a66;
+  --night-ink: #edf5ff;
+  --night-muted: #b2c3d9;
+  color: var(--night-ink);
+  background: transparent;
+}
+
+.dark .aurora-app .colmena-card,
+.dark .aurora-app .colmena-modal {
+  color: var(--night-ink);
+  border-color: var(--night-border);
+  background: var(--night-surface);
+  box-shadow: 0 12px 32px rgba(1, 7, 19, .24);
+}
+
+.dark .aurora-app :is(.text-dark, .text-graphite) { color: var(--night-ink); }
+.dark .aurora-app .text-muted { color: var(--night-muted); }
+.dark .aurora-app .bg-amber.text-dark { color: #102137; }
+.dark .aurora-app .text-yellowDark { color: #ffd17d; }
+.dark .aurora-app .text-danger { color: #ff858e; }
+.dark .aurora-app .text-success { color: #79e5b7; }
+.dark .aurora-app .text-info { color: #8cb8ff; }
+.dark .aurora-app :is(.bg-white, .bg-surface, .bg-surfaceSoft),
+.dark .aurora-app [class*="bg-white/"],
+.dark .aurora-app [class*="bg-surfaceSoft/"] { background-color: var(--night-surface); }
+.dark .aurora-app :is(.border-border, .border-colmena-border) { border-color: var(--night-border); }
+.dark .aurora-app .colmena-input,
+.dark .aurora-app select,
+.dark .aurora-app input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.dark .aurora-app textarea {
+  color: var(--night-ink);
+  border-color: var(--night-border);
+  background-color: #101d31;
+}
+.dark .aurora-app :is(input, textarea)::placeholder { color: #91a7c1; }
+.dark .aurora-app :is(input, select, textarea, button):focus-visible {
+  outline-color: #5bd9e5;
+}
+
+/* Navigation is a single continuous shell, including the mobile journey bar. */
+.dark .aurora-app .aurora-sidebar-panel,
+.dark .aurora-app .aurora-topbar,
+.dark .aurora-app .aurora-mobile-nav {
+  color: var(--night-ink);
+  border-color: var(--night-border);
+  background: rgba(17, 29, 48, .95);
+}
+.dark .aurora-app .aurora-sidebar-panel > div:first-child,
+.dark .aurora-app .aurora-sidebar-panel > div:last-child {
+  border-color: var(--night-border);
+  background: transparent;
+}
+.dark .aurora-app [aria-label="AURORA Professional"] span:first-child { color: #e9f4ff; }
+.dark .aurora-app [aria-label="AURORA Professional"] span:last-child { color: var(--night-muted); }
+.dark .aurora-app .aurora-nav-link { color: var(--night-muted); }
+.dark .aurora-app .aurora-nav-link:hover,
+.dark .aurora-app .aurora-nav-link[aria-current="page"],
+.dark .aurora-app .aurora-mobile-nav a[aria-current="page"] {
+  color: #ecfbff;
+  background: #1d3b55;
+  border-color: #3e8299;
+  box-shadow: inset 0 0 0 1px rgba(80, 211, 228, .32);
+}
+.dark .aurora-app .aurora-nav-link[aria-current="page"] svg { color: #7bdce9; }
+.dark .aurora-app .aurora-topbar button:not([class*="bg-gradient"]):hover { background: #263b55; }
+
+/* Inicio: the instrument selection remains the clearest call to action. */
+.dark .aurora-app .aurora-home-intro {
+  border-color: var(--night-border);
+  background: linear-gradient(135deg, #17283f, #122238);
+}
+.dark .aurora-app .aurora-home-intro h1,
+.dark .aurora-app .aurora-home-option strong { color: var(--night-ink); }
+.dark .aurora-app .aurora-home-intro > div:first-child span { color: #87e4ef; }
+.dark .aurora-app .aurora-home-intro p,
+.dark .aurora-app .aurora-home-option small { color: var(--night-muted); }
+.dark .aurora-app .aurora-home-intro > div:nth-child(2),
+.dark .aurora-app .aurora-home-intro > div:last-child { border-color: var(--night-border); }
+.dark .aurora-app .aurora-home-option { color: var(--night-ink); background: #14243a; }
+.dark .aurora-app .aurora-home-option:hover { background: #1b344c; }
+.dark .aurora-app .aurora-home-option[data-selected="true"] { background: #193e50; }
+.dark .aurora-app .aurora-home-intro button:not(:disabled) { background: #147c92; color: #fff; }
+.dark .aurora-app .aurora-cart-trial-banner { color: #d7f6f7; background: #204b59; }
+.dark .aurora-app .aurora-project-picker { color: var(--night-ink); border-color: var(--night-border); background: var(--night-surface); }
+.dark .aurora-app .aurora-project-picker label { color: #b8e8f5; }
+.dark .aurora-app .aurora-qr-surface { background: #fff; border-color: #d7e4ee; }
+.dark .aurora-app .colmena-modal a.text-blue-700,
+.dark .aurora-app .colmena-modal button.text-\[\#285994\],
+.dark .aurora-app .colmena-modal a.text-\[\#285994\] { color: #9bd8f4; }
+
+/* Compact liquid telemetry: preserve semantic risk colours and charts. */
+.dark .aurora-app .aurora-liquid {
+  --liquid-ink: var(--night-ink);
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: radial-gradient(circle at 95% 4%, rgba(32, 160, 181, .2), transparent 34%),
+    radial-gradient(circle at 5% 92%, rgba(107, 92, 193, .17), transparent 37%), #101c30;
+  box-shadow: 0 24px 55px rgba(0, 5, 15, .3);
+}
+.dark .aurora-app .aurora-liquid::before { background: rgba(28, 163, 196, .17); }
+.dark .aurora-app .aurora-liquid::after { background: rgba(109, 90, 202, .12); }
+.dark .aurora-app :is(.aurora-liquid-metrics, .aurora-liquid-content,
+  .aurora-liquid-instrument, .aurora-liquid-metric, .aurora-liquid-dimensions,
+  .aurora-liquid-focus) {
+  border-color: var(--night-border);
+  background: rgba(27, 45, 69, .76);
+  box-shadow: inset 0 1px rgba(195, 233, 255, .06);
+}
+.dark .aurora-app :is(.aurora-liquid-heading p, .aurora-liquid-instrument p,
+  .aurora-liquid-section-head p, .aurora-liquid-metric-label,
+  .aurora-liquid-metric small, .aurora-liquid-legend span,
+  .aurora-liquid-segment label, .aurora-liquid-recommendation,
+  .aurora-liquid-comparison-head p, .aurora-liquid-comparison-label small) {
+  color: var(--night-muted);
+}
+.dark .aurora-app :is(.aurora-liquid-eyebrow, .aurora-liquid-filters label,
+  .aurora-liquid-instrument-copy > span, .aurora-liquid-dimension-name small,
+  .aurora-liquid-value small, .aurora-liquid-focus-code,
+  .aurora-liquid-focus-number small) { color: #a6c9df; }
+.dark .aurora-app :is(.aurora-liquid-actions select, .aurora-liquid-segment select,
+  .aurora-liquid-filters select, .aurora-liquid-actions button) {
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: #13283e;
+}
+.dark .aurora-app :is(.aurora-liquid-emblem, .aurora-liquid-instrument-mark,
+  .aurora-liquid-metric-icon, .aurora-liquid-method, .aurora-liquid-count,
+  .aurora-liquid-classification) {
+  border-color: #3c6681;
+  color: #83dce8;
+  background: #204059;
+  box-shadow: none;
+}
+.dark .aurora-app .aurora-liquid-dimension:hover,
+.dark .aurora-app .aurora-liquid-dimension[aria-pressed="true"],
+.dark .aurora-app .aurora-liquid-comparison-row:hover { background: #28425b; border-color: #43637e; }
+.dark .aurora-app :is(.aurora-liquid-track, .aurora-liquid-comparison-track) { background: #30455e; }
+.dark .aurora-app .aurora-liquid-focus-number { color: #86bcff; }
+.dark .aurora-app .aurora-liquid-report-link { color: #76d6ee; border-color: var(--night-border); }
+.dark .aurora-app .aurora-liquid-comparison-head h3,
+.dark .aurora-app .aurora-liquid-comparison-row { color: var(--night-ink); }
+.dark .aurora-app .aurora-liquid-comparison-row { background: rgba(32, 58, 82, .5); }
+.dark .aurora-app .aurora-liquid-comparison-state,
+.dark .aurora-app .aurora-liquid-unavailable { color: var(--night-muted); }
+.dark .aurora-app .aurora-compact-state { color: var(--night-muted); border-color: var(--night-border); background: var(--night-surface); }
+
+/* Advanced BI panels, controls and insights. */
+.dark .aurora-app .aurora-bi {
+  --aurora-ink: var(--night-ink);
+  --aurora-ink-soft: var(--night-muted);
+  --aurora-border: var(--night-border);
+  --aurora-shadow: 0 12px 28px rgba(0, 6, 18, .25);
+  color: var(--night-ink);
+}
+.dark .aurora-app .aurora-bi .aurora-bi-hero,
+.dark .aurora-app .aurora-premium-page .aurora-suite-hero {
+  border-color: #3a5979;
+  background: radial-gradient(circle at 82% 0%, rgba(68, 109, 216, .26), transparent 47%),
+    linear-gradient(115deg, #142a47, #172d4e 78%);
+  box-shadow: 0 16px 34px rgba(0, 6, 19, .3);
+}
+.dark .aurora-app .aurora-bi .aurora-bi-hero h2,
+.dark .aurora-app .aurora-premium-page .aurora-suite-hero-copy h1 { color: #f0f8ff; }
+.dark .aurora-app .aurora-bi .aurora-bi-hero p,
+.dark .aurora-app .aurora-premium-page .aurora-suite-hero-copy p { color: #c2d4ea; }
+.dark .aurora-app .aurora-bi .aurora-bi-overline { color: #86e9db; }
+.dark .aurora-app .aurora-bi :is(.aurora-bi-controls, .aurora-bi-panel,
+  .aurora-bi-stat, .aurora-bi-customize, .aurora-bi-widget-choice,
+  .aurora-bi-action, .aurora-bi-dimension-tile, .aurora-bi-plan-metrics > div,
+  .aurora-bi-loading) {
+  border-color: var(--night-border);
+  background: var(--night-surface);
+  color: var(--night-ink);
+  box-shadow: 0 8px 22px rgba(0, 6, 18, .17);
+}
+.dark .aurora-app .aurora-bi :is(.aurora-bi-panel-head, .aurora-bi-toolrow,
+  .aurora-bi-legend) { border-color: var(--night-border); }
+.dark .aurora-app .aurora-bi :is(.aurora-bi-controls-title, .aurora-bi-panel-head h3,
+  .aurora-bi-stat-value, .aurora-bi-band-name strong, .aurora-bi-band-number,
+  .aurora-bi-action summary strong, .aurora-bi-dimension-tile > strong,
+  .aurora-bi-dimension-tile > span, .aurora-bi-plan-metrics strong,
+  .aurora-bi-customize-title strong) { color: var(--night-ink); }
+.dark .aurora-app .aurora-bi :is(.aurora-bi-filter-grid label, .aurora-bi-panel-head p,
+  .aurora-bi-stat-label, .aurora-bi-stat-detail, .aurora-bi-band-name small,
+  .aurora-bi-band-number small, .aurora-bi-legend, .aurora-bi-help,
+  .aurora-bi-action > p, .aurora-bi-chart-select-label,
+  .aurora-bi-dimension-tile > small, .aurora-bi-plan-metrics small,
+  .aurora-bi-footer, .aurora-bi-filter-caption, .aurora-bi-insight) {
+  color: var(--night-muted);
+}
+.dark .aurora-app .aurora-bi :is(.aurora-bi-toolbutton, .aurora-bi-chart-select-label select,
+  .aurora-bi-filter-grid select) {
+  color-scheme: dark;
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: #102137;
+}
+.dark .aurora-app .aurora-bi .aurora-bi-filter-grid select option { color: #edf5ff; background: #102137; }
+.dark .aurora-app .aurora-bi .aurora-bi-toolbutton.is-primary { color: #fff; background: #175e84; border-color: #3b9dbb; }
+.dark .aurora-app .aurora-bi :is(.aurora-bi-insight, .aurora-bi-band-row:nth-child(odd),
+  .aurora-bi-rank-row:nth-child(odd), .aurora-bi-reset-dimension) { background: #203852; }
+.dark .aurora-app .aurora-bi :is(.aurora-bi-band-row:hover, .aurora-bi-band-row.is-selected,
+  .aurora-bi-rank-row:hover) { background: #294761; }
+.dark .aurora-app .aurora-bi :is(.aurora-bi-band-meter, .aurora-bi-score-meter,
+  .aurora-bi-rank-content i, .aurora-bi-segment-track,
+  .aurora-bi-tile-meter, .aurora-bi-plan-bar) { background: #354a64; }
+.dark .aurora-app .aurora-bi .aurora-bi-heat-tile {
+  border-color: #744251;
+  background: linear-gradient(145deg, rgba(138, 53, 76, .52), #202b42);
+}
+.dark .aurora-app .aurora-bi .aurora-bi-heat-tile > :is(span, strong, small, em) { color: #f7d9df; }
+.dark .aurora-app .aurora-bi .aurora-bi-panel-icon,
+.dark .aurora-app .aurora-bi .aurora-bi-stat-symbol { color: #8cccec; background: #25435c; }
+
+/* Power-BI-style executive canvas: its independent table/chart CSS also
+   needs the same theme, including SVG centre labels. */
+.dark .aurora-app .aurora-bi :is(.aurora-pbi-slicer-ribbon, .aurora-pbi-kpi-card,
+  .aurora-pbi-panel-card, .aurora-pbi-matrix-wrap) {
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: var(--night-surface);
+}
+.dark .aurora-app .aurora-bi :is(.aurora-pbi-slicer-footer, .aurora-pbi-panel-head) { border-color: var(--night-border); }
+.dark .aurora-app .aurora-bi :is(.aurora-pbi-slicer-select, .aurora-pbi-slicer-box,
+  .aurora-pbi-slicer-pill, .aurora-pbi-code-pill, .aurora-pbi-table-footer) {
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: #20364f;
+}
+.dark .aurora-app .aurora-bi .aurora-pbi-slicer-pill.is-active { color: #b8eaf5; border-color: #3b8197; background: #1a4354; }
+.dark .aurora-app .aurora-bi :is(.aurora-pbi-slicer-label, .aurora-pbi-kpi-caption,
+  .aurora-pbi-kpi-sub, .aurora-pbi-donut-center-lbl, .aurora-pbi-code-pill) { color: var(--night-muted); fill: var(--night-muted); }
+.dark .aurora-app .aurora-bi :is(.aurora-pbi-kpi-num, .aurora-pbi-legend-name,
+  .aurora-pbi-legend-pct, .aurora-pbi-cell-name strong) { color: var(--night-ink); }
+.dark .aurora-app .aurora-bi .aurora-pbi-donut-center-val { fill: var(--night-ink); }
+.dark .aurora-app .aurora-bi .aurora-pbi-legend-item:hover,
+.dark .aurora-app .aurora-bi .aurora-pbi-row:hover { background: #294761; }
+.dark .aurora-app .aurora-bi .aurora-pbi-table th {
+  border-color: var(--night-border);
+  color: var(--night-muted);
+  background: #223852;
+}
+.dark .aurora-app .aurora-bi .aurora-pbi-table td { border-color: var(--night-border); color: var(--night-ink); }
+.dark .aurora-app .aurora-bi .aurora-pbi-row:nth-child(even) { background: #1b2d44; }
+.dark .aurora-app .aurora-bi .aurora-pbi-row.is-selected { background: #234d64 !important; outline-color: #5bd9e5; }
+.dark .aurora-app .aurora-bi .aurora-pbi-badge.is-critical { background: #63313e; color: #ffe4e8; border-color: #ad5e70; }
+.dark .aurora-app .aurora-bi .aurora-pbi-badge.is-medium { background: #604a28; color: #ffe5b6; border-color: #ad8750; }
+.dark .aurora-app .aurora-bi .aurora-pbi-badge.is-low { background: #1d5144; color: #c9f7e2; border-color: #418f76; }
+
+/* Report preparation follows the shell; the rendered PDF keeps a white page. */
+.dark .aurora-app .aurora-premium-page { --aurora-pr-ink: var(--night-ink); --aurora-pr-border: var(--night-border); }
+.dark .aurora-app .aurora-premium-page :is(.aurora-report-builder, .aurora-report-viewer,
+  .aurora-catalog-card, .aurora-catalog-aux) {
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: var(--night-surface);
+}
+.dark .aurora-app .aurora-premium-page .aurora-report-field {
+  color: var(--night-ink);
+  border-color: var(--night-border);
+  background: #101d31;
+}
+.dark .aurora-app .aurora-premium-page .aurora-report-builder > div,
+.dark .aurora-app .aurora-premium-page .aurora-report-viewer > div { border-color: var(--night-border); }
+.dark .aurora-app .aurora-premium-page :is(.aurora-report-builder, .aurora-report-viewer) .text-\[\#315788\] { color: #9bd8f4; }
+.dark .aurora-app .aurora-premium-page .aurora-report-builder [class*="bg-\[\#F3F8FC\]"] {
+  background: #203a53;
+  color: #d6eaf9;
+}
+.dark .aurora-app .aurora-premium-page .aurora-report-preview { border-color: var(--night-border); background: var(--night-raised); }
+.dark .aurora-app .aurora-premium-page :is(.aurora-signature-preview, .aurora-logo-preview) {
+  border-color: #b8c9d9;
+  background: #fff;
+}
+.dark .aurora-app .aurora-premium-page .aurora-signature-preview span { color: #34445a; }
+.dark .aurora-app .aurora-premium-page .aurora-report-caption { color: var(--night-muted); }
+.dark .aurora-app .aurora-pdf-reader { border-color: var(--night-border); background: #101c2d; }
+.dark .aurora-app .aurora-pdf-toolbar { border-color: var(--night-border); background: rgba(24, 41, 63, .96); }
+.dark .aurora-app .aurora-pdf-toolbar button,
+.dark .aurora-app .aurora-pdf-page-label select {
+  border-color: var(--night-border);
+  color: var(--night-ink);
+  background: #13243a;
+}
+.dark .aurora-app :is(.aurora-pdf-page-label, .aurora-pdf-zoom, .aurora-pdf-stage) { color: var(--night-muted); }
+.dark .aurora-app .aurora-pdf-stage { background: #101c2d; }
+.dark .aurora-app .aurora-pdf-stage canvas { background: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dark .aurora-app *, .dark .aurora-app *::before, .dark .aurora-app *::after { transition-duration: .01ms; }
+}

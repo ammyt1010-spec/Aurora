@@ -96,10 +96,12 @@ async def _require_admin(db: AsyncSession, project_id: int, user: User) -> Proje
     project = await db.get(Project, project_id)
     if project is None:
         raise NotFoundError("Proyecto no encontrado.")
+    if project.owner_user_id == user.id:
+        return project
     if project.organization_id is None:
         raise AuthorizationError("La batería requiere una empresa registrada.")
     membership = await db.get(OrganizationMembership, (project.organization_id, user.id))
-    if membership is None or membership.role_code not in {"OWNER", "ADMIN"}:
+    if membership is None or membership.role_code not in {"OWNER", "ADMIN", "TENANT_ADMIN"}:
         raise AuthorizationError("Solo el administrador de la empresa puede gestionar baterías.")
     return project
 

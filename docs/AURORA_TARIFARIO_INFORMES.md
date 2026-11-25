@@ -1,5 +1,43 @@
 # AURORA Professional: monetización y ciclo de emisión
 
+## Actualización del propietario (3 noviembre de 2026)
+
+- La navegación comercial empieza en **Inicio**. Cada cuenta empresarial
+  dispone de **cuatro evaluaciones completas gratuitas** en total, no cuatro
+  por instrumento. Cada evaluación incluye un enlace público y una emisión
+  final de informe; la vista previa de muestra no consume ese cupo.
+- Desde la quinta evaluación, el estudio se registra pendiente de pago y el
+  enlace público permanece inactivo. La orden usa el tarifario web con el
+  descuento del 20 % indicado abajo y el tramo de trabajadores declarado.
+- El operador confirma manualmente la transferencia. Sólo entonces se abre
+  el estudio y se puede compartir su enlace. La orden pagada da derecho a
+  una emisión final; volver a descargarla no genera otro cobro.
+- Banco, titular, cuenta y CCI se configuran mediante variables de entorno.
+  Los valores de ejemplo son **provisionales y no admiten transferencias**.
+  No se debe publicar un número bancario inventado como si fuera real.
+- La auditoría de pagos y los datos de trazabilidad se conservan internamente,
+  aunque no se muestren como anexo en el informe gerencial.
+
+Los apartados siguientes documentan la decisión previa y el origen del
+tarifario, que se mantienen como antecedentes.
+Las frases anteriores sobre pago obligatorio desde el primer informe y
+precios aún no definidos quedaron reemplazadas por la política del 3 de
+noviembre y por la tabla de tarifas web publicada más abajo.
+
+### Activación operativa
+
+1. Aplicar la migración `0028_evaluation_entitlements`.
+2. Si aún no existe cuenta propietaria, crearla desde `backend/` con
+   `.venv\Scripts\python.exe scripts/bootstrap_operator.py`. La clave se
+   introduce en consola, no se almacena en el repositorio.
+3. Poner el ID impreso en `BILLING_OPERATOR_USER_ID` y reiniciar la API.
+   Esa cuenta puede entregar credenciales empresariales desde Administración.
+4. Sustituir `PAYMENT_BANK_NAME`, `PAYMENT_ACCOUNT_HOLDER`,
+   `PAYMENT_ACCOUNT_NUMBER` y `PAYMENT_CCI` por datos bancarios verificados.
+   Hasta entonces, el checkout muestra una advertencia de no transferir.
+
+Nunca usar una cuenta de demostración sin credenciales como operador.
+
 ## Decisión del propietario (8 octubre de 2026)
 
 - Plataforma **web privada centralizada**, multidisciplinaria y de acceso

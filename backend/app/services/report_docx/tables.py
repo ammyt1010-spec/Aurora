@@ -13,7 +13,8 @@ from docx.shared import Pt, RGBColor
 
 from .borders import set_cell_margins, set_table_borders
 from .cells import set_cell_vertical_center, set_column_widths_mm, set_table_fixed_layout, shade_cell
-from .theme import COLMENA, FONT
+from .paginate import keep_table_row_together
+from .theme import COLMENA, FONT, FONT_FAMILY
 
 _HAIRLINE = {"sz": 4, "color": COLMENA["line"], "val": "single"}
 
@@ -30,6 +31,7 @@ def _style_cell_text(cell, *, size: float, bold: bool, color: str, align=None) -
         if align is not None:
             paragraph.alignment = align
         for run in paragraph.runs:
+            run.font.name = FONT_FAMILY
             run.font.size = Pt(size)
             run.font.bold = bold
             run.font.color.rgb = RGBColor.from_string(color)
@@ -60,10 +62,13 @@ def add_colmena_table(
             set_cell_margins(cell, top=pad, bottom=pad, start=100, end=100)
             set_cell_vertical_center(cell)
             _style_cell_text(cell, size=FONT["table_header"], bold=True, color=COLMENA["white"])
+            cell.paragraphs[0].paragraph_format.keep_with_next = True
         _set_repeat_header(table)
+        keep_table_row_together(table.rows[0])
 
     for row_index, row in enumerate(rows):
         cells = table.add_row().cells
+        keep_table_row_together(table.rows[-1])
         bg = COLMENA["surface_alt"] if (stripe and row_index % 2 == 1) else COLMENA["white"]
         for idx, value in enumerate(row):
             cell = cells[idx]

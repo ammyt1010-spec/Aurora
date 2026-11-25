@@ -10,8 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import statistics
+import unicodedata
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,9 +29,10 @@ from app.models.construct import Construct, ConstructItem
 from app.models.instrument import Instrument, InstrumentVersion
 from app.models.option_set import OptionSet, OptionSetOption
 from app.models.question import Question
-from app.models.response import ResponseSession, ResponseSessionUnit
+from app.models.response import Response, ResponseSession, ResponseSessionUnit
 from app.models.study import StudyUnit, StudyUnitType
 from app.models.scoring import ScoringRule
+from app.models.variable import Variable
 from app.repositories.censopas import CensopasRepository
 from app.repositories.instruments import InstrumentRepository
 from app.repositories.studies import StudyRepository
@@ -952,6 +954,161 @@ class CensopasScoringService:
             "secondary_suppression_applied": bool(secondary_ids),
             "results": payload_results,
         }
+
+    async def get_profile_results(self, study_id: int, field_code: str) -> dict:
+        """Desglose agregado por sexo o área de la última corrida canónica.
+
+        No expone sesiones, respuestas ni celdas bajo el umbral. Si una
+        categoría pequeña pudiera deducirse del total, suprime además la
+        categoría publicable más pequeña en cada dimensión.
+        """
+        field_code = field_code.upper()
+        if field_code not in {"SEXO", "AREA"}:
+            raise ValidationDomainError("Sólo se admiten los cortes SEXO y AREA.")
+        study = await self.study_repo.get(study_id)
+        if study is None:
+            raise NotFoundError(f"Estudio {study_id} no encontrado")
+        latest_run = await self._latest_run(study_id)
+        if latest_run is None or latest_run.status != "COMPLETED":
+            raise ConflictError(
+                "No existe una corrida CENSOPAS completa para desglosar el perfil.",
+                latest_run_status=latest_run.status if latest_run else None,
+            )
+
+        question_id = (
+            await self.session.execute(
+                select(Variable.question_id).where(
+                    Variable.project_id == study.project_id,
+                    Variable.instrument_version_id == study.instrument_version_id,
+                    func.upper(Variable.code) == field_code,
+                    Variable.question_id.is_not(None),
+                )
+            )
+        ).scalar_one_or_none()
+        question = await self.session.get(Question, question_id) if question_id else None
+        if question is None:
+            profile_questions = (
+                await self.session.execute(
+                    select(Question).where(
+                        Question.instrument_version_id == study.instrument_version_id,
+                        Question.is_scored.is_(False),
+                    ).order_by(Question.id)
+                )
+            ).scalars().all()
+            question = next((item for item in profile_questions if item.code in (
+                f"PERFIL-{field_code}", field_code,
+            )), None)
+            if question is None and field_code == "AREA":
+                # La ficha media oficial identifica el área como C-005/P5.a;
+                # otras versiones pueden usar otro código y texto equivalente.
+                question = next((item for item in profile_questions if item.code == "C-005" and item.source_code == "P5.a"), None)
+                if question is None:
+                    def normalized(value: str | None) -> str:
+                        return "".join(char for char in unicodedata.normalize("NFKD", value or "") if not unicodedata.combining(char)).casefold()
+                    question = next((item for item in profile_questions if "area" in normalized(item.question_text) and "trabaj" in normalized(item.question_text)), None)
+            if question is None and field_code == "SEXO":
+                option_set_ids = {item.option_set_id for item in profile_questions if item.option_set_id}
+                options = (
+                    await self.session.execute(
+                        select(OptionSetOption).where(OptionSetOption.option_set_id.in_(option_set_ids))
+                    )
+                ).scalars().all() if option_set_ids else []
+                labels_by_set: dict[int, set[str]] = {}
+                for option in options:
+                    labels_by_set.setdefault(option.option_set_id, set()).add(option.label.strip().casefold())
+                question = next((item for item in profile_questions if {"mujer", "hombre"}.issubset(labels_by_set.get(item.option_set_id, set()))), None)
+        empty = {
+            "study_id": study_id,
+            "field_code": field_code,
+            "min_publishable_n": study.min_publishable_n,
+            "available": question is not None,
+            "secondary_suppression_applied": False,
+            "results": [],
+        }
+        if question is None:
+            return empty
+
+        options = (
+            await self.session.execute(
+                select(OptionSetOption).where(OptionSetOption.option_set_id == question.option_set_id)
+            )
+        ).scalars().all() if question.option_set_id else []
+        labels_by_id = {option.id: option.label for option in options}
+        labels_by_code = {option.raw_code: option.label for option in options}
+        group_by_session: dict[int, str] = {}
+        response_rows = (
+            await self.session.execute(
+                select(Response.response_session_id, Response.option_id, Response.raw_code, Response.text_value)
+                .where(Response.study_id == study_id, Response.question_id == question.id, Response.is_missing.is_(False))
+            )
+        ).all()
+        for session_id, option_id, raw_code, text_value in response_rows:
+            label = labels_by_id.get(option_id) or labels_by_code.get(raw_code) or text_value or raw_code
+            if label and str(label).strip():
+                group_by_session[session_id] = str(label).strip()
+        if not group_by_session:
+            return empty
+
+        score_rows = (
+            await self.session.execute(
+                select(ConstructScore, Construct)
+                .join(Construct, Construct.id == ConstructScore.construct_id)
+                .where(
+                    ConstructScore.analysis_run_id == latest_run.id,
+                    ConstructScore.study_id == study_id,
+                    Construct.construct_type == "DIMENSION",
+                )
+                .options(selectinload(ConstructScore.band))
+            )
+        ).all()
+        valid_bands = {"FAVORABLE", "INTERMEDIATE", "UNFAVORABLE"}
+        grouped: dict[tuple[int, str], list[tuple[float, str]]] = {}
+        constructs: dict[int, Construct] = {}
+        for score, construct in score_rows:
+            group = group_by_session.get(score.response_session_id)
+            category = score.band.classification_code if score.band else None
+            if group is None or score.score_0_100 is None or category not in valid_bands:
+                continue
+            constructs[construct.id] = construct
+            grouped.setdefault((construct.id, group), []).append((float(score.score_0_100), category))
+
+        by_construct: dict[int, dict[str, list[tuple[float, str]]]] = {}
+        for (construct_id, group), values in grouped.items():
+            by_construct.setdefault(construct_id, {})[group] = values
+        results: list[dict] = []
+        secondary_applied = False
+        for construct_id, categories in by_construct.items():
+            hidden = {group for group, values in categories.items() if len(values) < study.min_publishable_n}
+            visible = [group for group in categories if group not in hidden]
+            if hidden and visible:
+                hidden.add(min(visible, key=lambda group: (len(categories[group]), group)))
+                secondary_applied = True
+            construct = constructs[construct_id]
+            for group, values in categories.items():
+                if group in hidden:
+                    continue
+                summary = summarize_trichotomy(values)
+                results.append({
+                    "group_value": group,
+                    "construct_id": construct_id,
+                    "construct_code": construct.code,
+                    "construct_name": construct.name,
+                    "construct_type": construct.construct_type,
+                    "n_valid": summary["n_valid"],
+                    "suppressed": False,
+                    "favorable_n": summary["favorable_n"],
+                    "intermediate_n": summary["intermediate_n"],
+                    "unfavorable_n": summary["unfavorable_n"],
+                    "favorable_pct": summary["favorable_pct"],
+                    "intermediate_pct": summary["intermediate_pct"],
+                    "unfavorable_pct": summary["unfavorable_pct"],
+                    "construct_score": summary["construct_score"],
+                    "classification_status": "PROVISIONAL",
+                    "collective_classification": summary["classification"],
+                })
+        empty["results"] = results
+        empty["secondary_suppression_applied"] = secondary_applied
+        return empty
 
     async def _latest_run(self, study_id: int) -> AnalysisRun | None:
         # Ambos tipos: la corrida canónica ("Calcular resultados") hoy siempre

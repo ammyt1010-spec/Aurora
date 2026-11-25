@@ -16,7 +16,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
     },
     {
       to: '/colmena/telemetry',
-      label: '2. Telemetría',
+      label: '2. Respuestas',
       icon: BarChart3,
       active: (p) => p.includes('/telemetry') || p.includes('/results') || p.includes('/premium'),
     },
@@ -30,6 +30,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
 
   return (
     <aside
+      id="aurora-sidebar"
       className={cn(
         'hidden shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out lg:block',
         collapsed ? 'lg:w-0' : 'lg:w-[240px]',
@@ -37,7 +38,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
     >
       <div
         className={cn(
-          'sticky top-0 flex h-screen w-[240px] flex-col bg-white border-r border-[#E2E8F0] transition-opacity duration-150',
+          'aurora-sidebar-panel sticky top-0 flex h-screen w-[240px] flex-col bg-white border-r border-[#E2E8F0] transition-opacity duration-150',
           collapsed && 'pointer-events-none opacity-0',
         )}
       >
@@ -47,6 +48,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
             <ColmenaMenuButton
               onClick={() => onToggle?.()}
               title="Contraer menú"
+              ariaExpanded={true}
               className="mt-0.5 rounded-lg p-1.5 hover:bg-[#F5F6F8]"
             />
           </div>
@@ -65,8 +67,9 @@ export function Sidebar({ collapsed = false, onToggle }) {
               <Link
                 key={item.label}
                 to={item.to}
+                aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'group flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-150',
+                  'aurora-nav-link group flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-150',
                   isActive
                     ? 'bg-[#EAF9FD] text-[#0A1F44] font-bold shadow-sm ring-1 ring-[#BAE9F0]'
                     : 'text-muted hover:bg-[#F5F6F8] hover:text-dark',
@@ -75,7 +78,7 @@ export function Sidebar({ collapsed = false, onToggle }) {
                 <item.icon
                   className={cn(
                     'h-[18px] w-[18px] shrink-0 transition-colors',
-                    isActive ? 'text-[#087D9B' : 'text-muted/60 group-hover:text-muted',
+                    isActive ? 'text-[#087D9B]' : 'text-muted/60 group-hover:text-muted',
                   )}
                   strokeWidth={isActive ? 2.2 : 1.8}
                 />

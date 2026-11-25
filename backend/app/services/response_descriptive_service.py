@@ -279,6 +279,7 @@ class ResponseDescriptiveService:
                 ]
             valid_n = len({r.response_session_id for r in present})
             answered_cells += valid_n
+            suppressed = 0 < valid_n < study.min_publishable_n
             option_rows = options_by_set.get(question.option_set_id, [])
             count_by_code: Counter[str] = Counter()
             observed_labels: dict[str, str] = {}
@@ -353,7 +354,7 @@ class ResponseDescriptiveService:
                 for response in present
                 if response.numeric_value is not None
             ]
-            if numeric_values and measurement in {"SCALE", "ORDINAL"}:
+            if numeric_values and measurement in {"SCALE", "ORDINAL"} and not suppressed:
                 numeric = NumericDescriptives(**compute_descriptive(numeric_values))
             output_questions.append(
                 ResponseQuestionDescriptives(
@@ -372,9 +373,10 @@ class ResponseDescriptiveService:
                     group_key=group.key,
                     group_label=group.label,
                     group_type=group.group_type,
-                    valid_n=valid_n,
-                    missing_n=max(total_cases - valid_n, 0),
-                    frequencies=frequency_rows,
+                    valid_n=0 if suppressed else valid_n,
+                    missing_n=0 if suppressed else max(total_cases - valid_n, 0),
+                    suppressed=suppressed,
+                    frequencies=[] if suppressed else frequency_rows,
                     numeric=numeric,
                 )
             )

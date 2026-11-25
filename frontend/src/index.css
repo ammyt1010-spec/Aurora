@@ -44,35 +44,18 @@ textarea {
   font: inherit;
 }
 
-/* ── Selects: soporte de tema del dispositivo ──── */
+/* El tema lo controla AURORA, no la preferencia del sistema por separado. */
 select {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  select {
-    background-color: #20242b !important;
-    color: #e5e7eb !important;
-    border-color: rgba(255, 255, 255, 0.14) !important;
-  }
+.dark select {
+  color-scheme: dark;
+}
 
-  select:hover {
-    border-color: rgba(245, 178, 26, 0.5) !important;
-  }
-
-  select:focus {
-    border-color: #f5b21a !important;
-  }
-
-  select:disabled {
-    color: #9aa1ad !important;
-    opacity: 0.6;
-  }
-
-  select option {
-    background-color: #20242b;
-    color: #e5e7eb;
-  }
+.dark select option {
+  background-color: #20242b;
+  color: #e5e7eb;
 }
 
 input[type="checkbox"] {

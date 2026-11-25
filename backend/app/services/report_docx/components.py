@@ -4,16 +4,18 @@ funciones — nunca manipula OOXML directamente."""
 
 from __future__ import annotations
 
-from docx.enum.table import WD_ALIGN_VERTICAL
+import io
+
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Mm, Pt, RGBColor
+from docx.shared import Cm, Mm, Pt, RGBColor
+from PIL import Image
 
 from .borders import add_horizontal_rule, remove_table_borders, set_cell_border, set_cell_margins
 from .cells import center_table, set_cell_vertical_center, set_column_widths_mm, set_table_fixed_layout, shade_cell
 from .paginate import keep_table_row_together
-from .theme import COLMENA, CONTENT_WIDTH_MM, FONT, PAGE
+from .theme import COLMENA, CONTENT_WIDTH_MM, FONT, FONT_FAMILY, PAGE
 from .typography import add_h1
 
 _HAIRLINE = {"sz": 3, "color": COLMENA["line"], "val": "single"}
@@ -21,6 +23,7 @@ _HAIRLINE = {"sz": 3, "color": COLMENA["line"], "val": "single"}
 
 def _run(paragraph, text: str, *, size: float, bold: bool = False, color: str = COLMENA["text"]):
     run = paragraph.add_run(text)
+    run.font.name = FONT_FAMILY
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.color.rgb = RGBColor.from_string(color)
@@ -140,6 +143,7 @@ def add_centered_badge(document, text: str, *, width_mm: float = 70, height_mm: 
     remove_table_borders(table)
     paragraph = cell.paragraphs[0]
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.keep_with_next = True
     _run(paragraph, text, size=size, bold=True, color=color)
     set_column_widths_mm(table, [width_mm])
 
@@ -147,12 +151,18 @@ def add_centered_badge(document, text: str, *, width_mm: float = 70, height_mm: 
 def add_section_header(document, number: str, title: str) -> None:
     """Badge turquesa centrado + título 20-22pt + regla dorada. Único
     patrón de encabezado de sección en todo el documento."""
-    document.add_paragraph().paragraph_format.space_after = Pt(6)
+    spacer = document.add_paragraph()
+    spacer.paragraph_format.space_after = Pt(6)
+    spacer.paragraph_format.keep_with_next = True
     add_centered_badge(document, number, width_mm=16, height_mm=9, background=COLMENA["teal"], size=9.5)
-    document.add_paragraph().paragraph_format.space_after = Pt(2)
+    spacer = document.add_paragraph()
+    spacer.paragraph_format.space_after = Pt(2)
+    spacer.paragraph_format.keep_with_next = True
     heading = add_h1(document, title)
+    heading.paragraph_format.keep_with_next = True
     rule_paragraph = document.add_paragraph()
     rule_paragraph.paragraph_format.space_after = Pt(8)
+    rule_paragraph.paragraph_format.keep_with_next = True
     add_horizontal_rule(rule_paragraph, color=COLMENA["gold"], size=8)
     return heading
 
@@ -234,8 +244,18 @@ def add_signature_grid(document, entries: list[dict]) -> None:
         cell = table.rows[row].cells[col]
         set_cell_margins(cell, top=280, bottom=200, start=200, end=200)
         cell.paragraphs[0].text = ""
-        line_paragraph = cell.paragraphs[0]
-        line_paragraph.paragraph_format.space_before = Pt(28)
+        image_bytes = entry.get("signature_png") if entry else None
+        if image_bytes:
+            image_paragraph = cell.paragraphs[0]
+            image_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            image_paragraph.paragraph_format.space_after = Pt(1)
+            with Image.open(io.BytesIO(image_bytes)) as signature_image:
+                ratio = signature_image.width / signature_image.height
+            image_paragraph.add_run().add_picture(
+                io.BytesIO(image_bytes), width=Cm(min(5.2, 1.5 * ratio)),
+            )
+        line_paragraph = cell.add_paragraph() if image_bytes else cell.paragraphs[0]
+        line_paragraph.paragraph_format.space_before = Pt(8 if image_bytes else 28)
         line_paragraph.paragraph_format.space_after = Pt(2)
         add_horizontal_rule(line_paragraph, color=COLMENA["muted"], size=4)
         if entry:

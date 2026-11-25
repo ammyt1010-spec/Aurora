@@ -1,15 +1,11 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, ClipboardCheck, Layers3, RefreshCcw, ArrowRight, FileText, Plus, ShieldCheck } from 'lucide-react';
+import { Check, ClipboardList, QrCode } from 'lucide-react';
 
 import { getCensopasPlans } from '../../api/instruments.js';
-import { listProjects } from '../../api/projects.js';
-import { setActiveProjectId } from '../../utils/activeProject.js';
-import '../../design/PremiumSurfaces.css';
-import InstrumentConfirmModal from '../../components/colmena/projects/InstrumentConfirmModal.jsx';
-import MultidisciplinaryCatalog from '../../components/colmena/instruments/MultidisciplinaryCatalog.jsx';
-import BundleSelectionPanel from '../../components/colmena/instruments/BundleSelectionPanel.jsx';
+import { getTariffs, getTrialStatus } from '../../api/billing.js';
+import { listOrganizations } from '../../api/organizations.js';
+import InstrumentCartModal from '../../components/colmena/projects/InstrumentCartModal.jsx';
 import { LoadingState } from '../../components/ui/LoadingState.jsx';
 import { ErrorState } from '../../components/ui/ErrorState.jsx';
 import { EmptyState } from '../../components/ui/EmptyState.jsx';
@@ -18,6 +14,12 @@ const VERSION_LABELS = {
   SHORT: 'CENSOPAS-COPSOQ, versión corta',
   MEDIUM: 'CENSOPAS-COPSOQ, versión media',
 };
+const OFFICIAL_VERSION_CODES = {
+  SHORT: 'SHORT-OFICIAL',
+  MEDIUM: 'MEDIUM-OFICIAL',
+};
+const VERSION_ORDER = ['SHORT', 'MEDIUM'];
+const PRICE_METHODS = { SHORT: 'CENSOPAS_CORTA', MEDIUM: 'CENSOPAS_MEDIA' };
 
 export function availableInstrumentCards(response) {
   const plans = Array.isArray(response?.plans) ? response.plans : [];
@@ -25,183 +27,104 @@ export function availableInstrumentCards(response) {
   for (const plan of plans) {
     const kind = plan?.version_kind;
     if (!VERSION_LABELS[kind]) continue;
+    if (String(plan?.version_code || '').toUpperCase() !== OFFICIAL_VERSION_CODES[kind]) continue;
     if (!byKind.has(kind) || (plan.ready_for_scoring && !byKind.get(kind).ready_for_scoring)) {
       byKind.set(kind, plan);
     }
   }
-  return [...byKind.values()].sort((a, b) => a.version_kind.localeCompare(b.version_kind));
+  return VERSION_ORDER.map((kind) => byKind.get(kind)).filter(Boolean);
 }
 
-/**
- * Inicio orientado a tareas. Solo un catálogo a la vez y los expedientes
- * previos se muestran bajo demanda; el modo de revisión técnica no invade
- * la experiencia de selección.
- */
 export default function DashboardPage() {
-  const navigate = useNavigate();
-  const [selectedInstrument, setSelectedInstrument] = useState(null);
-  const [catalog, setCatalog] = useState('censopas');
-  const [showProjects, setShowProjects] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(false);
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showGenerator, setShowGenerator] = useState(false);
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['censopas-plans'],
     queryFn: getCensopasPlans,
-    retry: 1,
+    retry: false,
     staleTime: 60_000,
   });
-  const { data: existingProjects, isError: projectsError } = useQuery({
-    queryKey: ['aurora-home-projects'],
-    queryFn: () => listProjects({ page: 1, pageSize: 50 }),
-    retry: false,
-  });
-  const cards = availableInstrumentCards(data);
-  const projectItems = existingProjects?.items || [];
-  const catalogVisible = showCatalog || projectItems.length === 0;
+  const instruments = availableInstrumentCards(data);
+  const { data: trial } = useQuery({ queryKey: ['aurora-trial-status'], queryFn: getTrialStatus, retry: false });
+  const { data: tariffs = [] } = useQuery({ queryKey: ['aurora-tariffs'], queryFn: getTariffs, retry: false });
+  const { data: organizations = [] } = useQuery({ queryKey: ['aurora-my-organizations'], queryFn: listOrganizations, retry: false });
+  const ownedCompany = organizations.find((entry) => entry.role_code === 'OWNER');
+  const companyProfile = ownedCompany ? { ...ownedCompany.organization, declared_workers: ownedCompany.declared_workers } : null;
+  const selected = useMemo(
+    () => instruments.filter((instrument) => selectedIds.includes(instrument.instrument_version_id)),
+    [instruments, selectedIds],
+  );
+
+  const toggleInstrument = (instrumentId) => {
+    setSelectedIds((current) => current.includes(instrumentId)
+      ? current.filter((id) => id !== instrumentId)
+      : [...current, instrumentId]);
+  };
 
   return (
-    <div className="colmena-page aurora-premium-page aurora-home-focus">
-      <header className="aurora-suite-hero aurora-home-hero">
-        <div className="aurora-suite-hero-copy">
-          <span>01 / INICIO · AURORA PROFESSIONAL</span>
-          <h1>¿Qué deseas evaluar?</h1>
-          <p>Selecciona un instrumento o continúa una evaluación existente.</p>
+    <div className="colmena-page aurora-home !gap-4 !py-4">
+      <section aria-label="Instrumentos oficiales disponibles" className="aurora-home-intro rounded-2xl border border-[#D9E6F1] bg-white p-4 shadow-xs">
+        <div className="flex items-start gap-2">
+          <ClipboardList size={20} className="mt-0.5 shrink-0 text-[#087D9B]" />
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#2B69A5]">Paso 1 de 3</span>
+            <h1 className="text-lg font-extrabold text-[#0A1F44]">Inicio · elige el instrumento</h1>
+            <p className="text-xs text-[#64748B]">Puedes seleccionar uno o ambos. Cada instrumento tendrá su propio enlace e informe.</p>
+            {trial && <p className="mt-1 text-xs font-semibold text-[#087D9B]" aria-live="polite">
+              {trial.remaining} de {trial.limit} evaluaciones completas gratuitas disponibles en esta cuenta.
+            </p>}
+          </div>
         </div>
-        <div className="aurora-suite-hero-icon" aria-hidden="true"><BookOpen size={27}/></div>
-      </header>
 
-      <BundleSelectionPanel projects={projectItems} />
-      <div className="aurora-home-toolbar">
-        {catalogVisible && <div role="tablist" aria-label="Catálogo de instrumentos" className="aurora-home-tabs">
-          <button type="button" role="tab" id="aurora-tab-censopas"
-            aria-selected={catalog === 'censopas'} aria-controls="aurora-catalog-view"
-            className={catalog === 'censopas' ? 'is-active' : ''}
-            onClick={() => setCatalog('censopas')}>
-            <ShieldCheck size={15}/> Psicosocial
-          </button>
-          <button type="button" role="tab" id="aurora-tab-multidisc"
-            aria-selected={catalog === 'multidisc'} aria-controls="aurora-catalog-view"
-            className={catalog === 'multidisc' ? 'is-active' : ''}
-            onClick={() => setCatalog('multidisc')}>
-            <Layers3 size={15}/> Multidisciplinario
-          </button>
-        </div>}
-        <div className="aurora-home-actions">
-          {projectItems.length > 0 && <button type="button" className="aurora-home-action"
-            onClick={() => setShowCatalog(value => !value)}
-            aria-expanded={catalogVisible}>
-            {catalogVisible ? 'Ocultar catálogo' : 'Explorar catálogo'}
-          </button>}
-          {projectItems.length > 0 && (
-            <button type="button" aria-expanded={showProjects}
-              onClick={() => setShowProjects(x => !x)}
-              className="aurora-home-action">
-              Mis evaluaciones <span className="aurora-home-counter">{projectItems.length}</span>
-            </button>
-          )}
-          <button type="button" className="aurora-home-action is-primary"
-            onClick={() => navigate('/colmena/project/new')}>
-            <Plus size={15}/> Nueva evaluación
+        {isLoading ? <LoadingState label="Cargando instrumentos oficiales…" /> : null}
+        {isError ? <ErrorState title="No se pudieron cargar los instrumentos" message={error?.message || 'Comprueba la conexión con Aurora.'} /> : null}
+        {!isLoading && !isError && !instruments.length ? <EmptyState title="No hay instrumentos oficiales disponibles" description="El administrador debe publicar una versión válida." /> : null}
+
+        {!isLoading && !isError && instruments.length ? (
+          <div className="mt-3 divide-y divide-[#E6EDF4] overflow-hidden rounded-xl border border-[#D9E6F1]">
+            {instruments.map((instrument) => {
+              const checked = selectedIds.includes(instrument.instrument_version_id);
+              const title = VERSION_LABELS[instrument.version_kind];
+              const startingTariff = tariffs.find((tariff) => tariff.method_code === PRICE_METHODS[instrument.version_kind] && tariff.min_workers === 1 && tariff.active);
+              return (
+                <label key={instrument.instrument_version_id} data-selected={checked} className={`aurora-home-option flex cursor-pointer items-center gap-3 px-4 py-3 transition ${checked ? 'bg-[#EDF9FB]' : 'bg-white hover:bg-[#F7FAFD]'}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleInstrument(instrument.instrument_version_id)} className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block text-sm text-[#163A63]">{title}</strong>
+                    <small className="block text-xs text-[#64748B]">
+                      {instrument.question_count} preguntas · {instrument.scored_item_count} ítems puntuables · {instrument.dimension_count} dimensiones{instrument.subdimension_count ? ` · ${instrument.subdimension_count} subdimensiones` : ''}
+                    </small>
+                    {startingTariff && <small className="block text-[11px] text-[#315788]">Luego de los 4 usos gratuitos: desde S/ {Number(startingTariff.price).toFixed(2)} por evaluación · tarifario web −20 %</small>}
+                  </span>
+                  {checked ? <Check size={17} className="shrink-0 text-[#108B91]"/> : null}
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#E6EDF4] pt-3">
+          <p className="text-xs font-semibold text-[#526D82]" aria-live="polite">
+            {selected.length ? `${selected.length} instrumento${selected.length === 1 ? '' : 's'} seleccionado${selected.length === 1 ? '' : 's'}` : 'Selecciona al menos un instrumento para continuar.'}
+          </p>
+          <button
+            type="button"
+            disabled={!selected.length}
+            onClick={() => setShowGenerator(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0A1F44] px-4 py-2.5 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <QrCode size={17}/> Continuar · generar enlace y QR
           </button>
         </div>
-      </div>
+      </section>
 
-      {projectsError && <p role="status" className="text-xs text-muted">
-        Las evaluaciones guardadas no están disponibles en este momento.
-      </p>}
-
-      {showProjects && projectItems.length > 0 && (
-        <section aria-label="Mis evaluaciones corporativas" className="aurora-home-projects">
-          <div className="aurora-home-section-head">
-            <h2>Evaluaciones existentes</h2>
-            <span>Selecciona la pantalla que necesitas</span>
-          </div>
-          <div className="aurora-home-project-scroll">
-            {projectItems.map(project => (
-              <article key={project.id} className="aurora-home-project">
-                <strong title={project.name}>{project.name}</strong>
-                <div>
-                  <button type="button" onClick={() => {
-                    setActiveProjectId(project.id); navigate('/colmena/telemetry');
-                  }}><ArrowRight size={12}/> Telemetría</button>
-                  <button type="button" onClick={() => {
-                    setActiveProjectId(project.id); navigate('/colmena/reports');
-                  }}><FileText size={12}/> Informe</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {catalogVisible && <section id="aurora-catalog-view" role="tabpanel"
-        aria-labelledby={catalog === 'censopas' ? 'aurora-tab-censopas' : 'aurora-tab-multidisc'}
-        className="aurora-home-catalog" key={catalog}>
-        {catalog === 'censopas' ? (
-          <>
-            <div className="aurora-home-section-head">
-              <h2>Instrumentos publicados</h2>
-              <button type="button" disabled={isFetching} onClick={() => refetch()}
-                aria-label="Actualizar catálogo"
-                className="aurora-home-refresh"><RefreshCcw size={14} className={isFetching ? 'animate-spin' : ''}/> Actualizar</button>
-            </div>
-            {isLoading ? <LoadingState label="Consultando instrumentos del servidor..." /> : null}
-            {isError ? <ErrorState title="No se pudo cargar el catálogo"
-              message={error?.message || 'Comprueba la conexión con el backend de AURORA.'}/> : null}
-            {!isLoading && !isError && !cards.length ? (
-              <EmptyState title="No hay instrumentos publicados"
-                description="El administrador debe validar las versiones y su metodología antes de habilitarlas."/>
-            ) : null}
-            {!isLoading && !isError && cards.length > 0 && (
-              <div className="aurora-home-instrument-grid">
-                {cards.map(plan => {
-                  const ready = plan.ready_for_scoring === true;
-                  const title = VERSION_LABELS[plan.version_kind];
-                  return (
-                    <article key={plan.instrument_version_id} className="aurora-catalog-card aurora-home-instrument">
-                      <div className="aurora-home-instrument-data">
-                        <span className={ready ? 'aurora-home-state is-ready' : 'aurora-home-state'}>
-                          {ready ? 'Lista para aplicar' : 'Requiere validación'}
-                        </span>
-                        <h3>{title}</h3>
-                        <p>{plan.question_count} preguntas, {plan.scored_item_count} ítems puntuables
-                          · {plan.dimension_count} dimensiones · {plan.subdimension_count} subdimensiones</p>
-                        <small>Versión {plan.version_code} · La clasificación depende del baremo configurado.</small>
-                      </div>
-                      <button type="button" disabled={!ready}
-                        className="aurora-catalog-action aurora-home-start"
-                        onClick={() => setSelectedInstrument({
-                          id: plan.instrument_version_id,
-                          title, version: plan.version_kind, items: plan.question_count,
-                          duration: 'según el participante',
-                          badge: 'Versión configurada en AURORA',
-                          description: plan.plan_description || 'Evaluación empresarial basada en una versión del instrumento.',
-                        })}>
-                        <ClipboardCheck size={15}/>{ready ? 'Aplicar instrumento' : 'No disponible'}
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="aurora-home-multidisc">
-            <div className="aurora-home-section-head">
-              <div>
-                <h2>Evaluaciones multidisciplinarias</h2>
-                <span>Selecciona un método autorizado y vincúlalo a su evaluación empresarial.</span>
-              </div>
-            </div>
-            <MultidisciplinaryCatalog simpleMode onCreateEvaluation={() => navigate('/colmena/project/new')} />
-          </div>
-        )}
-      </section>}
-      {selectedInstrument && <InstrumentConfirmModal instrument={selectedInstrument} isOpen
-        onClose={() => setSelectedInstrument(null)}
-        onCreated={result => {
-          setSelectedInstrument(null);
-          navigate(`/colmena/project/${result.project_id}/telemetry`);
-        }}/>}
+      <InstrumentCartModal
+        instruments={selected.map((instrument) => ({ ...instrument, title: VERSION_LABELS[instrument.version_kind] }))}
+        trialRemaining={trial?.remaining}
+        tariffs={tariffs}
+        companyProfile={companyProfile}
+        isOpen={showGenerator}
+        onClose={() => setShowGenerator(false)}
+      />
     </div>
   );
 }

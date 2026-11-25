@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Pause, Play, RefreshCcw } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 import { getProject } from '../../../api/projects.js';
 import { getResponseDescriptives, listStudies } from '../../../api/studies.js';
 import { getProjectTelemetry } from '../../../api/telemetry.js';
 import { useActiveProject } from '../../../hooks/useActiveProject.js';
-import { displayLabel } from '../../../utils/labels.js';
-
-import { Button } from '../../../components/ui/Button.jsx';
+import { getActiveStudyId, setActiveStudyId } from '../../../utils/activeStudy.js';
 import { Card } from '../../../components/ui/Card.jsx';
 import { EmptyState } from '../../../components/ui/EmptyState.jsx';
 import { ErrorState } from '../../../components/ui/ErrorState.jsx';
@@ -34,16 +31,15 @@ function usePageVisibility() {
  * dimensión. La analítica avanzada (riesgo, segmentación, relaciones)
  * vive en Resultados, no aquí.
  */
-export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
+export default function AdaptiveProjectTelemetryPage({ overrideProjectId, projects, onProjectChange }) {
   const params = useParams();
   const projectId = overrideProjectId || params.projectId;
   useActiveProject(projectId);
-  const [studyId, setStudyId] = useState(null);
-  const [paused, setPaused] = useState(false);
+  const [studyId, setStudyId] = useState(() => getActiveStudyId(projectId));
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
   const setTechnicalDetailsVisibility = useCallback((visible) => setTechnicalDetailsOpen(visible), []);
   const pageVisible = usePageVisibility();
-  const refetchInterval = !paused && pageVisible ? 15000 : false;
+  const refetchInterval = pageVisible ? 15000 : false;
 
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
@@ -54,14 +50,22 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
     queryFn: () => listStudies(projectId, { page: 1, pageSize: 100 }),
     enabled: Boolean(projectId),
   });
-  const studies = studiesQuery.data?.items || [];
+  const studies = useMemo(() => studiesQuery.data?.items || [], [studiesQuery.data]);
 
   useEffect(() => {
-    if (!studyId && studies.length) setStudyId(studies[0].id);
-    if (studyId && studies.length && !studies.some((study) => study.id === studyId)) {
-      setStudyId(studies[0].id);
-    }
-  }, [studies, studyId]);
+    if (!studies.length) return;
+    const preferred = studies.find((item) => item.id === studyId)
+      || studies.find((item) => item.id === Number(projectQuery.data?.metadata?.censopas_study_id))
+      || studies.find((item) => item.name && item.name.toLowerCase().includes('minero'))
+      || studies[0];
+    if (preferred.id !== studyId) setStudyId(preferred.id);
+    setActiveStudyId(projectId, preferred.id);
+  }, [studies, studyId, projectId, projectQuery.data?.metadata?.censopas_study_id]);
+
+  const changeStudy = (nextId) => {
+    setStudyId(nextId);
+    setActiveStudyId(projectId, nextId);
+  };
 
   const telemetryQuery = useQuery({
     queryKey: ['projectTelemetry', projectId],
@@ -93,34 +97,7 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
   if (!projectQuery.data) return <ProjectMissingState />;
 
   return (
-    <div className="colmena-page !gap-2">
-      <section aria-label="Evaluación activa" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#DBE6F1] bg-white px-3 py-2.5 shadow-sm">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[11px] font-semibold text-[#64748B]">Diagnóstico empresarial · {projectQuery.data?.name || 'Empresa'}</p>
-          <label className="mt-1 flex min-w-0 items-center gap-2 text-xs font-bold text-[#0A1F44]">
-            <span className="shrink-0">Estudio</span>
-            <select aria-label="Seleccionar estudio de telemetría" className="colmena-input min-w-0 max-w-[440px] flex-1 text-xs"
-              onChange={(event) => setStudyId(event.target.value ? Number(event.target.value) : null)} value={studyId || ''}>
-              <option value="">Selecciona un estudio</option>
-              {studies.map(study => <option key={study.id} value={study.id}>{study.name} ({displayLabel(study.status)})</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button onClick={() => setPaused(value => !value)} size="sm" type="button" variant="secondary">
-            {paused ? <Play size={14}/> : <Pause size={14}/>}
-            {paused ? 'Reanudar' : 'Pausar'}
-          </Button>
-          <Button disabled={isRefreshing} onClick={refresh} size="sm" type="button" variant="secondary">
-            <RefreshCcw size={14} className={isRefreshing ? 'animate-spin' : ''}/> Actualizar
-          </Button>
-          <Link to={`/colmena/project/${projectId}/link`}
-            className="rounded-lg border border-[#DCE7F1] bg-[#F8FAFC] px-3 py-2 text-xs font-bold text-[#315788]">
-            Gestionar enlace
-          </Link>
-        </div>
-      </section>
-
+    <div className="colmena-page aurora-telemetry-page !gap-2">
       {hasDataError ? (
         <ErrorState
           message="Conservamos la última información disponible. Usa Actualizar para volver a intentar."
@@ -143,6 +120,13 @@ export default function AdaptiveProjectTelemetryPage({ overrideProjectId }) {
           isLoadingTelemetry={telemetryQuery.isLoading}
           studyId={studyId}
           telemetry={selectedTelemetry}
+          studies={studies}
+          setStudyId={changeStudy}
+          projectName={projectQuery.data?.name}
+          projects={projects}
+          onProjectChange={onProjectChange}
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
         />
       ) : null}
     </div>

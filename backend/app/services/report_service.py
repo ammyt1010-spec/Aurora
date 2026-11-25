@@ -6,9 +6,8 @@ lo renderiza al formato pedido:
   - DOCX (default): Word con ficha técnica, tabla de baremación por
     dimensión y gráficas embebidas (`report_docx.py`).
   - JSON: el mismo bundle sin renderizar, para integraciones.
-No se recalcula estadística durante la generación, sólo se ensamblan
-resultados ya persistidos (`responses -> analysis_run -> analysis_results ->
-report_run`, harness).
+Para CENSOPAS oficial, la emisión completa sincroniza la puntuación colectiva
+si hay respuestas nuevas antes de ensamblar resultados persistidos.
 """
 
 from __future__ import annotations
@@ -16,10 +15,13 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 import json
 import struct
 from datetime import UTC, datetime
 from pathlib import Path
+
+from PIL import Image
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -32,17 +34,19 @@ from app.services.billing_service import BillingService
 from app.models.analysis import AnalysisResult, AnalysisRun
 from app.models.audit import AuditLog
 from app.models.billing import ReportOrder
+from app.models.evaluation_entitlement import EvaluationEntitlement
 from app.models.bsc import ActionPlan, ActionPlanItem, Kpi
 from app.models.censopas import Barem
 from app.models.construct import Construct
 from app.models.instrument import Instrument, InstrumentVersion
 from app.models.project import Project
+from app.models.response import ResponseSession
 from app.models.study import Study
 from app.models.user import Organization, User
 from app.repositories.analytics import AnalyticsRepository
 from app.repositories.reports import ReportRepository
 from app.repositories.studies import StudyRepository
-from app.schemas.reports import ReportRunCreate, ReportTemplateCreate, ReportTemplateUpdate
+from app.schemas.reports import MAX_SIGNATURE_PNG_BYTES, ReportRunCreate, ReportTemplateCreate, ReportTemplateUpdate
 from app.services.censopas_methodology import (
     resolve_censopas_methodological_status,
     resolve_official_equivalence_enabled,
@@ -56,6 +60,7 @@ from app.services.telemetry_service import TelemetryService
 # nunca filtrar por posición en la lista, siempre por `construct_type` real.
 _DIMENSION_TYPE = "DIMENSION"
 _SUBDIMENSION_TYPE = "SUBDIMENSION"
+_CENSOPAS_PROFILE_CODES = frozenset(f"C-{index:03d}" for index in range(1, 12))
 
 _CONFIDENTIALITY_NOTICE = (
     "Documento de uso interno del Comité/Grupo de Trabajo de Seguridad y Salud en el "
@@ -138,7 +143,6 @@ class ReportService:
         await self.session.commit()
 
     async def list_templates(self, discipline: str | None = None) -> list:
-        from app.models.report import ReportTemplate
         await self.ensure_default_templates()
         return await self.repo.list_templates(discipline=discipline)
 
@@ -195,10 +199,66 @@ class ReportService:
         if study is None:
             raise NotFoundError(f"Estudio {study_id} no encontrado")
 
-        # In production a report, including its preview, consumes exactly
-        # one paid company order. No tariff is pre-filled before approval.
+        # La emisión completa consume un uso comercial. No cobrar ni emitir
+        # un expediente de CENSOPAS oficial sin muestra publicable y scoring;
+        # la vista previa SAMPLE sigue disponible con las limitaciones claras.
+        if study.instrument_version_id is not None:
+            version = await self.session.get(InstrumentVersion, study.instrument_version_id)
+            instrument = await self.session.get(Instrument, version.instrument_id) if version else None
+            if (instrument is not None and instrument.is_system
+                    and instrument.code == "CENSOPAS_COPSOQ"
+                    and (version.config or {}).get("censopas_version_kind") in {"SHORT", "MEDIUM"}):
+                telemetry = await TelemetryService(self.session).get_study_telemetry(study_id)
+                if telemetry.valid_count < study.min_publishable_n:
+                    raise ConflictError(
+                        f"Se recibieron {telemetry.completed_count} cuestionarios, pero solo "
+                        f"{telemetry.valid_count} son puntuables. Para emitir un informe colectivo "
+                        f"se requieren al menos {study.min_publishable_n} respuestas válidas."
+                    )
+                from app.services.auto_scoring_service import refresh_scores_for_study
+                await refresh_scores_for_study(study_id)
+                latest_scoring = (await self.session.execute(
+                    select(AnalysisRun)
+                    .where(AnalysisRun.study_id == study_id,
+                           AnalysisRun.analysis_type == "LIKERT_SCORING",
+                           AnalysisRun.status == "COMPLETED")
+                    .order_by(AnalysisRun.completed_at.desc(), AnalysisRun.id.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
+                newest_response_at = await self.session.scalar(
+                    select(func.max(ResponseSession.completed_at)).where(
+                        ResponseSession.study_id == study_id,
+                        ResponseSession.status == "COMPLETED",
+                        ResponseSession.validation_status == "VALID",
+                    )
+                )
+                if (latest_scoring is None or latest_scoring.completed_at is None
+                        or newest_response_at is None
+                        or latest_scoring.completed_at < newest_response_at):
+                    raise ConflictError(
+                        "Las respuestas están registradas, pero el cálculo estadístico aún no está disponible. "
+                        "Intenta de nuevo antes de emitir el informe."
+                    )
+
+        # Una evaluación de prueba incluye una sola emisión completa. Las
+        # evaluaciones posteriores usan la orden vinculada al estudio.
         billing = BillingService(self.session)
-        paid_order = await billing.reserve_report_order(payload.billing_order_id, study_id, request=request)
+        from app.services.evaluation_access_service import EvaluationAccessService
+        entitlement = await EvaluationAccessService(self.session).for_study(study_id, lock=True)
+        free_evaluation = False
+        effective_order_id = payload.billing_order_id
+        if entitlement is not None:
+            if entitlement.status != "ACTIVE":
+                raise ConflictError("Confirma el pago de la evaluación antes de emitir el informe.")
+            if entitlement.access_kind == "FREE" and effective_order_id is None:
+                if entitlement.free_report_id is not None:
+                    raise ConflictError("La evaluación gratuita ya tiene un informe emitido. Puedes volver a descargarlo sin costo.")
+                free_evaluation = True
+            elif entitlement.access_kind == "PAID":
+                if effective_order_id is not None and effective_order_id != entitlement.order_id:
+                    raise ConflictError("La orden no corresponde a esta evaluación.")
+                effective_order_id = entitlement.order_id
+        paid_order = None if free_evaluation else await billing.reserve_report_order(effective_order_id, study_id, request=request)
 
         if payload.analysis_run_id is not None:
             analysis = await self.session.get(AnalysisRun, payload.analysis_run_id)
@@ -228,6 +288,8 @@ class ReportService:
             "template_code": template_code,
             "discipline": discipline,
             "is_sample_preview": False,
+            "free_evaluation": free_evaluation,
+            "signatures_attested": bool(payload.signatures_authorized and any(item.signature_png for item in payload.signatories)),
         }
 
         report_run = ReportRun(
@@ -251,6 +313,8 @@ class ReportService:
                 sections=payload.sections,
                 report_run=report_run,
                 company_logo_png=payload.company_logo_png,
+                signatories=payload.signatories,
+                signatures_authorized=payload.signatures_authorized,
             )
 
             storage_dir = Path(get_settings().export_storage_dir).parent / "reports_storage"
@@ -273,7 +337,7 @@ class ReportService:
             else:
                 # El logo sólo forma parte del render visual; nunca se expone
                 # como bytes serializados en la exportación JSON.
-                public_bundle = {key: value for key, value in bundle.items() if key != "brand_logo_png"}
+                public_bundle = {key: value for key, value in bundle.items() if key not in {"brand_logo_png", "signatories"}}
                 file_bytes = json.dumps(public_bundle, indent=2, default=str, ensure_ascii=False).encode("utf-8")
                 path = storage_dir / f"{report_run.public_id}.json"
                 path.write_bytes(file_bytes)
@@ -284,6 +348,8 @@ class ReportService:
             report_run.status = "COMPLETED"
             report_run.generated_at = datetime.now(UTC)
             await billing.consume_order(paid_order, report_run.id)
+            if free_evaluation:
+                entitlement.free_report_id = report_run.id
         except Exception as exc:
             # A failed render must not consume the paid authorization. Keep
             # the audit record of failure but release the single-use link.
@@ -343,6 +409,7 @@ class ReportService:
                 "template_name": template_name,
                 "template_code": template_code,
                 "discipline": discipline,
+                "signatures_attested": bool(payload.signatures_authorized and any(item.signature_png for item in payload.signatories)),
             }
 
             report_run = ReportRun(
@@ -366,6 +433,8 @@ class ReportService:
                     sections=payload.sections,
                     report_run=report_run,
                     company_logo_png=payload.company_logo_png,
+                    signatories=payload.signatories,
+                    signatures_authorized=payload.signatures_authorized,
                 )
                 bundle["is_sample_preview"] = True
                 bundle["watermark"] = watermark_text
@@ -414,6 +483,12 @@ class ReportService:
                     if order is not None:
                         await billing.release_reservation(order)
                     report_run.billing_order_id = None
+                elif (report_run.metadata_ or {}).get("free_evaluation"):
+                    entitlement = (await self.session.execute(
+                        select(EvaluationEntitlement).where(EvaluationEntitlement.study_id == report_run.study_id)
+                    )).scalar_one_or_none()
+                    if entitlement is not None and entitlement.free_report_id == report_run.id:
+                        entitlement.free_report_id = None
                 report_run.status = "FAILED"
                 report_run.error_message = f"Falló la conversión de vista previa: {exc}"
                 await self.session.commit()
@@ -422,25 +497,36 @@ class ReportService:
 
 
     @staticmethod
-    def _decode_company_logo(value: str | None) -> bytes | None:
-        """Validate ephemeral PNG payload before embedding in a DOCX document."""
+    def _decode_png(value: str | None, *, max_bytes: int, label: str, max_pixels: int = 16_000_000) -> bytes | None:
+        """Validate an ephemeral PNG before passing it to the document renderer."""
         if value is None:
             return None
         prefix = "data:image/png;base64,"
         if not value.startswith(prefix):
-            raise ValidationDomainError("El logotipo debe ser un archivo PNG válido.")
+            raise ValidationDomainError(f"{label} debe ser un archivo PNG válido.")
         try:
             data = base64.b64decode(value[len(prefix):], validate=True)
         except (binascii.Error, ValueError) as exc:
-            raise ValidationDomainError("Los datos del logotipo PNG no son válidos.") from exc
+            raise ValidationDomainError(f"Los datos de {label.lower()} no son válidos.") from exc
         if not data.startswith(bytes.fromhex("89504e470d0a1a0a")) or len(data) < 33:
-            raise ValidationDomainError("El logotipo no tiene una cabecera PNG válida.")
-        if len(data) > 600 * 1024:
-            raise ValidationDomainError("El logotipo supera el máximo de 600 KB.")
+            raise ValidationDomainError(f"{label} no tiene una cabecera PNG válida.")
+        if len(data) > max_bytes:
+            raise ValidationDomainError(f"{label} supera el tamaño permitido.")
         width, height = struct.unpack(">II", data[16:24])
-        if not (0 < width <= 4096 and 0 < height <= 4096):
-            raise ValidationDomainError("Dimensiones del logotipo fuera del límite permitido.")
+        if not (0 < width <= 4096 and 0 < height <= 4096 and width * height <= max_pixels):
+            raise ValidationDomainError(f"Dimensiones de {label.lower()} fuera del límite permitido.")
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                if image.format != "PNG":
+                    raise ValueError("not PNG")
+                image.verify()
+        except (OSError, ValueError) as exc:
+            raise ValidationDomainError(f"{label} no es una imagen PNG íntegra.") from exc
         return data
+
+    @staticmethod
+    def _decode_company_logo(value: str | None) -> bytes | None:
+        return ReportService._decode_png(value, max_bytes=600 * 1024, label="El logotipo")
 
     async def _build_bundle(
         self,
@@ -451,9 +537,29 @@ class ReportService:
         sections: list[str] | None = None,
         report_run=None,
         company_logo_png: str | None = None,
+        signatories: list | None = None,
+        signatures_authorized: bool = False,
     ) -> dict:
+        role_labels = {
+            "PROFESSIONAL": "Profesional responsable",
+            "COMPANY": "Representante de la organización",
+            "SST": "Seguridad y Salud en el Trabajo",
+            "PSYCHOLOGY": "Psicología ocupacional",
+        }
+        if len({entry.role for entry in signatories or []}) != len(signatories or []):
+            raise ValidationDomainError("Cada responsable debe tener una función distinta.")
         bundle: dict = {
             "brand_logo_png": self._decode_company_logo(company_logo_png),
+            "signatories": [
+                {
+                    "role": role_labels[entry.role],
+                    "name": entry.name.strip(),
+                    "registry": (entry.registry or "").strip(),
+                    "signature_png": self._decode_png(entry.signature_png, max_bytes=MAX_SIGNATURE_PNG_BYTES, label="La firma", max_pixels=4_000_000),
+                }
+                for entry in signatories or []
+            ],
+            "signatures_attested": signatures_authorized,
             "discipline": "PSICOSOCIAL",
             "is_censopas": False,
             "report_template": {},
@@ -534,7 +640,6 @@ class ReportService:
             bundle["censopas_results"], bundle["data_quality"], bundle["methodological_label"]
         )
 
-        is_psicosocial = True
         discipline = "PSICOSOCIAL"
         if study.instrument_version_id is not None:
             inst_stmt = (
@@ -545,7 +650,6 @@ class ReportService:
             inst_row = (await self.session.execute(inst_stmt)).first()
             if inst_row and inst_row[0]:
                 discipline = str(inst_row[0]).upper()
-                is_psicosocial = discipline == "PSICOSOCIAL"
             bundle["discipline"] = discipline
 
             readiness = await censopas_service.get_readiness(study.instrument_version_id)
@@ -586,7 +690,9 @@ class ReportService:
             r for r in bundle["censopas_results"] if r.get("construct_type") == _SUBDIMENSION_TYPE
         ]
 
-        bundle["sociolaboral_profile"] = await self._build_sociolaboral_profile(study)
+        bundle["sociolaboral_profile"] = await self._build_sociolaboral_profile(
+            study, is_censopas=bundle["is_censopas"]
+        )
         bundle["action_plans"] = await self._build_action_plans(study.id)
         bundle["priority_ranking"] = self._build_priority_ranking(bundle["dimension_results"])
         bundle["interpretation"] = self._build_interpretation(
@@ -629,10 +735,17 @@ class ReportService:
 
     async def _build_cover(self, study, bundle: dict, report_run) -> dict:
         organization_name = None
+        organization_ruc = None
+        organization_activity = None
         project = await self.session.get(Project, study.project_id)
         if project is not None and project.organization_id is not None:
             organization = await self.session.get(Organization, project.organization_id)
-            organization_name = organization.name if organization else None
+            organization_name = (organization.legal_name or organization.name) if organization else None
+            organization_ruc = organization.tax_id if organization else None
+            organization_activity = (
+                organization.organization_type.replace("_", " ").title()
+                if organization and organization.organization_type else None
+            )
 
         evaluator_label = None
         requested_by_user_id = getattr(report_run, "requested_by_user_id", None)
@@ -664,6 +777,8 @@ class ReportService:
 
         return {
             "organization_name": organization_name,
+            "ruc": organization_ruc,
+            "activity": organization_activity,
             "study_code": bundle["study"]["code"],
             "period_start": bundle["study"]["period_start"],
             "period_end": bundle["study"]["period_end"],
@@ -677,12 +792,12 @@ class ReportService:
             "is_sample_preview": is_sample,
         }
 
-    async def _build_sociolaboral_profile(self, study) -> list[dict]:
-        """Fase 3: perfil sociolaboral (11 variables C-001..C-011, EXOGENOUS,
+    async def _build_sociolaboral_profile(self, study, *, is_censopas: bool) -> list[dict]:
+        """Fase 3: perfil sociolaboral (11 variables C-001..C-011 o PERFIL-* demo,
         nunca puntuables — harness §9). Reusa `ResponseDescriptiveService`
         (misma fuente que Resultados) y aplica supresión n<min_publishable_n
-        por categoría aquí mismo, porque ese servicio no suprime por diseño
-        (sirve también a vistas internas con otro umbral de exposición)."""
+        por categoría aquí mismo, además de la supresión por pregunta que ya
+        aplica el servicio descriptivo."""
         try:
             descriptives = await ResponseDescriptiveService(self.session).get(study.id)
         except NotFoundError:
@@ -691,6 +806,11 @@ class ReportService:
         profile = []
         for question in descriptives.questions:
             if question.research_role != "EXOGENOUS" or question.is_scored:
+                continue
+            if is_censopas and not (
+                question.code in _CENSOPAS_PROFILE_CODES
+                or question.code.startswith("PERFIL-")
+            ):
                 continue
             categories = []
             for frequency in question.frequencies:
@@ -990,7 +1110,8 @@ class ReportService:
         publishable = [
             result
             for result in censopas_results
-            if not result.get("suppressed") and result.get("unfavorable_pct") is not None
+            if result.get("construct_type") == _DIMENSION_TYPE
+            and not result.get("suppressed") and result.get("unfavorable_pct") is not None
         ]
         ranked = sorted(publishable, key=lambda result: result["unfavorable_pct"], reverse=True)
         high_risk_count = sum(
@@ -998,12 +1119,26 @@ class ReportService:
         )
         if ranked:
             headline = (
-                f"{high_risk_count} de {len(ranked)} dimensiones en riesgo alto (≥50% desfavorable)."
+                f"{high_risk_count} de {len(ranked)} dimensiones clasificadas como riesgo alto según el baremo aplicado."
                 if high_risk_count
-                else "Ninguna dimensión alcanza el umbral de riesgo alto (≥50% desfavorable)."
+                else "No se clasificaron dimensiones en riesgo alto según el baremo aplicado."
             )
         else:
-            headline = "Todavía no hay dimensiones con resultados publicables para este estudio."
+            completed = (data_quality or {}).get("completed_count") or 0
+            valid = (data_quality or {}).get("valid_count") or 0
+            if completed and not valid:
+                received = (
+                    "Se recibió 1 cuestionario, pero no es puntuable. "
+                    if completed == 1
+                    else f"Se recibieron {completed} cuestionarios, pero ninguno es puntuable. "
+                )
+                headline = received + "No se pueden estimar niveles de riesgo con estas respuestas."
+            elif completed:
+                received = "Se recibió 1 cuestionario" if completed == 1 else f"Se recibieron {completed} cuestionarios"
+                valid_label = "1 es válido" if valid == 1 else f"{valid} son válidos"
+                headline = f"{received} y {valid_label}. Todavía no hay dimensiones con resultados publicables."
+            else:
+                headline = "Todavía no se han recibido cuestionarios completos para este estudio."
 
         return {
             "n_valid": (data_quality or {}).get("valid_count"),

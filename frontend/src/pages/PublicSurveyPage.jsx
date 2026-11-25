@@ -48,6 +48,7 @@ export default function PublicSurveyPage({ publicIdOverride, onCompleted, batter
   const [index, setIndex] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [invitationToken, setInvitationToken] = useState('');
+  const [viewMode, setViewMode] = useState('all');
 
   const {
     data: bundle,
@@ -159,10 +160,9 @@ export default function PublicSurveyPage({ publicIdOverride, onCompleted, batter
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
 
-  // Modo "todas las preguntas en pantalla": un solo Enviar que persiste
-  // cada respuesta tocada y luego cierra la sesión (no hay Atrás/Continuar
-  // por pregunta acá, ver SurveyAllQuestionsView).
-  if (theme.layout.questionsPerScreen === 'all') {
+  // Modo "todas las preguntas en pantalla (lista)": un solo Enviar que persiste
+  // cada respuesta tocada y luego cierra la sesión (mucho más ágil y fluido).
+  if (viewMode === 'all') {
     const handleSubmitAll = async () => {
       if (!session) return;
       for (const [questionIdKey, value] of Object.entries(answers)) {
@@ -178,7 +178,13 @@ export default function PublicSurveyPage({ publicIdOverride, onCompleted, batter
     return (
       <div className="survey-shell" data-survey-skin={theme.style} data-survey-align={theme.layout.align} style={buildSurveyThemeVars(theme)}>
         {batteryContext && <p className="mx-auto max-w-4xl px-4 pt-3 text-xs font-bold text-[#31578d]">{batteryContext}</p>}
-        <SurveyProgressHeader studyName={bundle.study_name} answered={answeredCount} total={total} />
+        <SurveyProgressHeader
+          studyName={bundle.study_name}
+          answered={answeredCount}
+          total={total}
+          viewMode={viewMode}
+          onToggleViewMode={() => setViewMode('single')}
+        />
         <SurveyAllQuestionsView
           bundle={bundle}
           answers={answers}
@@ -219,7 +225,13 @@ export default function PublicSurveyPage({ publicIdOverride, onCompleted, batter
 
   return (
     <div className="survey-shell" data-survey-skin={theme.style} data-survey-align={theme.layout.align} style={buildSurveyThemeVars(theme)}>
-      <SurveyProgressHeader studyName={bundle.study_name} answered={answeredCount} total={total} />
+      <SurveyProgressHeader
+        studyName={bundle.study_name}
+        answered={answeredCount}
+        total={total}
+        viewMode={viewMode}
+        onToggleViewMode={() => setViewMode('all')}
+      />
 
       <main className="survey-main">
         <div className="survey-card">

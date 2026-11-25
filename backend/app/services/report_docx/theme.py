@@ -51,4 +51,6 @@ FONT = {
     "label": 9.5,
 }
 
-FONT_FAMILY = "Inter"
+# Arial está disponible en el motor de LibreOffice de producción; Inter no lo
+# está y provocaba sustitución por una serif en el PDF final.
+FONT_FAMILY = "Arial"

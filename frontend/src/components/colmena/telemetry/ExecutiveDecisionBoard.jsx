@@ -1,345 +1,221 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, BarChart3, ChevronRight, CircleHelp, Eye, FilterX, ShieldCheck, SlidersHorizontal } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
+import { Activity, BarChart3, RefreshCcw, RotateCcw, ShieldCheck, Users } from 'lucide-react';
 import { getCensopasReadiness } from '../../../api/instruments.js';
 import { getExecutiveDashboard } from '../../../api/reports.js';
-import { getCensopasResults, getCensopasUnitResults, getResultsOverview, getStudy, listStudyUnitTypes } from '../../../api/studies.js';
-import {
-  actionForDimension, comparisonUnits, executiveRows, matrixCells, maxUnfavorable,
-  percentText, riskLabel, selectedDimension,
-} from './executiveBoardModel.js';
-import LongitudinalBIWidget from './LongitudinalBIWidget.jsx';
+import { getCensopasAreaResults, getCensopasResults, getCensopasSexResults, getResultsOverview, getStudy } from '../../../api/studies.js';
+import { executiveRows, percentText, riskLabel } from './executiveBoardModel.js';
+import { dimensionComparisons, filteredDimensionRows, segmentOptions } from './segmentDashboardModel.js';
 import './ExecutiveDecisionBoard.css';
 
 const BANDS = [
-  { key: 'unfavorable_pct', label: 'Desfavorable', color: '#D85E70' },
-  { key: 'intermediate_pct', label: 'Intermedio', color: '#E8AD52' },
-  { key: 'favorable_pct', label: 'Favorable', color: '#18A88B' },
+  { key: 'favorable_pct', label: 'Favorable', color: '#23bd99' },
+  { key: 'intermediate_pct', label: 'Intermedio', color: '#f3b84d' },
+  { key: 'unfavorable_pct', label: 'Desfavorable', color: '#f2707a' },
 ];
 
-function Empty({ children }) {
-  return <div className="aurora-compact-empty"><CircleHelp size={18} aria-hidden="true"/><span>{children}</span></div>;
+function Metric({ icon: Icon, label, value, detail, tone = 'blue' }) {
+  return <div className={`aurora-liquid-metric is-${tone}`}>
+    <span className="aurora-liquid-metric-icon"><Icon size={19} aria-hidden="true" /></span>
+    <div><span className="aurora-liquid-metric-label">{label}</span><strong>{value}</strong><small>{detail}</small></div>
+  </div>;
 }
 
-function PercentBar({ row, isCensopas }) {
-  return isCensopas ? (
-    <span className="aurora-compact-stacked" role="img"
-      aria-label={row.construct_name + ': ' + BANDS.map(b => b.label + ' ' + percentText(row[b.key])).join(', ')}>
-      {BANDS.map((band) => <i key={band.key}
-        style={{ width: row[band.key] + '%', background: band.color }}
-        title={band.label + ': ' + percentText(row[band.key])}/>)}
-    </span>
-  ) : (
-    <span className="aurora-compact-stacked" role="img"
-      aria-label={row.construct_name + ': puntuación descriptiva ' + percentText(row.mean_score)}>
-      <i style={{ width: row.mean_score + '%', background: '#6366F1' }} />
-    </span>
-  );
-}
+export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry, studies, setStudyId, projects, onProjectChange, onRefresh, isRefreshing, technicalControl }) {
+  const [dimensionCode, setDimensionCode] = useState(null);
+  const [segmentMode, setSegmentMode] = useState('area');
+  const [selectedSegmentId, setSelectedSegmentId] = useState('ALL');
+  useEffect(() => { setDimensionCode(null); setSegmentMode('area'); setSelectedSegmentId('ALL'); }, [studyId]);
 
-/**
- * Vista ejecutiva para UNA pantalla.
- * La matriz y la información de detalle tienen scroll propio. La comparativa
- * utiliza exclusivamente resultados publicables devueltos por el backend.
- */
-export default function ExecutiveDecisionBoard({ projectId, studyId, telemetry }) {
-  const [dimension, setDimension] = useState('ALL');
-  const [unitTypeId, setUnitTypeId] = useState('');
-  const [unitId, setUnitId] = useState('ALL');
-  const [focusedCode, setFocusedCode] = useState(null);
-  const [analysisView, setAnalysisView] = useState('diagnosis');
-
-  useEffect(() => {
-    setDimension('ALL');
-    setUnitTypeId('');
-    setUnitId('ALL');
-    setFocusedCode(null);
-    setAnalysisView('diagnosis');
-  }, [studyId]);
-
-  const studyQuery = useQuery({
-    queryKey: ['study', studyId],
-    queryFn: () => getStudy(studyId),
-    enabled: Boolean(studyId), retry: false,
-  });
+  const studyQuery = useQuery({ queryKey: ['study', studyId], queryFn: () => getStudy(studyId), enabled: Boolean(studyId), retry: false });
   const readinessQuery = useQuery({
     queryKey: ['censopas-readiness', studyQuery.data?.instrument_version_id],
     queryFn: () => getCensopasReadiness(studyQuery.data.instrument_version_id),
     enabled: Boolean(studyQuery.data?.instrument_version_id), retry: false,
   });
+  const classified = Boolean(studyQuery.data) && (!studyQuery.data.instrument_version_id || readinessQuery.isSuccess);
   const isCensopas = readinessQuery.data?.is_censopas_instrument === true;
-  const classificationKnown = Boolean(studyQuery.data) &&
-    (!studyQuery.data.instrument_version_id || readinessQuery.isSuccess);
-  const genericMode = classificationKnown && !isCensopas;
-
-  const resultQuery = useQuery({
-    queryKey: ['compact-censopas', studyId],
-    queryFn: () => getCensopasResults(studyId),
-    enabled: Boolean(studyId && isCensopas), retry: false,
+  const resultsQuery = useQuery({
+    queryKey: ['liquid-censopas', studyId], queryFn: () => getCensopasResults(studyId),
+    enabled: Boolean(studyId && isCensopas), retry: false, refetchInterval: 15000,
   });
   const genericQuery = useQuery({
-    queryKey: ['compact-results', studyId],
-    queryFn: () => getResultsOverview(studyId),
-    enabled: Boolean(studyId && genericMode), retry: false,
+    queryKey: ['liquid-results', studyId], queryFn: () => getResultsOverview(studyId),
+    enabled: Boolean(studyId && classified && !isCensopas), retry: false, refetchInterval: 15000,
   });
   const executiveQuery = useQuery({
-    queryKey: ['enterprise-executive-dashboard', studyId],
-    queryFn: () => getExecutiveDashboard(studyId),
-    enabled: Boolean(studyId), retry: false,
+    queryKey: ['enterprise-executive-dashboard', studyId], queryFn: () => getExecutiveDashboard(studyId),
+    enabled: Boolean(studyId), retry: false, refetchInterval: 15000,
   });
-  const unitTypesQuery = useQuery({
-    queryKey: ['studyUnitTypes', studyId],
-    queryFn: () => listStudyUnitTypes(studyId),
-    enabled: Boolean(studyId && isCensopas), retry: false,
+  const areaQuery = useQuery({
+    queryKey: ['censopasAreaResults', studyId],
+    queryFn: () => getCensopasAreaResults(studyId),
+    enabled: Boolean(studyId && isCensopas), retry: false, refetchInterval: 15000,
   });
-  const unitQuery = useQuery({
-    queryKey: ['censopasUnitResults', studyId, unitTypeId],
-    queryFn: () => getCensopasUnitResults(studyId, Number(unitTypeId)),
-    enabled: Boolean(studyId && isCensopas && unitTypeId), retry: false,
+  const sexQuery = useQuery({
+    queryKey: ['censopasSexResults', studyId],
+    queryFn: () => getCensopasSexResults(studyId),
+    enabled: Boolean(studyId && isCensopas), retry: false, refetchInterval: 15000,
   });
 
-  const allRows = useMemo(() => executiveRows(
-    isCensopas ? resultQuery.data?.results : genericQuery.data?.results, isCensopas
-  ), [isCensopas, resultQuery.data, genericQuery.data]);
-  const allUnits = useMemo(() => comparisonUnits(unitQuery.data?.results), [unitQuery.data]);
-  const safeCells = useMemo(() => matrixCells(unitQuery.data?.results), [unitQuery.data]);
-  const selectedUnit = allUnits.find((x) => x.id === unitId);
-  const unitsVisible = unitTypeId
-    ? (selectedUnit ? [selectedUnit] : unitId === 'ALL' ? allUnits : [])
-    : [];
-  const visibleRows = useMemo(() => allRows.filter((row) =>
-    dimension === 'ALL' || String(row.construct_code) === String(dimension)
-  ), [allRows, dimension]);
-  const focused = selectedDimension(visibleRows, focusedCode);
-  const rankings = executiveQuery.data?.construct_rankings || [];
-  const interpretation = focused && !selectedUnit ? actionForDimension(rankings, focused.construct_code) : null;
-  const matchingCell = focused && selectedUnit ? safeCells.get(focused.construct_code + '::' + selectedUnit.id) : null;
-  const worstValue = selectedUnit ? maxUnfavorable(
-    visibleRows.map(row => safeCells.get(row.construct_code + '::' + selectedUnit.id)).filter(Boolean)
-  ) : (isCensopas ? maxUnfavorable(visibleRows) : null);
-
-  const loading = studyQuery.isLoading || (Boolean(studyQuery.data?.instrument_version_id) && readinessQuery.isLoading) ||
-    (isCensopas ? resultQuery.isLoading : genericQuery.isLoading);
-  const error = studyQuery.isError || readinessQuery.isError ||
-    (isCensopas ? resultQuery.isError : genericQuery.isError);
-  const comparing = Boolean(unitTypeId);
-  const sourceUnavailable = comparing && (unitQuery.isLoading || unitQuery.isError);
-  const activeFilter = comparing && selectedUnit ? selectedUnit.label : comparing ? 'Comparación de unidades' : 'Empresa completa';
-
-  const reset = () => {
-    setDimension('ALL');
-    setUnitTypeId('');
-    setUnitId('ALL');
-    setFocusedCode(null);
-  };
+  const baseRows = useMemo(() => executiveRows(isCensopas ? resultsQuery.data?.results : genericQuery.data?.results, isCensopas),
+    [isCensopas, resultsQuery.data, genericQuery.data]);
+  const areaOptions = useMemo(() => segmentOptions(areaQuery.data?.results), [areaQuery.data]);
+  const sexOptions = useMemo(() => segmentOptions(sexQuery.data?.results), [sexQuery.data]);
+  const segmentResults = segmentMode === 'sex' ? sexQuery.data?.results : areaQuery.data?.results;
+  const choices = segmentMode === 'sex' ? sexOptions : areaOptions;
+  const selectedSegment = choices.find((choice) => choice.id === selectedSegmentId);
+  const rows = useMemo(() => isCensopas ? filteredDimensionRows(baseRows, segmentResults, selectedSegmentId) : baseRows,
+    [isCensopas, baseRows, segmentResults, selectedSegmentId]);
+  const focused = rows.find((row) => row.construct_code === dimensionCode) || rows[0];
+  const focusedBase = baseRows.find((row) => row.construct_code === focused?.construct_code);
+  const focusValue = focused?.suppressed ? null : focused;
+  const comparisons = useMemo(() => dimensionComparisons(segmentResults, focused?.construct_code),
+    [segmentResults, focused?.construct_code]);
+  const valid = telemetry?.valid_count ?? executiveQuery.data?.participation?.valid_count;
+  const invited = telemetry?.invited_count;
+  const completed = telemetry?.completed_count;
+  const validRate = Number.isFinite(valid) && Number.isFinite(invited) && invited > 0 ? (valid / invited) * 100 : null;
+  const publishable = rows.filter((row) => !row.suppressed).length;
+  const critical = rows.filter((row) => !row.suppressed && row.collective_classification === 'RIESGO_ALTO').length;
+  const maxUnfavorable = rows.filter((row) => !row.suppressed && Number.isFinite(row.unfavorable_pct))
+    .reduce((maximum, row) => Math.max(maximum, row.unfavorable_pct), -1);
+  const selectedStudy = studies?.find((study) => String(study.id) === String(studyId));
+  const instrumentName = telemetry?.instrument_name || executiveQuery.data?.instrument_name || 'Instrumento en evaluación';
+  const instrumentVersion = telemetry?.instrument_version_code || '';
+  const instrumentCounts = readinessQuery.data?.actual;
+  const versionLabel = readinessQuery.data?.version_kind === 'SHORT' ? 'Versión corta'
+    : readinessQuery.data?.version_kind === 'MEDIUM' ? 'Versión media' : instrumentVersion;
+  const loading = studyQuery.isLoading || (studyQuery.data?.instrument_version_id && readinessQuery.isLoading) ||
+    (isCensopas ? resultsQuery.isLoading : genericQuery.isLoading);
+  // La ausencia de una corrida de scoring (HTTP 409) no debe ocultar la
+  // telemetría de captura: los conteos llegan por un endpoint independiente.
+  const error = studyQuery.isError || readinessQuery.isError;
+  const comparisonQuery = segmentMode === 'sex' ? sexQuery : areaQuery;
 
   if (error) return <div className="aurora-compact-state" role="alert">No se pudo consultar el diagnóstico metodológico. Verifica el estudio y vuelve a intentar.</div>;
-  if (loading || !classificationKnown) return <div className="aurora-compact-state">Cargando diagnóstico ejecutivo…</div>;
+  if (loading || !classified) return <div className="aurora-compact-state">Cargando dimensiones del instrumento…</div>;
 
-  return (
-    <section className="aurora-compact" aria-label="Diagnóstico ejecutivo compacto">
-      <header className="aurora-compact-titlebar">
-        <div className="aurora-compact-brand">
-          <span className="aurora-compact-symbol"><BarChart3 size={19}/></span>
-          <div>
-            <h2>Diagnóstico ejecutivo</h2>
-            <p>Prioridades, dimensiones y comparaciones en una vista</p>
-          </div>
-        </div>
-        <div className="aurora-compact-status"><span className="aurora-compact-live"/> {activeFilter}</div>
-      </header>
+  return <div className="aurora-liquid" aria-label="Telemetría del instrumento">
+    <header className="aurora-liquid-head">
+      <div className="aurora-liquid-heading"><span className="aurora-liquid-emblem"><Activity size={23} aria-hidden="true" /></span>
+        <div><span className="aurora-liquid-eyebrow">PASO 2 DE 3 · RESPUESTAS</span><h1>{instrumentName}</h1>
+          <p>{versionLabel}{Number.isFinite(instrumentCounts?.questions) ? ` · ${instrumentCounts.questions} preguntas` : ''}
+            {Number.isFinite(instrumentCounts?.scored) ? ` · ${instrumentCounts.scored} puntuables` : ''}
+            {studies?.length <= 1 && selectedStudy?.name ? ` · ${selectedStudy.name}` : ''}</p></div></div>
+      <div className="aurora-liquid-actions">
+        {technicalControl}
+        {projects?.length > 1 && onProjectChange && <select aria-label="Seleccionar evaluación empresarial" value={projectId}
+          onChange={(event) => onProjectChange(Number(event.target.value))}>
+          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+        </select>}
+        {studies?.length > 1 && setStudyId && <select aria-label="Seleccionar estudio de telemetría" value={studyId}
+          onChange={(event) => setStudyId(Number(event.target.value))}>
+          {studies.map((study) => <option key={study.id} value={study.id}>{study.name}</option>)}
+        </select>}
+        <button type="button" onClick={() => { onRefresh?.(); if (isCensopas) { resultsQuery.refetch(); areaQuery.refetch(); sexQuery.refetch(); } else genericQuery.refetch(); executiveQuery.refetch(); }} disabled={isRefreshing} aria-label="Actualizar telemetría" title="Actualizar telemetría">
+          <RefreshCcw size={18} className={isRefreshing ? 'animate-spin' : ''} /></button>
+      </div>
+    </header>
 
-      <div className="aurora-compact-filters" role="group" aria-label="Filtros coordinados">
-        <SlidersHorizontal size={16} aria-hidden="true"/>
-        <label>Dimensión
-          <select aria-label="Dimensión del diagnóstico" value={dimension}
-            onChange={(e)=>{setDimension(e.target.value);setFocusedCode(null);}}>
-            <option value="ALL">Todas</option>
-            {allRows.map(row=><option key={row.construct_code} value={row.construct_code}>{row.construct_name}</option>)}
-          </select>
-        </label>
-        <label>Comparar por
-          <select aria-label="Tipo de segmento" value={unitTypeId}
-            disabled={!isCensopas || !unitTypesQuery.data?.length}
-            onChange={(e)=>{setUnitTypeId(e.target.value);setUnitId('ALL');}}>
-            <option value="">Toda la empresa</option>
-            {(unitTypesQuery.data || []).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
-          </select>
-        </label>
-        <label>Unidad
-          <select aria-label="Unidad del segmento" value={unitId} disabled={!unitTypeId || unitQuery.isLoading}
-            onChange={(e)=>setUnitId(e.target.value)}>
-            <option value="ALL">Todas las publicables</option>
-            {allUnits.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}
-          </select>
-        </label>
-        <button className="aurora-compact-reset" type="button" onClick={reset} title="Limpiar filtros">
-          <FilterX size={14}/> Restablecer
-        </button>
-      </div>
-
-      <div className="aurora-compact-metrics" aria-label="Indicadores esenciales">
-        <div className="aurora-compact-metric">
-          <span>{selectedUnit ? 'Unidad seleccionada' : 'Respuestas válidas'}</span>
-          <strong>{selectedUnit ? selectedUnit.label : telemetry?.valid_count ?? executiveQuery.data?.participation?.valid_count ?? 'Sin datos'}</strong>
-          <small>{selectedUnit ? 'Resultados agrupados y protegidos' : 'Total global del estudio'}</small>
-        </div>
-        <div className="aurora-compact-metric">
-          <span>{isCensopas ? 'Mayor proporción desfavorable' : 'Dimensiones publicables'}</span>
-          <strong>{isCensopas ? percentText(worstValue) : visibleRows.length}</strong>
-          <small>{isCensopas ? 'No equivale por sí solo a un diagnóstico' : 'Puntajes descriptivos del instrumento'}</small>
-        </div>
-        <div className="aurora-compact-metric">
-          <span>{comparing ? 'Unidades comparables' : isCensopas ? 'Dimensiones de riesgo alto' : 'Dimensiones disponibles'}</span>
-          <strong>{comparing ? (unitQuery.isError ? 'Sin datos' : unitQuery.isLoading ? 'Cargando' : unitsVisible.length) :
-            isCensopas ? (visibleRows.length ? visibleRows.filter(row => row.collective_classification === 'RIESGO_ALTO').length : 'Sin datos') : visibleRows.length}</strong>
-          <small>{comparing ? 'Solo resultados publicables' : isCensopas ? 'Clasificación según baremo configurado' : 'Sin categorías de riesgo añadidas'}</small>
-        </div>
-      </div>
-
-      <div className="aurora-compact-main">
-        <section className="aurora-compact-matrix" aria-label="Matriz ejecutiva por dimensión">
-          <div className="aurora-compact-panelhead">
-            <div>
-              <h3>Dimensiones y comparaciones</h3>
-              <span>{isCensopas ? 'Desfavorable · Intermedio · Favorable' : 'Puntuación descriptiva (0 a 100)'}</span>
-            </div>
-            <div className="aurora-compact-views" role="group" aria-label="Tipo de análisis">
-              <button type="button" aria-pressed={analysisView === 'diagnosis'}
-                className={analysisView === 'diagnosis' ? 'is-active' : ''}
-                onClick={() => setAnalysisView('diagnosis')}>Diagnóstico</button>
-              {isCensopas && <button type="button" aria-pressed={analysisView === 'heatmap'}
-                className={analysisView === 'heatmap' ? 'is-active' : ''}
-                onClick={() => setAnalysisView('heatmap')}>Mapa de calor</button>}
-              <button type="button" aria-pressed={analysisView === 'trend'}
-                className={analysisView === 'trend' ? 'is-active' : ''}
-                onClick={() => setAnalysisView('trend')}>Evolución</button>
-            </div>
-          </div>
-          <div className="aurora-compact-tablewrap" tabIndex={0} aria-label="Matriz desplazable de resultados">
-            {analysisView === 'heatmap' && isCensopas ? (
-              <div className="aurora-compact-heatmap" role="group" aria-label="Mapa de calor de dimensiones publicables">
-                <p className="aurora-compact-temporal-note">Intensidad visual del porcentaje desfavorable; no modifica la clasificación del baremo.</p>
-                <div className="aurora-compact-heat-grid">
-                  {visibleRows.map(row => {
-                    const segmentRow = selectedUnit ? safeCells.get(row.construct_code + '::' + selectedUnit.id) : row;
-                    const v = segmentRow?.unfavorable_pct;
-                    const known = Number.isFinite(v) && v >= 0 && v <= 100;
-                    return (
-                      <button type="button" key={row.construct_code}
-                        aria-pressed={focused?.construct_code === row.construct_code}
-                        onClick={() => setFocusedCode(row.construct_code)}
-                        className="aurora-compact-heat-tile"
-                        style={{backgroundColor: known ? 'rgba(216, 94, 112, ' + (0.06 + v / 100 * 0.39) + ')' : '#F3F6F9'}}>
-                        <span>{row.construct_name}</span>
-                        <strong>{known ? percentText(v) : 'N/D'}</strong>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : analysisView === 'trend' ? (
-              <div className="aurora-compact-trend">
-                {comparing && <p className="aurora-compact-temporal-note">Evolución global del estudio. No corresponde al filtro de unidad actual.</p>}
-                <LongitudinalBIWidget projectId={projectId} dimension={focused?.construct_code || (dimension !== 'ALL' ? dimension : 'ALL')}/>
-              </div>
-            ) : sourceUnavailable ? (
-              <Empty>{unitQuery.isError ? 'No fue posible obtener la segmentación autorizada.' : 'Cargando comparaciones…'}</Empty>
-            ) : visibleRows.length === 0 ? (
-              <Empty>No hay dimensiones publicables con los filtros actuales.</Empty>
-            ) : (
-              <table className="aurora-compact-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Dimensión</th>
-                    <th scope="col">{isCensopas ? 'Distribución global' : 'Puntaje'}</th>
-                    <th scope="col">{isCensopas ? '% desf.' : 'Media'}</th>
-                    {unitsVisible.map(u=><th scope="col" key={u.id} title={u.label}>{u.label}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map(row=>{
-                    const active=focused?.construct_code === row.construct_code;
-                    return <tr key={row.construct_code} className={active ? 'is-active' : undefined}>
-                      <th scope="row">
-                        <button type="button" aria-pressed={active}
-                          onClick={()=>setFocusedCode(row.construct_code)} title={'Ver detalle de '+row.construct_name}>
-                          <span className="aurora-compact-code">{row.construct_code}</span>
-                          <span>{row.construct_name}</span>
-                          <ChevronRight size={13} aria-hidden="true"/>
-                        </button>
-                      </th>
-                      <td><PercentBar row={row} isCensopas={isCensopas}/></td>
-                      <td className="aurora-compact-number">{percentText(isCensopas ? row.unfavorable_pct : row.mean_score)}</td>
-                      {unitsVisible.map(u=>{
-                        const cell=safeCells.get(row.construct_code + '::' + u.id);
-                        return <td key={u.id} className="aurora-compact-number">
-                          {cell ? <span className="aurora-compact-cell" title={'% desfavorable '+cell.unfavorable_pct.toFixed(1)+' · n='+cell.n_valid}>
-                            {percentText(cell.unfavorable_pct)}</span>
-                            : <span className="aurora-compact-suppressed" title="No disponible por privacidad o falta de resultados">N/D</span>}
-                        </td>;
-                      })}
-                    </tr>;
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-          <div className="aurora-compact-legend">
-            {isCensopas ? BANDS.map(b=><span key={b.key}><i style={{background:b.color}}/>{b.label}</span>) :
-              <span>Resultados descriptivos, sin inferencias ni clasificación añadidas</span>}
-            {comparing && <span className="aurora-compact-note"><ShieldCheck size={12}/> Grupos pequeños ocultos</span>}
-          </div>
-        </section>
-        <aside className="aurora-compact-insights" aria-label="Hallazgo principal y acción">
-          <div className="aurora-compact-panelhead">
-            <div><h3>Qué significa</h3><span>Detalle contextual de la selección</span></div>
-            <Activity size={17} aria-hidden="true"/>
-          </div>
-          {focused ? <div className="aurora-compact-insightbody">
-            <div className="aurora-compact-focuscode">{focused.construct_code}</div>
-            <h4>{focused.construct_name}</h4>
-            {isCensopas ? (
-              <>
-                <strong className="aurora-compact-focusvalue">{percentText(matchingCell?.unfavorable_pct ?? (!selectedUnit ? focused.unfavorable_pct : null))}</strong>
-                <span className="aurora-compact-detail">
-                  {selectedUnit ? 'Desfavorable en la unidad seleccionada' : '% desfavorable del estudio'}
-                </span>
-                <span className="aurora-compact-classification">
-                  {selectedUnit ? 'Comparación descriptiva por segmento' : riskLabel(focused.collective_classification)}
-                </span>
-              </>
-            ) : (
-              <>
-                <strong className="aurora-compact-focusvalue">{percentText(focused.mean_score)}</strong>
-                <span className="aurora-compact-detail">Puntuación descriptiva normalizada, no nivel de riesgo</span>
-              </>
-            )}
-            <div className="aurora-compact-insightdivider"/>
-            <h5>Hallazgo e intervención</h5>
-            {selectedUnit ? (
-              <p>La segmentación permite localizar diferencias descriptivas. No se trasladan recomendaciones globales a una unidad sin análisis autorizado.</p>
-            ) : interpretation ? (
-              <p>{interpretation.recommendation}</p>
-            ) : (
-              <p>Consulta el análisis técnico para interpretar esta dimensión según sus baremos y evidencia disponible.</p>
-            )}
-            {isCensopas && !selectedUnit && focused.priority_rank != null &&
-              <p className="aurora-compact-priority">Prioridad registrada por el motor: #{focused.priority_rank}</p>}
-          </div> : <Empty>Selecciona una dimensión para consultar su interpretación.</Empty>}
-          <div className="aurora-compact-next">
-            <Link to={projectId ? '/colmena/project/'+projectId+'/results' : '/colmena/telemetry'}>
-              <Eye size={14}/> Ver evidencia técnica <ChevronRight size={13}/>
-            </Link>
-          </div>
-        </aside>
-      </div>
-      <div className="aurora-compact-footer">
-        <span><ShieldCheck size={13}/> Solo agregados publicables; los filtros no recalculan baremos.</span>
-        <span>Selecciona una fila para enfocar el diagnóstico.</span>
-      </div>
+    <section className="aurora-liquid-metrics" aria-label="Indicadores clave de telemetría">
+      <Metric icon={Users} label={selectedSegment ? `Muestra · ${focused?.construct_code || 'dimensión'}` : 'Respuestas recibidas'}
+        value={selectedSegment ? (focusValue?.n_valid ?? '—') : (completed ?? '—')}
+        detail={selectedSegment ? selectedSegment.label : `${valid ?? 0} válidas · ${telemetry?.excluded_count ?? 0} no puntuables${invited != null ? ` · de ${invited} convocados` : ''}`} />
+      {isCensopas ? <>
+        <Metric icon={BarChart3} label="Mayor proporción desfavorable" value={maxUnfavorable >= 0 ? percentText(maxUnfavorable) : '—'}
+          detail={selectedSegment ? `En ${selectedSegment.label}` : 'Entre las dimensiones publicables'} tone="cyan" />
+        <Metric icon={ShieldCheck} label="Dimensiones en riesgo alto" value={critical}
+          detail={`${publishable} de ${baseRows.length} dimensiones publicables`} tone="violet" />
+      </> : <>
+        <Metric icon={BarChart3} label={validRate != null ? 'Cobertura válida' : 'Cuestionarios completados'}
+          value={validRate != null ? percentText(validRate) : completed ?? '—'}
+          detail={validRate != null ? 'Válidas / convocados' : 'Captura del instrumento'} tone="cyan" />
+        <Metric icon={ShieldCheck} label="Dimensiones publicables" value={rows.length}
+          detail="Sin categorías de riesgo CENSOPAS" tone="violet" />
+      </>}
     </section>
-  );
+
+    <div className="aurora-liquid-content">
+      <section className="aurora-liquid-dimensions" aria-label="Resultados por dimensión">
+        <div className="aurora-liquid-section-head"><div><span className="aurora-liquid-eyebrow">LECTURA PRINCIPAL</span>
+          <h2>Dimensiones del instrumento</h2><p>{isCensopas ? (selectedSegment ? `Filtro activo: ${selectedSegment.label} · distribución favorable, intermedia y desfavorable.` : 'Distribución colectiva favorable, intermedia y desfavorable.') : 'Puntajes descriptivos normalizados; no equivalen a nivel de riesgo.'}</p></div>
+          {isCensopas ? <div className="aurora-liquid-filters">
+            <label>Sexo<select aria-label="Filtrar por sexo" value={segmentMode === 'sex' ? selectedSegmentId : 'ALL'}
+              title="Filtro individual: seleccionar sexo restablece el filtro de área"
+              onChange={(event) => { setSegmentMode('sex'); setSelectedSegmentId(event.target.value); }} disabled={!sexOptions.length}>
+              <option value="ALL">Todos</option>
+              {sexOptions.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
+            </select></label>
+            <label>Área<select aria-label="Filtrar por área" value={segmentMode === 'area' ? selectedSegmentId : 'ALL'}
+              title="Filtro individual: seleccionar área restablece el filtro de sexo"
+              onChange={(event) => { setSegmentMode('area'); setSelectedSegmentId(event.target.value); }} disabled={!areaOptions.length}>
+              <option value="ALL">Todas</option>
+              {areaOptions.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
+            </select></label>
+          </div> : <span className="aurora-liquid-count">{rows.length} dimensiones</span>}</div>
+        {rows.length ? <div className="aurora-liquid-rows">
+          {rows.map((row) => <button type="button" key={row.construct_code}
+            aria-pressed={focused?.construct_code === row.construct_code}
+            className="aurora-liquid-dimension" onClick={() => setDimensionCode(row.construct_code)}>
+            <span className="aurora-liquid-dimension-name"><strong>{row.construct_name}</strong><small>{row.construct_code}</small></span>
+            {isCensopas && row.suppressed ? <><span className="aurora-liquid-unavailable">Sin resultado publicable para este grupo</span><span className="aurora-liquid-value is-unavailable">—<small>privacidad</small></span></>
+              : isCensopas ? <><span className="aurora-liquid-track" role="img" aria-label={`${row.construct_name}: ${percentText(row.favorable_pct)} favorable, ${percentText(row.intermediate_pct)} intermedio, ${percentText(row.unfavorable_pct)} desfavorable`}>
+              {BANDS.map((band) => <i key={band.key} style={{ width: `${row[band.key]}%`, backgroundColor: band.color }} />)}
+            </span><span className="aurora-liquid-value">{percentText(row.unfavorable_pct)}<small>desfavorable</small></span></>
+              : <><span className="aurora-liquid-track is-generic"><i style={{ width: `${row.mean_score}%` }} /></span>
+                <span className="aurora-liquid-value">{row.mean_score.toFixed(1)}<small>de 100</small></span></>}
+          </button>)}
+        </div> : <p className="aurora-liquid-empty">{completed > 0
+          ? `${completed} cuestionario${completed === 1 ? '' : 's'} recibido${completed === 1 ? '' : 's'}. ${!valid && (telemetry?.excluded_count ?? 0) > 0
+            ? 'Las respuestas no puntuables se conservan, pero no permiten estimar riesgo. Comparte de nuevo el enlace para aplicar el instrumento completo.'
+            : valid < (studyQuery.data?.min_publishable_n ?? 5)
+            ? `Las dimensiones se publican al alcanzar ${studyQuery.data?.min_publishable_n ?? 5} respuestas válidas, para proteger el anonimato.`
+            : 'El cálculo de dimensiones está pendiente; las respuestas ya están registradas.'}`
+          : 'Aún no se han recibido cuestionarios completos.'}</p>}
+        {isCensopas && rows.length > 0 && <div className="aurora-liquid-legend">{BANDS.map((band) => <span key={band.key}><i style={{ backgroundColor: band.color }} />{band.label}</span>)}</div>}
+      </section>
+
+      <aside className="aurora-liquid-focus" aria-label="Detalle de la dimensión">
+        {focused ? <><div className="aurora-liquid-focus-summary">
+          <div className="aurora-liquid-focus-info"><span className="aurora-liquid-eyebrow">DIMENSIÓN SELECCIONADA</span>
+            <h2>{focused.construct_name}</h2><p className="aurora-liquid-focus-code">{focused.construct_code}</p>
+            {isCensopas && focusValue && <span className="aurora-liquid-classification">{riskLabel(focusValue.collective_classification)}</span>}
+          </div>
+          <div className="aurora-liquid-focus-number">{isCensopas ? (focusValue ? percentText(focusValue.unfavorable_pct) : '—') : focused.mean_score.toFixed(1)}
+            <small>{isCensopas ? (focusValue ? 'desfavorable' : 'grupo no publicable') : 'puntos de 100'}</small></div>
+        </div>
+          {isCensopas && focusValue && <p className="aurora-liquid-recommendation">
+            {percentText(focusValue.favorable_pct)} favorable · {percentText(focusValue.intermediate_pct)} intermedio
+            {Number.isFinite(focusValue.n_valid) ? ` · n=${focusValue.n_valid}` : ''}
+          </p>}
+          {selectedSegment && !focusValue && <p className="aurora-liquid-recommendation">Esta dimensión no alcanza el mínimo de publicación en {selectedSegment.label}.</p>}
+        </> : <p className="aurora-liquid-empty">Selecciona una dimensión cuando haya resultados.</p>}
+        {isCensopas && <div className="aurora-liquid-comparison" aria-label={`Comparación por ${segmentMode === 'sex' ? 'sexo' : 'área'}`}>
+          <div className="aurora-liquid-comparison-head">
+            <div><h3>{segmentMode === 'sex' ? 'Por sexo' : 'Por área'}</h3>
+              <p>{focusedBase ? `${focusedBase.construct_code} · empresa ${percentText(focusedBase.unfavorable_pct)} desfavorable` : 'Selecciona una dimensión'}</p></div>
+            {selectedSegmentId !== 'ALL' && <button type="button" className="aurora-liquid-reset" onClick={() => setSelectedSegmentId('ALL')}>
+              <RotateCcw size={12} />Toda la empresa</button>}
+          </div>
+          {comparisonQuery.isLoading ? <p className="aurora-liquid-comparison-state">Cargando grupos…</p>
+            : comparisonQuery.isError ? <p className="aurora-liquid-comparison-state">No se pudo cargar esta comparación.</p>
+              : !comparisons.length ? <p className="aurora-liquid-comparison-state">
+                {segmentMode === 'sex' && sexQuery.data?.available === false ? 'Este estudio no tiene una pregunta de sexo vinculada.' : 'No hay grupos publicables para esta dimensión.'}
+              </p> : <div className="aurora-liquid-comparison-rows">
+                {comparisons.map((group) => <button type="button" key={group.id}
+                  aria-pressed={selectedSegmentId === group.id}
+                  aria-label={`${group.label}: ${percentText(group.unfavorable)} desfavorable, n=${group.n}`}
+                  title={`${group.label} · ${percentText(group.unfavorable)} desfavorable · n=${group.n}`}
+                  onClick={() => setSelectedSegmentId(selectedSegmentId === group.id ? 'ALL' : group.id)}
+                  className="aurora-liquid-comparison-row">
+                  <span className="aurora-liquid-comparison-label"><strong>{group.label}</strong><small>n={group.n}</small></span>
+                  <span className="aurora-liquid-comparison-track"><i style={{ width: `${group.unfavorable}%` }} /></span>
+                  <strong className="aurora-liquid-comparison-value">{percentText(group.unfavorable)}</strong>
+                </button>)}
+              </div>}
+        </div>}
+      </aside>
+    </div>
+  </div>;
 }

@@ -4,7 +4,7 @@ import { Building2 } from 'lucide-react';
 export default function EnterpriseProjectPicker({ projects, selectedId, onChange }) {
   if (!projects.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#dfe7f3] bg-white/95 px-3 py-2 shadow-sm">
+    <div className="aurora-project-picker flex flex-wrap items-center gap-3 rounded-xl border border-[#dfe7f3] bg-white/95 px-3 py-2 shadow-sm">
       <label htmlFor="aurora-project-switcher" className="flex items-center gap-1.5 text-xs font-bold text-[#294A7A]">
         <Building2 size={15}/> Empresa
       </label>

@@ -217,6 +217,7 @@ class BillingService:
         self, study_id: int, workers: int, user: User, *,
         method_code: str = "SUSESO_ISTAS21_BREVE",
         headcount_source: str | None = None,
+        commit: bool = True,
     ) -> ReportOrder:
         is_known = method_code in METHOD_LABELS
         if not is_known:
@@ -375,7 +376,10 @@ class BillingService:
                         "amount": str(order.amount) if order.amount is not None else None,
                         "currency": order.currency, "status": order.status},
         )
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         await self.db.refresh(order)
         return order
 
@@ -414,6 +418,12 @@ class BillingService:
         order.paid_at = datetime.now(UTC)
         order.status = "PAID"
         study = await self.db.get(Study, order.study_id)
+        from app.services.evaluation_access_service import EvaluationAccessService
+        entitlement = await EvaluationAccessService(self.db).for_study(order.study_id, lock=True)
+        if entitlement is not None and entitlement.order_id == order.id and entitlement.status == "PENDING_PAYMENT":
+            entitlement.status = "ACTIVE"
+            from app.services.study_service import StudyService
+            await StudyService(self.db).open(order.study_id, commit=False)
         await AuditService(self.db).log(
             action="REPORT_PAYMENT_CONFIRMED", entity_type="report_order",
             entity_id=order.id, user_id=user.id,

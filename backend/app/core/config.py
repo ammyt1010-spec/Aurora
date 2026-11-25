@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = "dev-only-insecure-secret-change-me-in-production-please-1234567890"
     billing_operator_user_id: int | None = None  # Establece este ID después de un alta segura del operador.
+    payment_bank_name: str = "Banco por definir"
+    payment_account_holder: str = "AURORA (datos provisionales)"
+    payment_account_number: str = "PENDIENTE_DE_CONFIGURAR"
+    payment_cci: str = "PENDIENTE_DE_CONFIGURAR"
     session_maintenance_operator_user_id: int | None = None  # Operador interno explícitamente autorizado para purgas globales.
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7
@@ -41,6 +45,11 @@ class Settings(BaseSettings):
 
     demo_access_enabled: bool = False
     demo_user_email: str = "demo@aurora.local"
+    self_registration_enabled: bool = False
+    email_verification_required: bool = False
+    resend_api_key: str | None = None
+    email_from: str = "AURORA <cuentas@aeia.top>"
+    public_app_url: str = "http://localhost:5175"
 
     # E-17: protección anti-abuso mínima del formulario público (sin Redis —
     # limitación conocida en despliegues multi-worker, documentada en
@@ -58,6 +67,11 @@ class Settings(BaseSettings):
         if env in {"production", "staging"}:
             if len(self.jwt_secret_key) < 48 or self.jwt_secret_key.startswith("dev-only") or "change-me" in self.jwt_secret_key.lower():
                 raise ValueError("JWT_SECRET_KEY debe tener al menos 48 caracteres aleatorios en producción o staging.")
+            if self.self_registration_enabled and (
+                not self.email_verification_required or not self.resend_api_key
+                or not self.public_app_url.startswith("https://")
+            ):
+                raise ValueError("El registro público requiere verificación de correo, Resend y URL HTTPS.")
         if self.allow_synthetic_test_bypass:
             if env != "test":
                 raise ValueError("ALLOW_SYNTHETIC_TEST_BYPASS solo se permite en ENVIRONMENT=test.")

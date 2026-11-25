@@ -18,6 +18,9 @@ class User(Base, PublicIdMixin, TimestampMixin):
     last_name: Mapped[str | None] = mapped_column(String(150))
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text('0'))
+    managed_company_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSONVariant, nullable=False, default=dict
     )

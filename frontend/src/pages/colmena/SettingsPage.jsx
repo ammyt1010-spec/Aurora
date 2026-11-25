@@ -8,8 +8,20 @@ import { getTariffs, createTariff, editTariff, getPendingOrders, approvePayment,
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { EnterpriseAuditPanel } from '../../components/colmena/EnterpriseAuditPanel.jsx';
 import { EnterpriseBillingPanel } from '../../components/colmena/EnterpriseBillingPanel.jsx';
+import { CompanyAccountsPanel } from '../../components/colmena/CompanyAccountsPanel.jsx';
 import { SessionManagementPanel } from '../../components/colmena/SessionManagementPanel.jsx';
 import ReportTemplateEditor from '../../components/colmena/project/ReportTemplateEditor.jsx';
+import { createCompanyAccount } from '../../api/auth.js';
+
+const emptyCompany = {
+  company_name: '', company_ruc: '', company_workers: '', email: '', username: '', initial_password: '',
+};
+
+function generatePassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const bytes = window.crypto.getRandomValues(new Uint8Array(18));
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -25,6 +37,8 @@ export default function SettingsPage() {
   const [paymentRefs, setPaymentRefs] = useState({});
   const [manualAmounts, setManualAmounts] = useState({});
   const [notice, setNotice] = useState('');
+  const [companyForm, setCompanyForm] = useState(emptyCompany);
+  const [issuedCompany, setIssuedCompany] = useState(null);
   const handleCloseAllSessions = async () => {
     if (closingAll || !window.confirm('¿Cerrar todas las sesiones, incluida esta? Tendrás que volver a iniciar sesión en todos tus dispositivos.')) return;
     setClosingAll(true);
@@ -75,11 +89,22 @@ export default function SettingsPage() {
     onSuccess: () => { invalidate(); setNotice('Pago registrado por el operador.'); },
     onError: (error) => setNotice(error.message),
   });
+  const issueCompany = useMutation({
+    mutationFn: (payload) => createCompanyAccount({
+      ...payload, company_workers: payload.company_workers ? Number(payload.company_workers) : null,
+    }),
+    onSuccess: (result, payload) => {
+      setIssuedCompany({ email: result.email, password: payload.initial_password });
+      setCompanyForm(emptyCompany);
+      setNotice('Cuenta empresarial creada. Entrega las credenciales por un canal privado.');
+    },
+    onError: (error) => setNotice(error.message || 'No se pudo crear la cuenta empresarial.'),
+  });
 
   return (
     <div className="colmena-page space-y-5">
       <PageHeader title="Administración de AURORA"
-        description="Plataforma empresarial privada · Pago por informe según cantidad de trabajadores." />
+        description="Cuatro evaluaciones gratuitas por cuenta · después, pago por evaluación según dotación e instrumento." />
       <Card className="p-5 space-y-2">
         <h2 className="flex items-center gap-2 text-base font-bold text-dark"><Settings2 size={18} /> Mi cuenta</h2>
         <p className="text-sm text-muted">Usuario: {user?.username || '—'} · {user?.email || '—'}</p>
@@ -100,6 +125,43 @@ export default function SettingsPage() {
       <EnterpriseBillingPanel />
       {enabled ? (
         <>
+          <CompanyAccountsPanel />
+          <Card className="space-y-3 p-5">
+            <h2 className="flex items-center gap-2 font-bold text-dark"><ShieldCheck size={18}/> Dar acceso a una empresa</h2>
+            <p className="text-xs text-muted">Cada cuenta nueva recibe cuatro evaluaciones completas gratuitas. Después se aplica la tarifa vigente por instrumento y tamaño de empresa.</p>
+            <form className="grid gap-3 sm:grid-cols-3" onSubmit={(event) => {
+              event.preventDefault();
+              setIssuedCompany(null);
+              issueCompany.mutate(companyForm);
+            }}>
+              <label className="text-xs font-semibold text-dark">Razón social
+                <input className="colmena-input mt-1 block w-full" required value={companyForm.company_name} onChange={(event) => setCompanyForm((form) => ({ ...form, company_name: event.target.value }))} />
+              </label>
+              <label className="text-xs font-semibold text-dark">RUC
+                <input className="colmena-input mt-1 block w-full" required inputMode="numeric" pattern="[0-9]{11}" maxLength={11} value={companyForm.company_ruc} onChange={(event) => setCompanyForm((form) => ({ ...form, company_ruc: event.target.value }))} />
+              </label>
+              <label className="text-xs font-semibold text-dark">Dotación declarada (mínimo para cotizar)
+                <input className="colmena-input mt-1 block w-full" type="number" min="1" max="10000000" value={companyForm.company_workers} onChange={(event) => setCompanyForm((form) => ({ ...form, company_workers: event.target.value }))} />
+              </label>
+              <label className="text-xs font-semibold text-dark">Correo de acceso
+                <input className="colmena-input mt-1 block w-full" type="email" required value={companyForm.email} onChange={(event) => setCompanyForm((form) => ({ ...form, email: event.target.value }))} />
+              </label>
+              <label className="text-xs font-semibold text-dark">Nombre de usuario
+                <input className="colmena-input mt-1 block w-full" required minLength={3} value={companyForm.username} onChange={(event) => setCompanyForm((form) => ({ ...form, username: event.target.value }))} />
+              </label>
+              <label className="text-xs font-semibold text-dark">Contraseña inicial
+                <div className="mt-1 flex gap-1">
+                  <input className="colmena-input min-w-0 flex-1" required minLength={12} type="text" autoComplete="off" value={companyForm.initial_password} onChange={(event) => setCompanyForm((form) => ({ ...form, initial_password: event.target.value }))} />
+                  <button type="button" className="rounded-lg border border-border px-2 text-xs" onClick={() => setCompanyForm((form) => ({ ...form, initial_password: generatePassword() }))}>Generar</button>
+                </div>
+              </label>
+              <button disabled={issueCompany.isPending} className="rounded-lg bg-amber px-4 py-2 text-xs font-bold text-dark sm:col-span-3">{issueCompany.isPending ? 'Creando cuenta…' : 'Crear y entregar credenciales'}</button>
+            </form>
+            {issuedCompany && <div role="status" className="rounded-lg bg-[#EDF9FB] p-3 text-xs text-dark">
+              Cuenta creada: <strong>{issuedCompany.email}</strong> · Contraseña inicial: <strong>{issuedCompany.password}</strong>. Cópiala ahora; no volverá a mostrarse.
+              <button type="button" className="ml-2 font-bold text-[#176486] underline" onClick={() => setIssuedCompany(null)}>Ocultar</button>
+            </div>}
+          </Card>
           <ReportTemplateEditor />
           <Card className="p-5 space-y-3">
             <h2 className="flex items-center gap-2 font-bold text-dark"><CreditCard size={18}/> Tarifario editable (PEN)</h2>
@@ -188,11 +250,7 @@ export default function SettingsPage() {
           </Card>
           {notice && <p role="status" className="text-xs text-muted">{notice}</p>}
         </>
-      ) : (
-        <Card className="p-5">
-          <p className="text-sm text-muted">El tarifario y la confirmación de pagos solo aparecen en la cuenta administradora central de AURORA.</p>
-        </Card>
-      )}
+      ) : null}
     </div>
   );
 }

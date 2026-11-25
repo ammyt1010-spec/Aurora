@@ -30,6 +30,7 @@ async def list_organizations(
             organization=OrganizationRead.model_validate(org),
             role_code=role,
             permissions=permissions or {},
+            declared_workers=(org.metadata_ or {}).get("headcount"),
         )
         for org, role, permissions in rows
     ]

@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.billing import EnterpriseBillingSummary, ManualQuotePrice, OrderRead, PaymentConfirmation, QuoteCreate, TariffInput, TariffRead
-from app.services.billing_service import BillingService, is_platform_operator, require_operator
+from app.services.billing_service import BillingService, is_platform_operator
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -14,6 +14,32 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 @router.get("/operator-status")
 async def operator_status(user: User = Depends(get_current_user)):
     return {"is_operator": is_platform_operator(user)}
+
+
+@router.get("/payment-instructions")
+async def payment_instructions(_user: User = Depends(get_current_user)):
+    from app.core.config import get_settings
+    settings = get_settings()
+    payment_fields = (
+        settings.payment_bank_name, settings.payment_account_holder,
+        settings.payment_account_number, settings.payment_cci,
+    )
+    provisional = any(
+        not value.strip() or any(marker in value.lower() for marker in ("pendiente", "por definir", "provisional"))
+        for value in payment_fields
+    )
+    return {
+        "bank_name": settings.payment_bank_name,
+        "account_holder": settings.payment_account_holder,
+        "account_number": settings.payment_account_number,
+        "cci": settings.payment_cci,
+        "provisional": provisional,
+        "notice": (
+            "Datos provisionales: no realices una transferencia hasta que AURORA confirme la cuenta definitiva."
+            if provisional else
+            "Incluye el número de orden en la referencia. La activación requiere confirmación manual del operador."
+        ),
+    }
 
 
 @router.get("/methods")
@@ -85,10 +111,11 @@ async def confirm_payment(
 
 @router.get("/policy")
 async def billing_policy(_user: User = Depends(get_current_user)):
-    from app.core.config import get_settings
     return {
         "enforced": True,  # Never authorized merely for being localhost.
-        "model": "PAY_PER_REPORT",
+        "model": "FOUR_FREE_EVALUATIONS_THEN_PAY_PER_EVALUATION",
+        "free_evaluation_limit": 4,
+        "reports_per_evaluation": 1,
         "basis": "WORKER_COUNT",
         "currency": "PEN",
         "payment_confirmation": "MANUAL_OPERATOR",

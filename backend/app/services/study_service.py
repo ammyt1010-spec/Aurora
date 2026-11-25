@@ -255,12 +255,16 @@ class StudyService:
 
         return False
 
-    async def open(self, study_id: int) -> Study:
+    async def open(self, study_id: int, *, commit: bool = True) -> Study:
         """harness §15: al abrir un estudio se valida survey/instrument_version,
         se congela una snapshot de configuración y se impiden cambios
         destructivos posteriores (delegado a InstrumentEditPolicy)."""
         study = await self.get(study_id)
         self._transition(study, "OPEN")
+        from app.services.evaluation_access_service import EvaluationAccessService
+        entitlement = await EvaluationAccessService(self.session).for_study(study_id)
+        if entitlement is not None and entitlement.status != "ACTIVE":
+            raise ConflictError("Esta evaluación requiere confirmación de pago antes de generar el enlace.")
 
         survey_stmt = (
             select(Survey)
@@ -276,6 +280,33 @@ class StudyService:
         survey = (await self.session.execute(survey_stmt)).scalar_one_or_none()
         if survey is None:
             raise NotFoundError(f"Survey {study.survey_id} no encontrado")
+
+        # Una evaluación oficial nunca debe publicarse con solo las preguntas
+        # de perfil: se perderían todas las respuestas puntuables sin que el
+        # participante o la empresa pudieran detectarlo.
+        if survey.instrument_version_id is not None:
+            from app.models.instrument import Instrument, InstrumentVersion
+
+            version = (
+                await self.session.execute(
+                    select(InstrumentVersion)
+                    .join(Instrument, Instrument.id == InstrumentVersion.instrument_id)
+                    .where(
+                        InstrumentVersion.id == survey.instrument_version_id,
+                        Instrument.code == "CENSOPAS_COPSOQ",
+                        Instrument.is_system.is_(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if version is not None and (version.config or {}).get("censopas_version_kind") in {"SHORT", "MEDIUM"}:
+                bank_ids = set((await self.session.execute(
+                    select(Question.id).where(Question.instrument_version_id == version.id)
+                )).scalars().all())
+                linked_ids = {link.question_id for link in survey.survey_questions}
+                if linked_ids != bank_ids or not any(link.question.is_scored for link in survey.survey_questions):
+                    raise ValidationDomainError(
+                        "El formulario CensoPÁS está incompleto; no se puede publicar hasta vincular todos los ítems oficiales."
+                    )
 
         for link in survey.survey_questions:
             question = link.question
@@ -355,6 +386,13 @@ class StudyService:
 
         project = await self.session.get(Project, study.project_id)
         is_enterprise = await self._is_enterprise_evaluation(study, project)
+        from app.core.config import get_settings
+        if (
+            is_enterprise
+            and entitlement is None
+            and get_settings().environment.lower() in {"production", "staging"}
+        ):
+            raise ConflictError("Registra la evaluación desde Inicio para asignar un uso gratuito o una orden de pago.")
 
         if study.instrument_version_id is not None:
             version = await self.instrument_repo.get_version_with_instrument(
@@ -563,7 +601,10 @@ class StudyService:
         await self.audit.log(
             action="STUDY_OPENED", entity_type="study", entity_id=study.id, project_id=study.project_id
         )
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
         return await self.get(study.id)
 
     async def close(self, study_id: int) -> Study:

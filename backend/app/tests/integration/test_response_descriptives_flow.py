@@ -126,6 +126,7 @@ async def test_response_descriptives_groups_frequencies_and_valid_sessions(
                 "survey_id": survey["id"],
                 "name": "Aplicación descriptiva",
                 "study_type": "CUSTOM",
+                "min_publishable_n": 2,
                 "settings": {
                     "response_validation": {
                         "min_answered_count": 3,
@@ -154,6 +155,12 @@ async def test_response_descriptives_groups_frequencies_and_valid_sessions(
         assert response.status_code == 200, response.text
     completed = await client.post(f"/api/v1/response-sessions/{valid['id']}/complete")
     assert completed.json()["validation_status"] == "VALID"
+    early = await client.get(f"/api/v1/studies/{study['id']}/response-descriptives")
+    assert early.status_code == 200
+    early_questions = {item["code"]: item for item in early.json()["questions"]}
+    assert early_questions["P_DIM"]["suppressed"] is True
+    assert early_questions["P_DIM"]["frequencies"] == []
+    assert early_questions["P_FREE"]["numeric"] is None
 
     valid_with_missing = (
         await client.post(f"/api/v1/public/studies/{study['public_id']}/response-sessions")
@@ -212,5 +219,5 @@ async def test_response_descriptives_groups_frequencies_and_valid_sessions(
     assert by_code["P_PROFILE"]["group_label"] == "Perfil"
     assert by_code["P_PROFILE"]["variable_code"] == "sexo"
     assert by_code["P_FREE"]["group_label"] == "Sin agrupación"
-    assert by_code["P_FREE"]["missing_n"] == 1
-    assert by_code["P_FREE"]["numeric"]["mean"] == 40.0
+    assert by_code["P_FREE"]["suppressed"] is True
+    assert by_code["P_FREE"]["numeric"] is None
